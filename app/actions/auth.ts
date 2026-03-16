@@ -7,12 +7,12 @@ import { WebApiResponse, LoginResponseData, SubscriptionStatusResponse } from '@
 
 /**
  * 소셜 액세스 토큰으로 로그인하고 httpOnly 쿠키에 토큰을 저장합니다.
- * @param accessToken 소셜 서비스(카카오/네이버)에서 발급받은 액세스 토큰
- * @param provider 소셜 서비스 제공자 ('KAKAO' | 'NAVER')
+ * @param accessToken 소셜 서비스(카카오/네이버/구글)에서 발급받은 액세스 토큰
+ * @param provider 소셜 서비스 제공자 ('KAKAO' | 'NAVER' | 'GOOGLE')
  */
 export async function loginWithSocialAction(
   accessToken: string,
-  provider: 'KAKAO' | 'NAVER'
+  provider: 'KAKAO' | 'NAVER' | 'GOOGLE'
 ): Promise<{ success: boolean; message: string; userInfo?: any }> {
   try {
     const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
@@ -175,4 +175,3 @@ export async function getSubscriptionStatusAction(): Promise<{
     };
   }
 }
-

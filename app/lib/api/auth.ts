@@ -2,7 +2,7 @@ import { webApiClient } from '@/app/lib/api/client';
 
 export interface LoginRequest {
   accessToken: string;
-  provider: 'KAKAO' | 'NAVER';
+  provider: 'KAKAO' | 'NAVER' | 'GOOGLE';
 }
 
 // Web API 실제 응답 구조
@@ -22,7 +22,7 @@ export interface TokenInfo {
 
 export interface UserInfo {
   id: number;
-  provider: 'KAKAO' | 'NAVER';
+  provider: 'KAKAO' | 'NAVER' | 'GOOGLE';
   providerUserId: string;
   email: string;
   nickname: string;
@@ -178,4 +178,3 @@ export const loginWithKakao = async (accessToken: string): Promise<WebApiRespons
   });
   return response.data;
 };
-
