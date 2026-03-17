@@ -6,14 +6,27 @@ import { getCurrentUser } from '@/app/lib/api/auth';
 // 캐시 방지 및 실시간 인증 상태 확인을 위해 강제 동적 렌더링 설정
 export const dynamic = 'force-dynamic';
 
-export default async function LoginPage() {
+interface LoginPageProps {
+  searchParams?: {
+    returnUrl?: string;
+  };
+}
+
+const getSafeReturnUrl = (value?: string) => {
+  if (!value) return null;
+  if (!value.startsWith('/') || value.startsWith('//')) return null;
+  return value;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
   // 서버 사이드에서 로그인 여부 확인
   const user = await getCurrentUser();
   
   // 이미 로그인된 경우 메인으로 리다이렉트 (로그인 페이지 접근 절대 차단)
   if (user) {
     console.log(`[LoginPage SSR] 이미 로그인된 사용자(${user.nickname}), 리다이렉트 수행`);
-    redirect('/');
+    const returnUrl = getSafeReturnUrl(searchParams?.returnUrl);
+    redirect(returnUrl ?? '/templates');
   }
 
   return <LoginClient />;

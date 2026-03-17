@@ -15,6 +15,12 @@ declare global {
   }
 }
 
+const getSafeReturnUrl = (value: string | null | undefined) => {
+  if (!value) return null;
+  if (!value.startsWith('/') || value.startsWith('//')) return null;
+  return value;
+};
+
 export default function LoginClient() {
   const router = useRouter();
   const { setUser, isAuthenticated } = useAuth();
@@ -65,16 +71,18 @@ export default function LoginClient() {
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
     const state = urlParams.get('state');
-    const returnUrl = urlParams.get('returnUrl');
+    const returnUrlParam = getSafeReturnUrl(urlParams.get('returnUrl'));
 
-    if (returnUrl && !sessionStorage.getItem('previousPath')) {
-      sessionStorage.setItem('previousPath', returnUrl);
+    if (returnUrlParam) {
+      sessionStorage.setItem('previousPath', returnUrlParam);
+    } else if (!returnUrlParam && !code) {
+      sessionStorage.removeItem('previousPath');
     }
 
     if (code && !isProcessing && !isAuthenticated) {
       setIsProcessing(true);
       
-      const cleanUrl = window.location.pathname + (returnUrl ? `?returnUrl=${encodeURIComponent(returnUrl)}` : '');
+      const cleanUrl = window.location.pathname + (returnUrlParam ? `?returnUrl=${encodeURIComponent(returnUrlParam)}` : '');
       window.history.replaceState({}, '', cleanUrl);
 
       const storedProvider = sessionStorage.getItem('oauth_provider') as
@@ -222,11 +230,7 @@ export default function LoginClient() {
       if (result.userInfo) {
         setUser(result.userInfo);
       }
-
-      const rawPath = sessionStorage.getItem('previousPath');
-      const previousPath = rawPath && !rawPath.includes('/login') ? rawPath : '/';
       
-      sessionStorage.removeItem('previousPath');
       sessionStorage.removeItem('oauth_provider');
       sessionStorage.removeItem('oauth_state');
       
@@ -234,7 +238,13 @@ export default function LoginClient() {
       setLoading(false);
       
       try {
-        router.replace(previousPath);
+        const storedPath = getSafeReturnUrl(sessionStorage.getItem('previousPath'));
+        if (storedPath) {
+          sessionStorage.removeItem('previousPath');
+          router.replace(storedPath);
+        } else {
+          router.replace('/templates');
+        }
       } catch (pushError) {
         console.error('[processLogin] 리다이렉트 실패:', pushError);
       }
