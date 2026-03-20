@@ -66,6 +66,7 @@ export default function ReelsMakerPage() {
   const [processingStep, setProcessingStep] = useState(0);
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
   const [finalVideoMimeType, setFinalVideoMimeType] = useState<string>('video/webm');
+  const [finalPosterUrl, setFinalPosterUrl] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
 
@@ -148,6 +149,47 @@ export default function ReelsMakerPage() {
     if (!window.MediaRecorder) return null;
     return types.find((type) => MediaRecorder.isTypeSupported(type)) || null;
   };
+
+  const createPosterFromClip = useCallback(async (clip: ClipInfo) => {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+
+    const url = URL.createObjectURL(clip.blob);
+
+    return new Promise<string>((resolve, reject) => {
+      const cleanup = () => {
+        URL.revokeObjectURL(url);
+      };
+
+      video.onloadeddata = () => {
+        const width = video.videoWidth || 720;
+        const height = video.videoHeight || 1280;
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) {
+          cleanup();
+          reject(new Error('포스터 생성 실패'));
+          return;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        context.drawImage(video, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        cleanup();
+        resolve(dataUrl);
+      };
+
+      video.onerror = () => {
+        cleanup();
+        reject(new Error('포스터 생성 실패'));
+      };
+
+      video.src = url;
+      video.load();
+    });
+  }, []);
 
   const mergeClips = useCallback(async (clipInfos: ClipInfo[]) => {
     if (clipInfos.length === 1) {
@@ -401,6 +443,12 @@ export default function ReelsMakerPage() {
         if (prev) URL.revokeObjectURL(prev);
         return url;
       });
+      try {
+        const poster = await createPosterFromClip(clipBlobs[0]);
+        setFinalPosterUrl(poster);
+      } catch {
+        setFinalPosterUrl(null);
+      }
       setStage('preview');
     } catch (error) {
       setFinalVideoUrl((prev) => {
@@ -408,6 +456,7 @@ export default function ReelsMakerPage() {
         return null;
       });
       setFinalVideoMimeType('video/webm');
+      setFinalPosterUrl(null);
       setStage('capture');
       alert('영상 합치기에 실패했습니다. 다시 시도해주세요.');
     } finally {
@@ -455,6 +504,10 @@ export default function ReelsMakerPage() {
     if (finalVideoUrl) {
       URL.revokeObjectURL(finalVideoUrl);
       setFinalVideoUrl(null);
+    }
+    if (finalPosterUrl) {
+      URL.revokeObjectURL(finalPosterUrl);
+      setFinalPosterUrl(null);
     }
     setFinalVideoMimeType('video/webm');
     setIsPreviewOpen(false);
@@ -518,6 +571,8 @@ export default function ReelsMakerPage() {
                     src={finalVideoUrl}
                     muted
                     playsInline
+                    preload="metadata"
+                    poster={finalPosterUrl || undefined}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -612,6 +667,7 @@ export default function ReelsMakerPage() {
                   <video
                     src={finalVideoUrl}
                     controls
+                    poster={finalPosterUrl || undefined}
                     className="w-full h-[70vh] object-cover"
                   />
                 ) : (
