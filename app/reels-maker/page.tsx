@@ -1,16 +1,532 @@
-export const dynamic = 'force-dynamic';
+'use client';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Plus, RotateCcw, X } from 'lucide-react';
+
+const TEMPLATE = {
+  title: '연남동 1등 라떼의 비결?',
+  guide: '자연스레 이동하다가 점선의 위치에 선 뒤, 점선과 같은 포즈를 취해주세요',
+  point:
+    '카메라를 천천히 좌에서 우로 이동하며 매장 전체 분위기를 담아주세요. 조명이 잘 보이도록 촬영하면 더 좋아요!',
+  exampleImage:
+    'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1200&q=80',
+  exampleVideo:
+    'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+  cuts: [
+    { id: 'cut-1', duration: 3, label: '3초' },
+    { id: 'cut-2', duration: 2, label: '2초' },
+    { id: 'cut-3', duration: 4, label: '4초' },
+  ],
+};
+
+type ClipInfo = {
+  blob: Blob;
+  url: string;
+  duration: number;
+};
+
+type RecorderStatus = 'idle' | 'recording' | 'done';
 
 export default function ReelsMakerPage() {
-  return (
-    <div className="min-h-[calc(100vh-80px)] bg-white">
-      <div className="max-w-4xl mx-auto px-4 py-12 sm:py-16">
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">
-          릴스 제작
-        </h1>
-        <p className="text-gray-600">
-          맞춤형 릴스 제작 페이지는 준비 중입니다. 곧 새로운 제작 경험으로 찾아올게요.
-        </p>
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const recordTimeoutRef = useRef<number | null>(null);
+  const countdownTimerRef = useRef<number | null>(null);
+  const recordingCutRef = useRef<number>(0);
+
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [activeCutIndex, setActiveCutIndex] = useState(0);
+  const [recordingStatus, setRecordingStatus] = useState<RecorderStatus>('idle');
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [clips, setClips] = useState<Array<ClipInfo | null>>(
+    Array(TEMPLATE.cuts.length).fill(null)
+  );
+  const [cutTitles, setCutTitles] = useState<string[]>(
+    TEMPLATE.cuts.map(() => TEMPLATE.title)
+  );
+  const [isExampleOpen, setIsExampleOpen] = useState(false);
+  const [isReelOpen, setIsReelOpen] = useState(false);
+  const [isResetOpen, setIsResetOpen] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState(0);
+
+  const activeCut = TEMPLATE.cuts[activeCutIndex];
+  const allDone = useMemo(() => clips.every((clip) => clip), [clips]);
+
+  const stopCamera = useCallback(() => {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
+    }
+  }, [stream]);
+
+  const setupCamera = useCallback(async () => {
+    setCameraError(null);
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('이 브라우저에서는 카메라 기능을 사용할 수 없습니다.');
+      return;
+    }
+
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: true,
+      });
+      setStream(mediaStream);
+    } catch (error) {
+      try {
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+        setStream(fallbackStream);
+      } catch (fallbackError) {
+        setCameraError('카메라 접근이 거부되었어요. 권한을 확인해주세요.');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    setupCamera();
+    return () => {
+      stopCamera();
+    };
+  }, [setupCamera, stopCamera]);
+
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  useEffect(() => {
+    return () => {
+      clips.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
+    };
+  }, [clips]);
+
+  const createRecorder = () => {
+    if (!stream) return null;
+    if (!window.MediaRecorder) return null;
+
+    const preferredTypes = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+    ];
+    const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
+    return new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+  };
+
+  const stopRecording = useCallback(() => {
+    if (recordTimeoutRef.current) {
+      window.clearTimeout(recordTimeoutRef.current);
+      recordTimeoutRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      window.clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    setRemainingSeconds(null);
+
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+    }
+  }, []);
+
+  const startRecording = async () => {
+    if (recordingStatus === 'recording') return;
+
+    if (!stream) {
+      await setupCamera();
+    }
+
+    const recorder = createRecorder();
+    if (!recorder) {
+      setCameraError('이 브라우저에서는 녹화를 지원하지 않습니다.');
+      return;
+    }
+
+    recorderRef.current = recorder;
+    chunksRef.current = [];
+    recordingCutRef.current = activeCutIndex;
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunksRef.current.push(event.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      const recordedIndex = recordingCutRef.current;
+      const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
+      const url = URL.createObjectURL(blob);
+
+      setClips((prev) => {
+        const next = [...prev];
+        if (next[recordedIndex]?.url) {
+          URL.revokeObjectURL(next[recordedIndex]!.url);
+        }
+        next[recordedIndex] = { blob, url, duration: TEMPLATE.cuts[recordedIndex].duration };
+        return next;
+      });
+
+      setRecordingStatus('done');
+      if (recordedIndex < TEMPLATE.cuts.length - 1) {
+        setActiveCutIndex(recordedIndex + 1);
+      }
+    };
+
+    recorder.start();
+    setRecordingStatus('recording');
+    setRemainingSeconds(activeCut.duration);
+
+    const startedAt = Date.now();
+    countdownTimerRef.current = window.setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+      const remaining = Math.max(0, activeCut.duration - elapsed);
+      setRemainingSeconds(remaining);
+    }, 500);
+
+    recordTimeoutRef.current = window.setTimeout(() => {
+      stopRecording();
+    }, activeCut.duration * 1000);
+  };
+
+  const handleResetCut = () => {
+    setClips((prev) => {
+      const next = [...prev];
+      if (next[activeCutIndex]?.url) {
+        URL.revokeObjectURL(next[activeCutIndex]!.url);
+      }
+      next[activeCutIndex] = null;
+      return next;
+    });
+    setRecordingStatus('idle');
+    setIsResetOpen(false);
+  };
+
+  const handleComplete = () => {
+    setIsProcessing(true);
+    setProcessingStep(0);
+  };
+
+  useEffect(() => {
+    if (!isProcessing) return;
+
+    const timers = [
+      window.setTimeout(() => setProcessingStep(1), 1200),
+      window.setTimeout(() => setProcessingStep(2), 2600),
+    ];
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [isProcessing]);
+
+  const handleTitleChange = (value: string) => {
+    setCutTitles((prev) => {
+      const next = [...prev];
+      next[activeCutIndex] = value;
+      return next;
+    });
+  };
+
+  if (isProcessing) {
+    return (
+      <div className="min-h-[calc(100vh-80px)] bg-black text-white flex items-center justify-center px-4">
+        <div className="max-w-sm w-full text-center space-y-6">
+          <div className="w-24 h-24 rounded-full border-4 border-white/10 border-t-[#FF4D6D] animate-spin mx-auto" />
+          <div>
+            <h1 className="text-2xl font-bold mb-2">릴스를 만들고 있어요</h1>
+            <p className="text-sm text-white/60">
+              BGM 삽입, 컷 전환 효과, 보정 적용 중...
+            </p>
+          </div>
+          <div className="space-y-3 text-left">
+            {[
+              { label: '영상 편집 완료', done: processingStep >= 1 },
+              { label: '자막 배치 완료', done: processingStep >= 2 },
+              { label: 'BGM 삽입 중...', done: false },
+            ].map((item, index) => (
+              <div
+                key={item.label}
+                className="flex items-center gap-3 text-sm font-medium"
+              >
+                <div
+                  className={`w-5 h-5 rounded-full flex items-center justify-center border ${
+                    item.done ? 'border-emerald-400 text-emerald-400' : 'border-white/30'
+                  }`}
+                >
+                  {item.done ? <Check className="w-3 h-3" /> : null}
+                </div>
+                <span className={item.done ? 'text-emerald-300' : 'text-white/70'}>
+                  {item.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="min-h-[calc(100vh-80px)] bg-black text-white">
+      <div className="max-w-md mx-auto px-4 pt-6 pb-10">
+        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+          모바일 웹앱에서 촬영하면 더 안정적으로 카메라를 사용할 수 있어요.
+        </div>
+
+        <div className="relative rounded-[28px] bg-[#1E2A3B] px-4 pt-5 pb-6 shadow-2xl">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2 text-white/80">
+              {recordingStatus === 'recording' ? (
+                <div className="flex items-center gap-2 rounded-full bg-[#FF4D6D] px-3 py-1 text-xs font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-white" />
+                  REC
+                </div>
+              ) : (
+                <span className="text-xs text-white/50">릴스 제작</span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsExampleOpen(true)}
+              className="rounded-full bg-[#FF4D6D] px-4 py-2 text-xs font-semibold shadow-lg"
+            >
+              예시 보기
+            </button>
+          </div>
+
+          <div className="mb-4">
+            <input
+              value={cutTitles[activeCutIndex]}
+              onChange={(event) => handleTitleChange(event.target.value)}
+              className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-center text-base font-semibold text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#FF4D6D]"
+            />
+          </div>
+
+          <p className="text-sm text-[#58C4FF] text-center mb-5">{TEMPLATE.guide}</p>
+
+          <div className="relative h-[360px] rounded-[24px] bg-[#243246] flex items-center justify-center overflow-hidden">
+            {cameraError ? (
+              <div className="text-sm text-white/70 text-center px-6">
+                {cameraError}
+              </div>
+            ) : (
+              <>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/30" />
+                <div className="relative text-center text-white/40">
+                  <div className="w-16 h-16 rounded-full border border-white/20 flex items-center justify-center mx-auto mb-3">
+                    <span className="text-sm">📷</span>
+                  </div>
+                  카메라 뷰
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="mt-6 flex items-center justify-center gap-3">
+            {TEMPLATE.cuts.map((cut, index) => {
+              const clip = clips[index];
+              const isActive = index === activeCutIndex;
+              return (
+                <button
+                  key={cut.id}
+                  type="button"
+                  onClick={() => {
+                    if (recordingStatus === 'recording') return;
+                    setActiveCutIndex(index);
+                  }}
+                  className={`relative flex flex-col items-center justify-center w-20 h-24 rounded-2xl border-2 transition-all ${
+                    isActive ? 'border-[#FF4D6D] bg-white/10' : 'border-white/10 bg-white/5'
+                  }`}
+                >
+                  {clip ? (
+                    <video
+                      src={clip.url}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="absolute inset-0 h-full w-full object-cover rounded-2xl"
+                    />
+                  ) : (
+                    <Plus className="w-6 h-6 text-white/40" />
+                  )}
+                  <span className="absolute bottom-2 text-xs text-white/70">{cut.label}</span>
+                  {clip && (
+                    <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white">
+                      <Check className="w-3 h-3" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-6 flex items-center justify-center">
+            {allDone ? (
+              <button
+                type="button"
+                onClick={handleComplete}
+                className="w-full rounded-full bg-[#FF4D6D] py-4 text-base font-semibold shadow-lg"
+              >
+                ✓ 완료하기
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={recordingStatus === 'recording' ? stopRecording : startRecording}
+                className="relative w-20 h-20 rounded-full border-4 border-[#FF4D6D] flex items-center justify-center shadow-2xl"
+              >
+                <span
+                  className={`transition-all ${
+                    recordingStatus === 'recording'
+                      ? 'w-8 h-8 rounded-lg bg-[#FF4D6D]'
+                      : 'w-12 h-12 rounded-full bg-white'
+                  }`}
+                />
+              </button>
+            )}
+          </div>
+
+          {remainingSeconds !== null && (
+            <div className="mt-3 text-center text-sm text-white/70">
+              {remainingSeconds}s 남음
+            </div>
+          )}
+        </div>
+
+        {allDone && (
+          <div className="mt-6 flex flex-col items-center gap-5">
+            <div className="flex items-center gap-3">
+              {clips.map((clip, index) => (
+                <div
+                  key={`thumb-${TEMPLATE.cuts[index].id}`}
+                  className="relative w-16 h-20 rounded-xl overflow-hidden border-2 border-emerald-400"
+                >
+                  {clip && (
+                    <video
+                      src={clip.url}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  )}
+                  <span className="absolute bottom-1 left-0 right-0 text-center text-[10px] text-white/80">
+                    {TEMPLATE.cuts[index].label}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsResetOpen(true)}
+              className="w-16 h-16 rounded-full border-2 border-white/30 flex items-center justify-center text-white/70"
+            >
+              <RotateCcw className="w-6 h-6" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {isExampleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-[28px] bg-[#1E2A3B] overflow-hidden relative">
+            <button
+              type="button"
+              onClick={() => setIsExampleOpen(false)}
+              className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="h-64 bg-black">
+              <img
+                src={TEMPLATE.exampleImage}
+                alt="예시 이미지"
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <div className="p-5 space-y-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExampleOpen(false);
+                  setIsReelOpen(true);
+                }}
+                className="w-full rounded-full bg-[#FF4D6D] py-3 text-sm font-semibold"
+              >
+                실제 릴스 보기
+              </button>
+              <div>
+                <p className="text-sm font-semibold text-white/80 mb-2">이 컷의 포인트</p>
+                <p className="text-xs text-white/60 leading-relaxed">{TEMPLATE.point}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isReelOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
+          <button
+            type="button"
+            onClick={() => setIsReelOpen(false)}
+            className="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="w-full max-w-sm">
+            <div className="rounded-[28px] overflow-hidden bg-black">
+              <video
+                src={TEMPLATE.exampleVideo}
+                controls
+                className="w-full h-[70vh] object-cover"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isResetOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-[24px] bg-[#1E2A3B] p-6 text-white">
+            <h3 className="text-lg font-semibold mb-2">촬영 재시도</h3>
+            <p className="text-sm text-white/70 mb-5">
+              촬영한 영상을 다시 찍으시겠어요? 현재 영상은 삭제됩니다.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsResetOpen(false)}
+                className="flex-1 rounded-xl bg-white/10 py-2 text-sm"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleResetCut}
+                className="flex-1 rounded-xl bg-[#FF4D6D] py-2 text-sm font-semibold"
+              >
+                다시 찍기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -97,6 +97,7 @@ const MOBILE_PRIMARY_ITEMS: MobileMenuItem[] = [
 ];
 
 const SIMPLE_HEADER_CONFIG: Record<string, { title: string; backHref: string }> = {
+  '/reels-maker': { title: '릴스 제작', backHref: '/templates' },
   '/profile': { title: '내 정보', backHref: '/' },
   '/plan': { title: '이용 중인 플랜', backHref: '/profile' },
   '/account-settings': { title: '계정 설정', backHref: '/profile' },
@@ -121,6 +122,7 @@ export default function Header() {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const simpleHeader = SIMPLE_HEADER_CONFIG[pathname];
+  const isDarkHeader = pathname === '/reels-maker';
   const buildLoginHref = (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`;
 
   // 현재 경로가 메뉴와 일치하는지 확인하는 함수 (메모이제이션)
@@ -193,9 +195,9 @@ export default function Header() {
 
   return (
     <header
-      className={`sticky top-0 z-50 w-full bg-white transition-transform duration-300 ${
+      className={`sticky top-0 z-50 w-full transition-transform duration-300 ${
         isVisible ? 'translate-y-0' : '-translate-y-full'
-      }`}
+      } ${isDarkHeader ? 'bg-black text-white' : 'bg-white'}`}
     >
       <div className="w-full pl-4 pr-4 sm:px-8 lg:px-12">
         {simpleHeader ? (
@@ -203,16 +205,26 @@ export default function Header() {
             <Link
               href={simpleHeader.backHref}
               onClick={() => setIsMobileMenuOpen(false)}
-              className="w-10 h-10 flex items-center justify-center text-gray-700"
+              className={`w-10 h-10 flex items-center justify-center ${
+                isDarkHeader ? 'text-white' : 'text-gray-700'
+              }`}
               aria-label="뒤로가기"
             >
               <ChevronLeft className="w-6 h-6" />
             </Link>
-            <h1 className="text-lg sm:text-xl font-bold text-gray-900">{simpleHeader.title}</h1>
+            <h1
+              className={`text-lg sm:text-xl font-bold ${
+                isDarkHeader ? 'text-white' : 'text-gray-900'
+              }`}
+            >
+              {simpleHeader.title}
+            </h1>
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="w-10 h-10 flex items-center justify-center text-gray-700"
+              className={`w-10 h-10 flex items-center justify-center ${
+                isDarkHeader ? 'text-white' : 'text-gray-700'
+              }`}
               aria-label="메뉴"
             >
               <Menu className="w-6 h-6" />
