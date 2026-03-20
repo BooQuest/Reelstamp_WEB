@@ -33,6 +33,7 @@ type ClipInfo = {
   blob: Blob;
   url: string;
   duration: number;
+  mimeType: string;
 };
 
 type RecorderStatus = 'idle' | 'recording' | 'done';
@@ -45,6 +46,7 @@ export default function ReelsMakerPage() {
   const recordTimeoutRef = useRef<number | null>(null);
   const countdownTimerRef = useRef<number | null>(null);
   const recordingCutRef = useRef<number>(0);
+  const recordingMimeTypeRef = useRef<string>('video/webm');
 
   const [stage, setStage] = useState<Stage>('capture');
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -63,8 +65,9 @@ export default function ReelsMakerPage() {
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
+  const [finalVideoMimeType, setFinalVideoMimeType] = useState<string>('video/webm');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [showDownloadToast, setShowDownloadToast] = useState(false);
+  const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
 
   const activeCut = TEMPLATE.cuts[activeCutIndex];
   const allDone = useMemo(() => clips.every((clip) => clip), [clips]);
@@ -128,12 +131,17 @@ export default function ReelsMakerPage() {
     if (!window.MediaRecorder) return null;
 
     const preferredTypes = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
+      'video/mp4',
       'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp8,opus',
       'video/webm',
     ];
     const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
-    return new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recordingMimeTypeRef.current = recorder.mimeType || mimeType || 'video/webm';
+    return recorder;
   };
 
   const stopRecording = useCallback(() => {
@@ -178,7 +186,8 @@ export default function ReelsMakerPage() {
 
     recorder.onstop = () => {
       const recordedIndex = recordingCutRef.current;
-      const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
+      const mimeType = recorder.mimeType || recordingMimeTypeRef.current || 'video/webm';
+      const blob = new Blob(chunksRef.current, { type: mimeType });
       const url = URL.createObjectURL(blob);
 
       setClips((prev) => {
@@ -186,7 +195,12 @@ export default function ReelsMakerPage() {
         if (next[recordedIndex]?.url) {
           URL.revokeObjectURL(next[recordedIndex]!.url);
         }
-        next[recordedIndex] = { blob, url, duration: TEMPLATE.cuts[recordedIndex].duration };
+        next[recordedIndex] = {
+          blob,
+          url,
+          duration: TEMPLATE.cuts[recordedIndex].duration,
+          mimeType,
+        };
         return next;
       });
 
@@ -258,9 +272,10 @@ export default function ReelsMakerPage() {
 
     const combinedBlob = new Blob(
       clipBlobs.map((clip) => clip.blob),
-      { type: clipBlobs[0]?.blob.type || 'video/webm' }
+      { type: clipBlobs[0]?.mimeType || clipBlobs[0]?.blob.type || 'video/webm' }
     );
     const url = URL.createObjectURL(combinedBlob);
+    setFinalVideoMimeType(combinedBlob.type || clipBlobs[0]?.mimeType || 'video/webm');
     setFinalVideoUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return url;
@@ -272,10 +287,10 @@ export default function ReelsMakerPage() {
   }, [stage, clips]);
 
   useEffect(() => {
-    if (!showDownloadToast) return;
-    const timer = window.setTimeout(() => setShowDownloadToast(false), 2000);
+    if (!downloadToastMessage) return;
+    const timer = window.setTimeout(() => setDownloadToastMessage(null), 2000);
     return () => window.clearTimeout(timer);
-  }, [showDownloadToast]);
+  }, [downloadToastMessage]);
 
   const handleTitleChange = (value: string) => {
     setCutTitles((prev) => {
@@ -289,11 +304,12 @@ export default function ReelsMakerPage() {
     if (!finalVideoUrl) return;
     const anchor = document.createElement('a');
     anchor.href = finalVideoUrl;
-    anchor.download = 'reelstamp-reel.webm';
+    const isMp4 = finalVideoMimeType.includes('mp4');
+    anchor.download = `reelstamp-reel.${isMp4 ? 'mp4' : 'webm'}`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-    setShowDownloadToast(true);
+    setDownloadToastMessage(isMp4 ? '다운로드 완료!' : 'MP4 미지원 브라우저로 WEBM으로 다운로드됩니다.');
   };
 
   const handleResetAll = () => {
@@ -311,10 +327,12 @@ export default function ReelsMakerPage() {
       URL.revokeObjectURL(finalVideoUrl);
       setFinalVideoUrl(null);
     }
+    setFinalVideoMimeType('video/webm');
     setIsPreviewOpen(false);
     setIsExampleOpen(false);
     setIsReelOpen(false);
     setIsResetOpen(false);
+    setDownloadToastMessage(null);
     setupCamera();
   };
 
@@ -390,10 +408,10 @@ export default function ReelsMakerPage() {
                   <Play className="w-8 h-8 text-white" />
                 </button>
               </div>
-              {showDownloadToast && (
+              {downloadToastMessage && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold flex items-center gap-2 shadow-lg">
                   <Check className="w-4 h-4" />
-                  다운로드 완료!
+                  {downloadToastMessage}
                 </div>
               )}
             </div>
