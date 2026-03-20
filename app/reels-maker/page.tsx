@@ -68,8 +68,6 @@ export default function ReelsMakerPage() {
   const [finalVideoMimeType, setFinalVideoMimeType] = useState<string>('video/webm');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
-  const [isMerging, setIsMerging] = useState(false);
-  const [mergeError, setMergeError] = useState<string | null>(null);
 
   const activeCut = TEMPLATE.cuts[activeCutIndex];
   const allDone = useMemo(() => clips.every((clip) => clip), [clips]);
@@ -384,59 +382,38 @@ export default function ReelsMakerPage() {
     }
   }, [stage, stopRecording]);
 
-  const handleComplete = () => {
-    setProcessingStep(0);
-    setStage('processing');
-  };
-
-  useEffect(() => {
-    if (stage !== 'processing') return;
-
-    const timers = [
-      window.setTimeout(() => setProcessingStep(1), 1200),
-      window.setTimeout(() => setProcessingStep(2), 2600),
-      window.setTimeout(() => setStage('preview'), 3600),
-    ];
-
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
-  }, [stage]);
-
-  useEffect(() => {
-    if (stage !== 'preview') return;
+  const handleComplete = async () => {
     const clipBlobs = clips.filter((clip): clip is ClipInfo => !!clip);
     if (clipBlobs.length === 0) return;
 
-    let cancelled = false;
+    setProcessingStep(0);
+    setStage('processing');
+    const timers = [
+      window.setTimeout(() => setProcessingStep(1), 1200),
+      window.setTimeout(() => setProcessingStep(2), 2600),
+    ];
 
-    const runMerge = async () => {
-      setIsMerging(true);
-      setMergeError(null);
-      try {
-        const result = await mergeClips(clipBlobs);
-        if (cancelled) return;
-        const url = URL.createObjectURL(result.blob);
-        setFinalVideoMimeType(result.mimeType || 'video/webm');
-        setFinalVideoUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return url;
-        });
-      } catch (error) {
-        if (!cancelled) {
-          setMergeError('영상 결합에 실패했어요. 다시 시도해주세요.');
-        }
-      } finally {
-        if (!cancelled) setIsMerging(false);
-      }
-    };
-
-    runMerge();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [stage, clips, mergeClips]);
+    try {
+      const result = await mergeClips(clipBlobs);
+      const url = URL.createObjectURL(result.blob);
+      setFinalVideoMimeType(result.mimeType || 'video/webm');
+      setFinalVideoUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+      setStage('preview');
+    } catch (error) {
+      setFinalVideoUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setFinalVideoMimeType('video/webm');
+      setStage('capture');
+      alert('영상 합치기에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    }
+  };
 
   useEffect(() => {
     if (!downloadToastMessage) return;
@@ -536,9 +513,7 @@ export default function ReelsMakerPage() {
           <div className="rounded-[28px] bg-[#1E2A3B] p-4 shadow-2xl space-y-4">
             <div className="relative rounded-[24px] overflow-hidden">
               <div className="aspect-[9/16] bg-black flex items-center justify-center">
-                {isMerging ? (
-                  <div className="text-sm text-white/70">영상을 합치는 중...</div>
-                ) : finalVideoUrl ? (
+                {finalVideoUrl ? (
                   <video
                     src={finalVideoUrl}
                     muted
@@ -594,11 +569,6 @@ export default function ReelsMakerPage() {
               </div>
             ))}
           </div>
-          {mergeError && (
-            <div className="rounded-2xl bg-[#2B3446] px-4 py-3 text-xs text-white/70">
-              {mergeError}
-            </div>
-          )}
 
           <div className="space-y-3">
             <button
