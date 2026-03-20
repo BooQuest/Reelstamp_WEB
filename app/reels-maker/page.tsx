@@ -68,6 +68,8 @@ export default function ReelsMakerPage() {
   const [finalVideoMimeType, setFinalVideoMimeType] = useState<string>('video/webm');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
 
   const activeCut = TEMPLATE.cuts[activeCutIndex];
   const allDone = useMemo(() => clips.every((clip) => clip), [clips]);
@@ -143,6 +145,142 @@ export default function ReelsMakerPage() {
     recordingMimeTypeRef.current = recorder.mimeType || mimeType || 'video/webm';
     return recorder;
   };
+
+  const getSupportedMimeType = (types: string[]) => {
+    if (!window.MediaRecorder) return null;
+    return types.find((type) => MediaRecorder.isTypeSupported(type)) || null;
+  };
+
+  const mergeClips = useCallback(async (clipInfos: ClipInfo[]) => {
+    if (clipInfos.length === 1) {
+      return {
+        blob: clipInfos[0].blob,
+        mimeType: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
+      };
+    }
+
+    if (!window.MediaRecorder) {
+      return {
+        blob: new Blob(clipInfos.map((clip) => clip.blob), {
+          type: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
+        }),
+        mimeType: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
+      };
+    }
+
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    if (!context || !canvas.captureStream) {
+      return {
+        blob: new Blob(clipInfos.map((clip) => clip.blob), {
+          type: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
+        }),
+        mimeType: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
+      };
+    }
+
+    const loadClip = (clip: ClipInfo) =>
+      new Promise<{ url: string }>((resolve, reject) => {
+        const url = URL.createObjectURL(clip.blob);
+        video.onloadedmetadata = () => resolve({ url });
+        video.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error('영상 로드 실패'));
+        };
+        video.src = url;
+        video.load();
+      });
+
+    const firstMeta = await loadClip(clipInfos[0]);
+    const width = video.videoWidth || 720;
+    const height = video.videoHeight || 1280;
+    canvas.width = width;
+    canvas.height = height;
+    context.fillStyle = '#000';
+    context.fillRect(0, 0, width, height);
+    URL.revokeObjectURL(firstMeta.url);
+
+    const captureStream = canvas.captureStream(30);
+    if (captureStream.getVideoTracks().length === 0) {
+      return {
+        blob: new Blob(clipInfos.map((clip) => clip.blob), {
+          type: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
+        }),
+        mimeType: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
+      };
+    }
+
+    const preferredTypes = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
+      'video/mp4',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+    ];
+    const mimeType = getSupportedMimeType(preferredTypes);
+    const recorder = new MediaRecorder(captureStream, mimeType ? { mimeType } : undefined);
+
+    const chunks: BlobPart[] = [];
+    const mergedBlob = await new Promise<Blob>(async (resolve, reject) => {
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunks.push(event.data);
+      };
+      recorder.onerror = () => reject(new Error('영상 결합 중 오류가 발생했습니다.'));
+
+      recorder.start();
+
+      try {
+        for (const clip of clipInfos) {
+          const { url } = await loadClip(clip);
+          canvas.width = video.videoWidth || width;
+          canvas.height = video.videoHeight || height;
+
+          let rafId = 0;
+          const drawFrame = () => {
+            if (!video.paused && !video.ended) {
+              context.drawImage(video, 0, 0, canvas.width, canvas.height);
+              rafId = requestAnimationFrame(drawFrame);
+            }
+          };
+
+          video.currentTime = 0;
+          try {
+            await video.play();
+          } catch {
+            // autoplay block - try muted play again
+            video.muted = true;
+            await video.play();
+          }
+          drawFrame();
+          await new Promise<void>((resolveEnded, rejectEnded) => {
+            video.onended = () => resolveEnded();
+            video.onerror = () => rejectEnded(new Error('영상 재생 실패'));
+          });
+          if (rafId) cancelAnimationFrame(rafId);
+          URL.revokeObjectURL(url);
+        }
+        recorder.stop();
+        recorder.onstop = () => {
+          resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || 'video/webm' }));
+        };
+      } catch (error) {
+        recorder.stop();
+        reject(error);
+      }
+    });
+
+    return {
+      blob: mergedBlob,
+      mimeType: mergedBlob.type || mimeType || 'video/webm',
+    };
+  }, []);
 
   const stopRecording = useCallback(() => {
     if (recordTimeoutRef.current) {
@@ -270,21 +408,35 @@ export default function ReelsMakerPage() {
     const clipBlobs = clips.filter((clip): clip is ClipInfo => !!clip);
     if (clipBlobs.length === 0) return;
 
-    const combinedBlob = new Blob(
-      clipBlobs.map((clip) => clip.blob),
-      { type: clipBlobs[0]?.mimeType || clipBlobs[0]?.blob.type || 'video/webm' }
-    );
-    const url = URL.createObjectURL(combinedBlob);
-    setFinalVideoMimeType(combinedBlob.type || clipBlobs[0]?.mimeType || 'video/webm');
-    setFinalVideoUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return url;
-    });
+    let cancelled = false;
+
+    const runMerge = async () => {
+      setIsMerging(true);
+      setMergeError(null);
+      try {
+        const result = await mergeClips(clipBlobs);
+        if (cancelled) return;
+        const url = URL.createObjectURL(result.blob);
+        setFinalVideoMimeType(result.mimeType || 'video/webm');
+        setFinalVideoUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setMergeError('영상 결합에 실패했어요. 다시 시도해주세요.');
+        }
+      } finally {
+        if (!cancelled) setIsMerging(false);
+      }
+    };
+
+    runMerge();
 
     return () => {
-      URL.revokeObjectURL(url);
+      cancelled = true;
     };
-  }, [stage, clips]);
+  }, [stage, clips, mergeClips]);
 
   useEffect(() => {
     if (!downloadToastMessage) return;
@@ -383,8 +535,10 @@ export default function ReelsMakerPage() {
 
           <div className="rounded-[28px] bg-[#1E2A3B] p-4 shadow-2xl space-y-4">
             <div className="relative rounded-[24px] overflow-hidden">
-              <div className="aspect-[9/16] bg-black">
-                {finalVideoUrl ? (
+              <div className="aspect-[9/16] bg-black flex items-center justify-center">
+                {isMerging ? (
+                  <div className="text-sm text-white/70">영상을 합치는 중...</div>
+                ) : finalVideoUrl ? (
                   <video
                     src={finalVideoUrl}
                     muted
@@ -403,6 +557,7 @@ export default function ReelsMakerPage() {
                 <button
                   type="button"
                   onClick={() => setIsPreviewOpen(true)}
+                  disabled={!finalVideoUrl}
                   className="w-16 h-16 rounded-full bg-white/70 flex items-center justify-center backdrop-blur shadow-lg"
                 >
                   <Play className="w-8 h-8 text-white" />
@@ -439,6 +594,11 @@ export default function ReelsMakerPage() {
               </div>
             ))}
           </div>
+          {mergeError && (
+            <div className="rounded-2xl bg-[#2B3446] px-4 py-3 text-xs text-white/70">
+              {mergeError}
+            </div>
+          )}
 
           <div className="space-y-3">
             <button
@@ -451,7 +611,8 @@ export default function ReelsMakerPage() {
             <button
               type="button"
               onClick={handleDownload}
-              className="w-full rounded-full bg-[#2B3446] py-4 text-base font-semibold shadow-lg flex items-center justify-center gap-2"
+              disabled={!finalVideoUrl}
+              className="w-full rounded-full bg-[#2B3446] py-4 text-base font-semibold shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <Download className="w-5 h-5" />
               영상 다운로드
@@ -484,11 +645,9 @@ export default function ReelsMakerPage() {
                     className="w-full h-[70vh] object-cover"
                   />
                 ) : (
-                  <img
-                    src={TEMPLATE.exampleImage}
-                    alt="미리보기"
-                    className="w-full h-[70vh] object-cover"
-                  />
+                  <div className="w-full h-[70vh] flex items-center justify-center text-white/70 text-sm">
+                    영상 준비 중...
+                  </div>
                 )}
               </div>
             </div>
