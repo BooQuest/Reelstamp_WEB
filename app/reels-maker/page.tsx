@@ -1,7 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Plus, RotateCcw, X } from 'lucide-react';
+import {
+  Check,
+  Download,
+  Music2,
+  Play,
+  Plus,
+  RotateCcw,
+  Share2,
+  Sparkles,
+  X,
+} from 'lucide-react';
 
 const TEMPLATE = {
   title: '연남동 1등 라떼의 비결?',
@@ -26,6 +36,7 @@ type ClipInfo = {
 };
 
 type RecorderStatus = 'idle' | 'recording' | 'done';
+type Stage = 'capture' | 'processing' | 'preview';
 
 export default function ReelsMakerPage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -35,6 +46,7 @@ export default function ReelsMakerPage() {
   const countdownTimerRef = useRef<number | null>(null);
   const recordingCutRef = useRef<number>(0);
 
+  const [stage, setStage] = useState<Stage>('capture');
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [activeCutIndex, setActiveCutIndex] = useState(0);
@@ -49,8 +61,10 @@ export default function ReelsMakerPage() {
   const [isExampleOpen, setIsExampleOpen] = useState(false);
   const [isReelOpen, setIsReelOpen] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
+  const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [showDownloadToast, setShowDownloadToast] = useState(false);
 
   const activeCut = TEMPLATE.cuts[activeCutIndex];
   const allDone = useMemo(() => clips.every((clip) => clip), [clips]);
@@ -90,11 +104,12 @@ export default function ReelsMakerPage() {
   }, []);
 
   useEffect(() => {
-    setupCamera();
-    return () => {
+    if (stage === 'capture') {
+      setupCamera();
+    } else {
       stopCamera();
-    };
-  }, [setupCamera, stopCamera]);
+    }
+  }, [stage, setupCamera, stopCamera]);
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -210,23 +225,57 @@ export default function ReelsMakerPage() {
     setIsResetOpen(false);
   };
 
+  useEffect(() => {
+    if (stage !== 'capture') {
+      stopRecording();
+      setRemainingSeconds(null);
+    }
+  }, [stage, stopRecording]);
+
   const handleComplete = () => {
-    setIsProcessing(true);
     setProcessingStep(0);
+    setStage('processing');
   };
 
   useEffect(() => {
-    if (!isProcessing) return;
+    if (stage !== 'processing') return;
 
     const timers = [
       window.setTimeout(() => setProcessingStep(1), 1200),
       window.setTimeout(() => setProcessingStep(2), 2600),
+      window.setTimeout(() => setStage('preview'), 3600),
     ];
 
     return () => {
       timers.forEach((timer) => window.clearTimeout(timer));
     };
-  }, [isProcessing]);
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage !== 'preview') return;
+    const clipBlobs = clips.filter((clip): clip is ClipInfo => !!clip);
+    if (clipBlobs.length === 0) return;
+
+    const combinedBlob = new Blob(
+      clipBlobs.map((clip) => clip.blob),
+      { type: clipBlobs[0]?.blob.type || 'video/webm' }
+    );
+    const url = URL.createObjectURL(combinedBlob);
+    setFinalVideoUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
+
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [stage, clips]);
+
+  useEffect(() => {
+    if (!showDownloadToast) return;
+    const timer = window.setTimeout(() => setShowDownloadToast(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [showDownloadToast]);
 
   const handleTitleChange = (value: string) => {
     setCutTitles((prev) => {
@@ -236,7 +285,40 @@ export default function ReelsMakerPage() {
     });
   };
 
-  if (isProcessing) {
+  const handleDownload = () => {
+    if (!finalVideoUrl) return;
+    const anchor = document.createElement('a');
+    anchor.href = finalVideoUrl;
+    anchor.download = 'reelstamp-reel.webm';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setShowDownloadToast(true);
+  };
+
+  const handleResetAll = () => {
+    setStage('capture');
+    setProcessingStep(0);
+    setActiveCutIndex(0);
+    setRecordingStatus('idle');
+    setRemainingSeconds(null);
+    setCutTitles(TEMPLATE.cuts.map(() => TEMPLATE.title));
+    setClips((prev) => {
+      prev.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
+      return Array(TEMPLATE.cuts.length).fill(null);
+    });
+    if (finalVideoUrl) {
+      URL.revokeObjectURL(finalVideoUrl);
+      setFinalVideoUrl(null);
+    }
+    setIsPreviewOpen(false);
+    setIsExampleOpen(false);
+    setIsReelOpen(false);
+    setIsResetOpen(false);
+    setupCamera();
+  };
+
+  if (stage === 'processing') {
     return (
       <div className="min-h-[calc(100vh-80px)] bg-black text-white flex items-center justify-center px-4">
         <div className="max-w-sm w-full text-center space-y-6">
@@ -252,7 +334,7 @@ export default function ReelsMakerPage() {
               { label: '영상 편집 완료', done: processingStep >= 1 },
               { label: '자막 배치 완료', done: processingStep >= 2 },
               { label: 'BGM 삽입 중...', done: false },
-            ].map((item, index) => (
+            ].map((item) => (
               <div
                 key={item.label}
                 className="flex items-center gap-3 text-sm font-medium"
@@ -271,6 +353,129 @@ export default function ReelsMakerPage() {
             ))}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (stage === 'preview') {
+    return (
+      <div className="min-h-[calc(100vh-80px)] bg-black text-white">
+        <div className="max-w-md mx-auto px-4 pt-6 pb-10 space-y-6">
+          <h1 className="text-center text-lg font-semibold">최종 미리보기</h1>
+
+          <div className="rounded-[28px] bg-[#1E2A3B] p-4 shadow-2xl space-y-4">
+            <div className="relative rounded-[24px] overflow-hidden">
+              <div className="aspect-[9/16] bg-black">
+                {finalVideoUrl ? (
+                  <video
+                    src={finalVideoUrl}
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <img
+                    src={TEMPLATE.exampleImage}
+                    alt="미리보기"
+                    className="w-full h-full object-cover"
+                  />
+                )}
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(true)}
+                  className="w-16 h-16 rounded-full bg-white/70 flex items-center justify-center backdrop-blur shadow-lg"
+                >
+                  <Play className="w-8 h-8 text-white" />
+                </button>
+              </div>
+              {showDownloadToast && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold flex items-center gap-2 shadow-lg">
+                  <Check className="w-4 h-4" />
+                  다운로드 완료!
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-xs font-semibold text-white/80">
+              <Music2 className="w-4 h-4" />
+              Trending BGM - Summer Vibes
+            </div>
+          </div>
+
+          <div className="rounded-[24px] bg-[#121A2A] p-5 space-y-4 shadow-xl">
+            <div className="flex items-center gap-2 text-white font-semibold">
+              <Sparkles className="w-5 h-5 text-[#FF4D6D]" />
+              자동 적용된 효과
+            </div>
+            {[
+              '트렌디 BGM',
+              '컷 전환 효과',
+              '자동 색보정',
+              '자막 애니메이션',
+            ].map((label) => (
+              <div key={label} className="flex items-center justify-between text-sm text-white/80">
+                <span>{label}</span>
+                <span className="text-[#FF4D6D] font-semibold">적용됨</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-3">
+            <button
+              type="button"
+              className="w-full rounded-full bg-[#FF4D6D] py-4 text-base font-semibold shadow-lg flex items-center justify-center gap-2"
+            >
+              <Share2 className="w-5 h-5" />
+              인스타그램에 공유
+            </button>
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="w-full rounded-full bg-[#2B3446] py-4 text-base font-semibold shadow-lg flex items-center justify-center gap-2"
+            >
+              <Download className="w-5 h-5" />
+              영상 다운로드
+            </button>
+            <button
+              type="button"
+              onClick={handleResetAll}
+              className="w-full rounded-full bg-[#3B4557] py-4 text-base font-semibold shadow-lg"
+            >
+              새로운 릴스 만들기
+            </button>
+          </div>
+        </div>
+
+        {isPreviewOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
+            <button
+              type="button"
+              onClick={() => setIsPreviewOpen(false)}
+              className="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="w-full max-w-sm">
+              <div className="rounded-[28px] overflow-hidden bg-black">
+                {finalVideoUrl ? (
+                  <video
+                    src={finalVideoUrl}
+                    controls
+                    className="w-full h-[70vh] object-cover"
+                  />
+                ) : (
+                  <img
+                    src={TEMPLATE.exampleImage}
+                    alt="미리보기"
+                    className="w-full h-[70vh] object-cover"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
