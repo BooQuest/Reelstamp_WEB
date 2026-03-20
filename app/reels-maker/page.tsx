@@ -93,17 +93,14 @@ export default function ReelsMakerPage() {
         video: { facingMode: { ideal: 'environment' } },
         audio: true,
       });
+      if (mediaStream.getAudioTracks().length === 0) {
+        setCameraError('마이크 접근이 필요합니다. 권한을 허용해주세요.');
+        mediaStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       setStream(mediaStream);
     } catch (error) {
-      try {
-        const fallbackStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false,
-        });
-        setStream(fallbackStream);
-      } catch (fallbackError) {
-        setCameraError('카메라 접근이 거부되었어요. 권한을 확인해주세요.');
-      }
+      setCameraError('카메라/마이크 접근이 거부되었어요. 권한을 확인해주세요.');
     }
   }, []);
 
@@ -209,12 +206,18 @@ export default function ReelsMakerPage() {
     }
 
     const video = document.createElement('video');
-    video.muted = true;
+    video.muted = false;
     video.playsInline = true;
     video.preload = 'auto';
 
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const audioContext = AudioContextClass ? new AudioContextClass() : null;
+    let audioDestination: MediaStreamAudioDestinationNode | null = null;
+    let audioSource: MediaElementAudioSourceNode | null = null;
 
     if (!context || !canvas.captureStream) {
       return {
@@ -223,6 +226,17 @@ export default function ReelsMakerPage() {
         }),
         mimeType: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
       };
+    }
+
+    if (audioContext) {
+      try {
+        await audioContext.resume();
+      } catch {
+        // ignore
+      }
+      audioSource = audioContext.createMediaElementSource(video);
+      audioDestination = audioContext.createMediaStreamDestination();
+      audioSource.connect(audioDestination);
     }
 
     const loadClip = (clip: ClipInfo) =>
@@ -247,6 +261,12 @@ export default function ReelsMakerPage() {
     URL.revokeObjectURL(firstMeta.url);
 
     const captureStream = canvas.captureStream(30);
+    const audioTracks = audioDestination?.stream.getAudioTracks() ?? [];
+    const combinedStream = new MediaStream([
+      ...captureStream.getVideoTracks(),
+      ...audioTracks,
+    ]);
+
     if (captureStream.getVideoTracks().length === 0) {
       return {
         blob: new Blob(clipInfos.map((clip) => clip.blob), {
@@ -265,7 +285,7 @@ export default function ReelsMakerPage() {
       'video/webm',
     ];
     const mimeType = getSupportedMimeType(preferredTypes);
-    const recorder = new MediaRecorder(captureStream, mimeType ? { mimeType } : undefined);
+    const recorder = new MediaRecorder(combinedStream, mimeType ? { mimeType } : undefined);
 
     const chunks: BlobPart[] = [];
     const mergedBlob = await new Promise<Blob>(async (resolve, reject) => {
@@ -291,13 +311,7 @@ export default function ReelsMakerPage() {
           };
 
           video.currentTime = 0;
-          try {
-            await video.play();
-          } catch {
-            // autoplay block - try muted play again
-            video.muted = true;
-            await video.play();
-          }
+          await video.play();
           drawFrame();
           await new Promise<void>((resolveEnded, rejectEnded) => {
             video.onended = () => resolveEnded();
@@ -315,6 +329,12 @@ export default function ReelsMakerPage() {
         reject(error);
       }
     });
+
+    captureStream.getTracks().forEach((track) => track.stop());
+    audioDestination?.stream.getTracks().forEach((track) => track.stop());
+    if (audioContext) {
+      audioContext.close();
+    }
 
     return {
       blob: mergedBlob,
@@ -344,6 +364,10 @@ export default function ReelsMakerPage() {
 
     if (!stream) {
       await setupCamera();
+    }
+    if (!stream || stream.getAudioTracks().length === 0) {
+      setCameraError('마이크 권한이 필요합니다. 설정에서 허용해주세요.');
+      return;
     }
 
     const recorder = createRecorder();
