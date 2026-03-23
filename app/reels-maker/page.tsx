@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Check,
   Download,
@@ -12,22 +13,16 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
+import type { WebApiResponse } from '@/app/lib/api/auth';
 
-const TEMPLATE = {
-  title: '연남동 1등 라떼의 비결?',
-  guide: '자연스레 이동하다가 점선의 위치에 선 뒤, 점선과 같은 포즈를 취해주세요',
+const EXAMPLE_ASSETS = {
   point:
     '카메라를 천천히 좌에서 우로 이동하며 매장 전체 분위기를 담아주세요. 조명이 잘 보이도록 촬영하면 더 좋아요!',
   exampleImage:
     'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1200&q=80',
   exampleVideo:
     'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-  cuts: [
-    { id: 'cut-1', duration: 3, label: '3초' },
-    { id: 'cut-2', duration: 2, label: '2초' },
-    { id: 'cut-3', duration: 4, label: '4초' },
-  ],
-};
+} as const;
 
 type ClipInfo = {
   blob: Blob;
@@ -39,7 +34,28 @@ type ClipInfo = {
 type RecorderStatus = 'idle' | 'recording' | 'done';
 type Stage = 'capture' | 'processing' | 'preview';
 
+type TemplateCut = {
+  order: number;
+  durationSeconds: number;
+  title?: string | null;
+  guideText?: string | null;
+  defaultCaption?: string | null;
+};
+
+type TemplateDetailResponse = {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  thumbnailUrl?: string | null;
+  embedUrl?: string | null;
+  tags?: string[];
+  cuts: TemplateCut[];
+};
+
 export default function ReelsMakerPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const templateId = searchParams.get('templateId');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -51,15 +67,14 @@ export default function ReelsMakerPage() {
   const [stage, setStage] = useState<Stage>('capture');
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [template, setTemplate] = useState<TemplateDetailResponse | null>(null);
+  const [isTemplateLoading, setIsTemplateLoading] = useState(true);
+  const [templateError, setTemplateError] = useState<string | null>(null);
   const [activeCutIndex, setActiveCutIndex] = useState(0);
   const [recordingStatus, setRecordingStatus] = useState<RecorderStatus>('idle');
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
-  const [clips, setClips] = useState<Array<ClipInfo | null>>(
-    Array(TEMPLATE.cuts.length).fill(null)
-  );
-  const [cutTitles, setCutTitles] = useState<string[]>(
-    TEMPLATE.cuts.map(() => TEMPLATE.title)
-  );
+  const [clips, setClips] = useState<Array<ClipInfo | null>>([]);
+  const [cutTitles, setCutTitles] = useState<string[]>([]);
   const [isExampleOpen, setIsExampleOpen] = useState(false);
   const [isReelOpen, setIsReelOpen] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
@@ -70,8 +85,119 @@ export default function ReelsMakerPage() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
 
-  const activeCut = TEMPLATE.cuts[activeCutIndex];
-  const allDone = useMemo(() => clips.every((clip) => clip), [clips]);
+  const cuts = useMemo(() => {
+    if (!template) return [];
+    return (template.cuts ?? []).map((cut, index) => {
+      const duration = cut.durationSeconds ?? 0;
+      const order = cut.order ?? index + 1;
+      return {
+        id: `${template.id}-cut-${order}`,
+        order,
+        durationSeconds: duration,
+        label: `${duration}초`,
+        guideText: cut.guideText ?? '',
+        defaultCaption: cut.defaultCaption ?? cut.title ?? '',
+      };
+    });
+  }, [template]);
+
+  const activeCut = cuts[activeCutIndex] ?? null;
+  const allDone = useMemo(
+    () =>
+      cuts.length > 0 &&
+      clips.length === cuts.length &&
+      clips.every((clip) => clip),
+    [clips, cuts.length]
+  );
+
+  useEffect(() => {
+    if (!templateId) {
+      router.replace('/all-templates?reason=select-template');
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadTemplate = async () => {
+      setIsTemplateLoading(true);
+      setTemplateError(null);
+      setTemplate(null);
+
+      try {
+        const response = await fetch(`/api/templates/${encodeURIComponent(templateId)}`, {
+          method: 'GET',
+          cache: 'no-store',
+        });
+
+        const payload: WebApiResponse<TemplateDetailResponse> = await response.json();
+
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.message || '템플릿 정보를 불러오지 못했습니다.');
+        }
+
+        const data = payload.data;
+        if (!data) {
+          throw new Error(payload?.message || '템플릿 정보를 불러오지 못했습니다.');
+        }
+        const normalized = {
+          ...data,
+          tags: Array.isArray(data?.tags) ? data.tags : [],
+          cuts: Array.isArray(data?.cuts) ? data.cuts : [],
+        };
+
+        if (!normalized.cuts || normalized.cuts.length === 0) {
+          throw new Error('템플릿 컷 정보가 없습니다.');
+        }
+
+        if (isMounted) {
+          setTemplate(normalized);
+        }
+      } catch (error: any) {
+        if (isMounted) {
+          setTemplateError(error?.message || '템플릿 정보를 불러오지 못했습니다.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsTemplateLoading(false);
+        }
+      }
+    };
+
+    loadTemplate();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [templateId, router]);
+
+  useEffect(() => {
+    if (!template) return;
+
+    setActiveCutIndex(0);
+    setRecordingStatus('idle');
+    setRemainingSeconds(null);
+    setCutTitles(cuts.map((cut) => cut.defaultCaption));
+    setClips((prev) => {
+      prev.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
+      return Array(cuts.length).fill(null);
+    });
+    setFinalVideoUrl((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev);
+      }
+      return null;
+    });
+    setFinalPosterUrl(null);
+    setFinalVideoMimeType('video/webm');
+    setIsPreviewOpen(false);
+  }, [template?.id, cuts]);
+
+  useEffect(() => {
+    if (cuts.length === 0) return;
+    if (activeCutIndex >= cuts.length) {
+      setActiveCutIndex(0);
+    }
+  }, [cuts.length, activeCutIndex]);
 
   const stopCamera = useCallback(() => {
     if (stream) {
@@ -105,12 +231,12 @@ export default function ReelsMakerPage() {
   }, []);
 
   useEffect(() => {
-    if (stage === 'capture') {
+    if (stage === 'capture' && template) {
       setupCamera();
     } else {
       stopCamera();
     }
-  }, [stage, setupCamera, stopCamera]);
+  }, [stage, setupCamera, stopCamera, template]);
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -361,6 +487,10 @@ export default function ReelsMakerPage() {
 
   const startRecording = async () => {
     if (recordingStatus === 'recording') return;
+    if (!activeCut) {
+      setCameraError('템플릿 컷 정보를 불러오지 못했습니다.');
+      return;
+    }
 
     if (!stream) {
       await setupCamera();
@@ -397,35 +527,36 @@ export default function ReelsMakerPage() {
         if (next[recordedIndex]?.url) {
           URL.revokeObjectURL(next[recordedIndex]!.url);
         }
+        const recordedCut = cuts[recordedIndex];
         next[recordedIndex] = {
           blob,
           url,
-          duration: TEMPLATE.cuts[recordedIndex].duration,
+          duration: recordedCut?.durationSeconds ?? activeCut.durationSeconds,
           mimeType,
         };
         return next;
       });
 
       setRecordingStatus('done');
-      if (recordedIndex < TEMPLATE.cuts.length - 1) {
+      if (recordedIndex < cuts.length - 1) {
         setActiveCutIndex(recordedIndex + 1);
       }
     };
 
     recorder.start();
     setRecordingStatus('recording');
-    setRemainingSeconds(activeCut.duration);
+    setRemainingSeconds(activeCut.durationSeconds);
 
     const startedAt = Date.now();
     countdownTimerRef.current = window.setInterval(() => {
       const elapsed = Math.floor((Date.now() - startedAt) / 1000);
-      const remaining = Math.max(0, activeCut.duration - elapsed);
+      const remaining = Math.max(0, activeCut.durationSeconds - elapsed);
       setRemainingSeconds(remaining);
     }, 500);
 
     recordTimeoutRef.current = window.setTimeout(() => {
       stopRecording();
-    }, activeCut.duration * 1000);
+    }, activeCut.durationSeconds * 1000);
   };
 
   const handleResetCut = () => {
@@ -520,17 +651,16 @@ export default function ReelsMakerPage() {
     setActiveCutIndex(0);
     setRecordingStatus('idle');
     setRemainingSeconds(null);
-    setCutTitles(TEMPLATE.cuts.map(() => TEMPLATE.title));
+    setCutTitles(cuts.map((cut) => cut.defaultCaption));
     setClips((prev) => {
       prev.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
-      return Array(TEMPLATE.cuts.length).fill(null);
+      return Array(cuts.length).fill(null);
     });
     if (finalVideoUrl) {
       URL.revokeObjectURL(finalVideoUrl);
       setFinalVideoUrl(null);
     }
     if (finalPosterUrl) {
-      URL.revokeObjectURL(finalPosterUrl);
       setFinalPosterUrl(null);
     }
     setFinalVideoMimeType('video/webm');
@@ -541,6 +671,45 @@ export default function ReelsMakerPage() {
     setDownloadToastMessage(null);
     setupCamera();
   };
+
+  if (!templateId) {
+    return (
+      <div className="min-h-[calc(100vh-80px)] bg-black text-white flex items-center justify-center px-4">
+        <div className="max-w-sm text-center text-sm text-white/70">
+          템플릿 선택 화면으로 이동 중입니다...
+        </div>
+      </div>
+    );
+  }
+
+  if (isTemplateLoading) {
+    return (
+      <div className="min-h-[calc(100vh-80px)] bg-black text-white flex items-center justify-center px-4">
+        <div className="max-w-sm text-center text-sm text-white/70">
+          템플릿 정보를 불러오는 중입니다...
+        </div>
+      </div>
+    );
+  }
+
+  if (templateError || !template || cuts.length === 0) {
+    return (
+      <div className="min-h-[calc(100vh-80px)] bg-black text-white flex items-center justify-center px-4">
+        <div className="max-w-sm text-center space-y-4">
+          <p className="text-sm text-white/70">
+            {templateError || '템플릿 정보를 불러오지 못했습니다.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => router.replace('/all-templates')}
+            className="rounded-full bg-[#FF4D6D] px-4 py-2 text-sm font-semibold shadow-lg"
+          >
+            템플릿 다시 선택하기
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (stage === 'processing') {
     return (
@@ -601,7 +770,7 @@ export default function ReelsMakerPage() {
                   />
                 ) : (
                   <img
-                    src={TEMPLATE.exampleImage}
+                    src={EXAMPLE_ASSETS.exampleImage}
                     alt="미리보기"
                     className="w-full h-full object-cover"
                   />
@@ -737,13 +906,15 @@ export default function ReelsMakerPage() {
 
           <div className="mb-4">
             <input
-              value={cutTitles[activeCutIndex]}
+              value={cutTitles[activeCutIndex] ?? ''}
               onChange={(event) => handleTitleChange(event.target.value)}
               className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-center text-base font-semibold text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#FF4D6D]"
             />
           </div>
 
-          <p className="text-sm text-[#58C4FF] text-center mb-5">{TEMPLATE.guide}</p>
+          <p className="text-sm text-[#58C4FF] text-center mb-5">
+            {activeCut?.guideText || '안내 문구가 준비되지 않았습니다.'}
+          </p>
 
           <div className="relative h-[360px] rounded-[24px] bg-[#243246] flex items-center justify-center overflow-hidden">
             {cameraError ? (
@@ -771,7 +942,7 @@ export default function ReelsMakerPage() {
           </div>
 
           <div className="mt-6 flex items-center justify-center gap-3">
-            {TEMPLATE.cuts.map((cut, index) => {
+            {cuts.map((cut, index) => {
               const clip = clips[index];
               const isActive = index === activeCutIndex;
               return (
@@ -846,7 +1017,7 @@ export default function ReelsMakerPage() {
             <div className="flex items-center gap-3">
               {clips.map((clip, index) => (
                 <div
-                  key={`thumb-${TEMPLATE.cuts[index].id}`}
+                  key={`thumb-${cuts[index]?.id ?? index}`}
                   className="relative w-16 h-20 rounded-xl overflow-hidden border-2 border-emerald-400"
                 >
                   {clip && (
@@ -859,7 +1030,7 @@ export default function ReelsMakerPage() {
                     />
                   )}
                   <span className="absolute bottom-1 left-0 right-0 text-center text-[10px] text-white/80">
-                    {TEMPLATE.cuts[index].label}
+                    {cuts[index]?.label ?? ''}
                   </span>
                 </div>
               ))}
@@ -887,7 +1058,7 @@ export default function ReelsMakerPage() {
             </button>
             <div className="h-64 bg-black">
               <img
-                src={TEMPLATE.exampleImage}
+                src={EXAMPLE_ASSETS.exampleImage}
                 alt="예시 이미지"
                 className="h-full w-full object-cover"
               />
@@ -905,7 +1076,7 @@ export default function ReelsMakerPage() {
               </button>
               <div>
                 <p className="text-sm font-semibold text-white/80 mb-2">이 컷의 포인트</p>
-                <p className="text-xs text-white/60 leading-relaxed">{TEMPLATE.point}</p>
+                <p className="text-xs text-white/60 leading-relaxed">{EXAMPLE_ASSETS.point}</p>
               </div>
             </div>
           </div>
@@ -924,7 +1095,7 @@ export default function ReelsMakerPage() {
           <div className="w-full max-w-sm">
             <div className="rounded-[28px] overflow-hidden bg-black">
               <video
-                src={TEMPLATE.exampleVideo}
+                src={EXAMPLE_ASSETS.exampleVideo}
                 controls
                 className="w-full h-[70vh] object-cover"
               />

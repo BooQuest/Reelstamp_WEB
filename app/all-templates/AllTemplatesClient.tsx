@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { WebApiResponse } from '@/app/lib/api/auth';
 import InstagramEmbed from '@/app/components/ui/InstagramEmbed';
@@ -23,11 +23,13 @@ type TemplateListResponse = {
 
 export default function AllTemplatesClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isAuthenticated } = useAuth();
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const showSelectTemplateBanner = searchParams.get('reason') === 'select-template';
 
   const activeTemplate = useMemo(
     () => (activeIndex === null ? null : templates[activeIndex] ?? null),
@@ -169,11 +171,11 @@ export default function AllTemplatesClient() {
     const scale = Math.max(0.88, 0.95 - (distance - 1) * 0.04);
     const dim = distance === 1 ? 0.85 : Math.max(0.68, 0.8 - (distance - 1) * 0.08);
 
-      return {
-        zIndex: 30 - distance,
-        opacity: 1,
-        filter: `brightness(${dim})`,
-        transform: `translate(-50%, -50%) translateX(${direction * offsetX}%) translateY(${offsetY}px) scale(${scale})`,
+    return {
+      zIndex: 30 - distance,
+      opacity: 1,
+      filter: `brightness(${dim})`,
+      transform: `translate(-50%, -50%) translateX(${direction * offsetX}%) translateY(${offsetY}px) scale(${scale})`,
       pointerEvents: 'none' as const,
     };
   };
@@ -181,6 +183,11 @@ export default function AllTemplatesClient() {
   return (
     <div className="min-h-[calc(100vh-80px)] bg-[#FFF6FA]">
       <div className="max-w-6xl mx-auto px-4 py-8 sm:py-10">
+        {showSelectTemplateBanner && (
+          <div className="mb-6 rounded-2xl border border-rose-200/60 bg-white px-4 py-3 text-sm sm:text-base text-rose-500 shadow-sm">
+            템플릿을 먼저 선택해주세요.
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
           {isLoading && (
             <div className="col-span-3 py-20 text-center text-sm sm:text-base text-gray-500">
