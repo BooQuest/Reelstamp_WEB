@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/components/providers/AuthProvider';
+import type { WebApiResponse } from '@/app/lib/api/auth';
 import InstagramEmbed from '@/app/components/ui/InstagramEmbed';
 import { Bookmark, ChevronLeft, ChevronRight, Play, X } from 'lucide-react';
 
@@ -16,90 +17,68 @@ type TemplateItem = {
   tags: string[];
 };
 
-const templates: TemplateItem[] = [
-  {
-    id: 'tpl-1',
-    title: '고객 인터뷰 스타일',
-    subtitle: '실제 고객 후기 기반, 신뢰를 높이는 인터뷰 템플릿',
-    thumbnailUrl:
-      'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80',
-    tags: ['고객후기', '신뢰감'],
-  },
-  {
-    id: 'tpl-2',
-    title: '비하인드 스토리',
-    subtitle: '제작 과정과 현장 분위기를 자연스럽게 담는 템플릿',
-    thumbnailUrl:
-      'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=900&q=80',
-    tags: ['비하인드', '일상'],
-  },
-  {
-    id: 'tpl-3',
-    title: 'Before & After',
-    subtitle: '변화의 대비로 임팩트를 강조하는 전후 비교 템플릿',
-    thumbnailUrl:
-      'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=900&q=80',
-    tags: ['변화', '임팩트'],
-  },
-  {
-    id: 'tpl-4',
-    title: '제품 리뷰',
-    subtitle: '사용 후기를 빠르게 전달하는 핵심 포인트 중심',
-    thumbnailUrl:
-      'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80',
-    tags: ['리뷰', '정보'],
-  },
-  {
-    id: 'tpl-5',
-    title: '튜토리얼 가이드',
-    subtitle: '짧고 명확한 단계별 사용법 가이드 템플릿',
-    thumbnailUrl:
-      'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=900&q=80',
-    tags: ['가이드', '튜토리얼'],
-  },
-  {
-    id: 'tpl-6',
-    title: '프로모션 안내',
-    subtitle: '행사/프로모션을 강조하는 시각적 템플릿',
-    thumbnailUrl:
-      'https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=900&q=80',
-    tags: ['프로모션', '공지'],
-  },
-  {
-    id: 'tpl-7',
-    title: '일상 브이로그',
-    subtitle: '가볍게 브랜드 일상을 공유하는 스토리형 템플릿',
-    thumbnailUrl:
-      'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?auto=format&fit=crop&w=900&q=80',
-    tags: ['일상', '브이로그'],
-  },
-  {
-    id: 'tpl-8',
-    title: 'Q&A 인터랙티브',
-    subtitle: '질문/답변을 중심으로 신뢰를 쌓는 템플릿',
-    thumbnailUrl:
-      'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=900&q=80',
-    tags: ['Q&A', '소통'],
-  },
-  {
-    id: 'tpl-9',
-    title: '공간 소개',
-    subtitle: '공간의 매력을 보여주는 시네마틱 템플릿',
-    thumbnailUrl:
-      'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=900&q=80',
-    tags: ['공간', '소개'],
-  },
-];
+type TemplateListResponse = {
+  templates: TemplateItem[];
+};
 
 export default function AllTemplatesClient() {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
+  const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const activeTemplate = useMemo(
-    () => (activeIndex === null ? null : templates[activeIndex]),
-    [activeIndex]
+    () => (activeIndex === null ? null : templates[activeIndex] ?? null),
+    [activeIndex, templates]
   );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadTemplates = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const response = await fetch('/api/templates', {
+          method: 'GET',
+          cache: 'no-store',
+        });
+
+        const payload: WebApiResponse<TemplateListResponse> = await response.json();
+
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.message || '템플릿 목록을 불러오지 못했습니다.');
+        }
+
+        const normalized = (payload.data?.templates ?? []).map((template) => ({
+          ...template,
+          embedUrl: template.embedUrl ?? null,
+          tags: Array.isArray(template.tags) ? template.tags : [],
+        }));
+
+        if (isMounted) {
+          setTemplates(normalized);
+        }
+      } catch (error: any) {
+        if (isMounted) {
+          setLoadError(error?.message || '템플릿 목록을 불러오지 못했습니다.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadTemplates();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (activeIndex === null) {
@@ -113,6 +92,19 @@ export default function AllTemplatesClient() {
       document.body.style.overflow = previousOverflow;
     };
   }, [activeIndex]);
+
+  useEffect(() => {
+    if (templates.length === 0) {
+      if (activeIndex !== null) {
+        setActiveIndex(null);
+      }
+      return;
+    }
+
+    if (activeIndex !== null && activeIndex >= templates.length) {
+      setActiveIndex(null);
+    }
+  }, [templates.length, activeIndex]);
 
   const handleCreate = () => {
     if (activeIndex === null || !activeTemplate) {
@@ -177,11 +169,11 @@ export default function AllTemplatesClient() {
     const scale = Math.max(0.88, 0.95 - (distance - 1) * 0.04);
     const dim = distance === 1 ? 0.85 : Math.max(0.68, 0.8 - (distance - 1) * 0.08);
 
-    return {
-      zIndex: 30 - distance,
-      opacity: 1,
-      filter: `brightness(${dim})`,
-      transform: `translate(-50%, -50%) translateX(${direction * offsetX}%) translateY(${offsetY}px) scale(${scale})`,
+      return {
+        zIndex: 30 - distance,
+        opacity: 1,
+        filter: `brightness(${dim})`,
+        transform: `translate(-50%, -50%) translateX(${direction * offsetX}%) translateY(${offsetY}px) scale(${scale})`,
       pointerEvents: 'none' as const,
     };
   };
@@ -190,28 +182,45 @@ export default function AllTemplatesClient() {
     <div className="min-h-[calc(100vh-80px)] bg-[#FFF6FA]">
       <div className="max-w-6xl mx-auto px-4 py-8 sm:py-10">
         <div className="grid grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
-          {templates.map((template, index) => (
-            <button
-              key={template.id}
-              type="button"
-              onClick={() => setActiveIndex(index)}
-              className="group text-left"
-            >
-              <div className="relative w-full aspect-[3/4] rounded-2xl sm:rounded-[28px] overflow-hidden bg-white shadow-sm ring-1 ring-black/5">
-                <Image
-                  src={template.thumbnailUrl}
-                  alt={template.title}
-                  fill
-                  className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                />
-              </div>
-              <div className="mt-3 text-center">
-                <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
-                  {template.title}
-                </h3>
-              </div>
-            </button>
-          ))}
+          {isLoading && (
+            <div className="col-span-3 py-20 text-center text-sm sm:text-base text-gray-500">
+              템플릿을 불러오는 중입니다...
+            </div>
+          )}
+          {!isLoading && loadError && (
+            <div className="col-span-3 py-20 text-center text-sm sm:text-base text-rose-500">
+              {loadError}
+            </div>
+          )}
+          {!isLoading && !loadError && templates.length === 0 && (
+            <div className="col-span-3 py-20 text-center text-sm sm:text-base text-gray-500">
+              등록된 템플릿이 없습니다.
+            </div>
+          )}
+          {!isLoading &&
+            !loadError &&
+            templates.map((template, index) => (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => setActiveIndex(index)}
+                className="group text-left"
+              >
+                <div className="relative w-full aspect-[3/4] rounded-2xl sm:rounded-[28px] overflow-hidden bg-white shadow-sm ring-1 ring-black/5">
+                  <Image
+                    src={template.thumbnailUrl}
+                    alt={template.title}
+                    fill
+                    className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                  />
+                </div>
+                <div className="mt-3 text-center">
+                  <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+                    {template.title}
+                  </h3>
+                </div>
+              </button>
+            ))}
         </div>
       </div>
 
