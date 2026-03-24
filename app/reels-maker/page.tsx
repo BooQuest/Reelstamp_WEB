@@ -135,6 +135,9 @@ export default function ReelsMakerPage() {
   const isActiveCutFixed = activeCut?.isFixed ?? false;
   const activeFixedError = fixedClipErrors[activeCutIndex];
   const activeClip = clips[activeCutIndex] ?? null;
+  const guideImageSrc = activeCut?.guideImageUrl
+    ? `/api/templates/guide-image?url=${encodeURIComponent(activeCut.guideImageUrl)}`
+    : null;
 
   useEffect(() => {
     if (!templateId) {
@@ -1197,16 +1200,16 @@ export default function ReelsMakerPage() {
                   className="absolute inset-0 h-full w-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/30" />
-                {activeCut?.guideImageUrl && (
+                {guideImageSrc && (
                   <img
-                    src={activeCut.guideImageUrl}
+                    src={guideImageSrc}
                     alt="가이드 이미지"
                     className="absolute inset-0 h-full w-full object-contain opacity-70 pointer-events-none"
                   />
                 )}
                 <div className="relative text-center text-white/40">
                   <div className="w-16 h-16 rounded-full border border-white/20 flex items-center justify-center mx-auto mb-3">
-                    <span className="text-sm">📷</span>
+                    <span className="text-sm">📷</s지pan>
                   </div>
                   카메라 뷰
                 </div>
