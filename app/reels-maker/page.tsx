@@ -39,6 +39,7 @@ type TemplateCut = {
   durationSeconds: number;
   title?: string | null;
   guideText?: string | null;
+  guideImageUrl?: string | null;
   defaultCaption?: string | null;
   captureType?: string | null;
   fixedVideoUrl?: string | null;
@@ -114,6 +115,7 @@ export default function ReelsMakerPage() {
         durationSeconds: duration,
         label: `${duration}초`,
         guideText: cut.guideText ?? '',
+        guideImageUrl: cut.guideImageUrl ?? null,
         defaultCaption: cut.defaultCaption ?? cut.title ?? '',
         captureType,
         fixedVideoUrl: cut.fixedVideoUrl ?? null,
@@ -1195,6 +1197,13 @@ export default function ReelsMakerPage() {
                   className="absolute inset-0 h-full w-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/30" />
+                {activeCut?.guideImageUrl && (
+                  <img
+                    src={activeCut.guideImageUrl}
+                    alt="가이드 이미지"
+                    className="absolute inset-0 h-full w-full object-contain opacity-70 pointer-events-none"
+                  />
+                )}
                 <div className="relative text-center text-white/40">
                   <div className="w-16 h-16 rounded-full border border-white/20 flex items-center justify-center mx-auto mb-3">
                     <span className="text-sm">📷</span>
