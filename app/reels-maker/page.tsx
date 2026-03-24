@@ -40,6 +40,8 @@ type TemplateCut = {
   title?: string | null;
   guideText?: string | null;
   defaultCaption?: string | null;
+  captureType?: string | null;
+  fixedVideoUrl?: string | null;
 };
 
 type TemplateDetailResponse = {
@@ -84,12 +86,28 @@ export default function ReelsMakerPage() {
   const [finalPosterUrl, setFinalPosterUrl] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
+  const [fixedClipErrors, setFixedClipErrors] = useState<Record<number, string>>({});
+  const [clipPosters, setClipPosters] = useState<Record<number, string>>({});
 
   const cuts = useMemo(() => {
     if (!template) return [];
-    return (template.cuts ?? []).map((cut, index) => {
+    const sortedCuts = (template.cuts ?? [])
+      .map((cut, index) => ({ cut, index }))
+      .sort((a, b) => {
+        const orderA = a.cut.order ?? a.index + 1;
+        const orderB = b.cut.order ?? b.index + 1;
+        if (orderA === orderB) {
+          return a.index - b.index;
+        }
+        return orderA - orderB;
+      })
+      .map(({ cut }) => cut);
+
+    return sortedCuts.map((cut, index) => {
       const duration = cut.durationSeconds ?? 0;
       const order = cut.order ?? index + 1;
+      const captureType = (cut.captureType ?? 'CAPTURE').toUpperCase();
+      const isFixed = captureType === 'FIXED';
       return {
         id: `${template.id}-cut-${order}`,
         order,
@@ -97,6 +115,9 @@ export default function ReelsMakerPage() {
         label: `${duration}초`,
         guideText: cut.guideText ?? '',
         defaultCaption: cut.defaultCaption ?? cut.title ?? '',
+        captureType,
+        fixedVideoUrl: cut.fixedVideoUrl ?? null,
+        isFixed,
       };
     });
   }, [template]);
@@ -109,6 +130,9 @@ export default function ReelsMakerPage() {
       clips.every((clip) => clip),
     [clips, cuts.length]
   );
+  const isActiveCutFixed = activeCut?.isFixed ?? false;
+  const activeFixedError = fixedClipErrors[activeCutIndex];
+  const activeClip = clips[activeCutIndex] ?? null;
 
   useEffect(() => {
     if (!templateId) {
@@ -181,6 +205,8 @@ export default function ReelsMakerPage() {
       prev.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
       return Array(cuts.length).fill(null);
     });
+    setFixedClipErrors({});
+    setClipPosters({});
     setFinalVideoUrl((prev) => {
       if (prev) {
         URL.revokeObjectURL(prev);
@@ -205,6 +231,52 @@ export default function ReelsMakerPage() {
       setStream(null);
     }
   }, [stream]);
+
+  const downloadFixedClip = useCallback(
+    async (url: string, durationSeconds: number): Promise<ClipInfo> => {
+      const response = await fetch(`/api/templates/fixed-video?url=${encodeURIComponent(url)}`);
+      if (!response.ok) {
+        const errorPayload = await response.json().catch(() => null);
+        throw new Error(errorPayload?.message || '고정 영상을 불러오지 못했습니다.');
+      }
+      const blob = await response.blob();
+      const mimeType = blob.type || 'video/mp4';
+      const objectUrl = URL.createObjectURL(blob);
+      return {
+        blob,
+        url: objectUrl,
+        duration: durationSeconds,
+        mimeType,
+      };
+    },
+    []
+  );
+
+  const retryFixedClip = useCallback(
+    (index: number) => {
+      const cut = cuts[index];
+      if (!cut?.isFixed) return;
+      setFixedClipErrors((prev) => {
+        const next = { ...prev };
+        delete next[index];
+        return next;
+      });
+      setClips((prev) => {
+        const next = [...prev];
+        if (next[index]?.url) {
+          URL.revokeObjectURL(next[index]!.url);
+        }
+        next[index] = null;
+        return next;
+      });
+      setClipPosters((prev) => {
+        const next = { ...prev };
+        delete next[index];
+        return next;
+      });
+    },
+    [cuts]
+  );
 
   const setupCamera = useCallback(async () => {
     setCameraError(null);
@@ -314,6 +386,71 @@ export default function ReelsMakerPage() {
     });
   }, []);
 
+  useEffect(() => {
+    if (cuts.length === 0) return;
+
+    let isCancelled = false;
+
+    const ensureFixedClips = async () => {
+      for (let index = 0; index < cuts.length; index += 1) {
+        const cut = cuts[index];
+        if (!cut.isFixed) continue;
+        if (!cut.fixedVideoUrl) {
+          setFixedClipErrors((prev) => ({
+            ...prev,
+            [index]: '고정 영상 URL이 없습니다.',
+          }));
+          continue;
+        }
+        if (clips[index]) continue;
+
+        try {
+          const fixedClip = await downloadFixedClip(
+            cut.fixedVideoUrl,
+            cut.durationSeconds ?? 0
+          );
+          if (isCancelled) return;
+
+          setClips((prev) => {
+            const next = [...prev];
+            next[index] = fixedClip;
+            return next;
+          });
+
+          try {
+            const poster = await createPosterFromClip(fixedClip);
+            if (!isCancelled) {
+              setClipPosters((prev) => ({
+                ...prev,
+                [index]: poster,
+              }));
+            }
+          } catch {
+            // ignore poster failures
+          }
+
+          setFixedClipErrors((prev) => {
+            const next = { ...prev };
+            delete next[index];
+            return next;
+          });
+        } catch (error: any) {
+          if (isCancelled) return;
+          setFixedClipErrors((prev) => ({
+            ...prev,
+            [index]: error?.message || '고정 영상을 불러오지 못했습니다.',
+          }));
+        }
+      }
+    };
+
+    ensureFixedClips();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [clips, cuts, createPosterFromClip, downloadFixedClip]);
+
   const mergeClips = useCallback(async (clipInfos: ClipInfo[]) => {
     if (clipInfos.length === 1) {
       return {
@@ -335,6 +472,7 @@ export default function ReelsMakerPage() {
     video.muted = false;
     video.playsInline = true;
     video.preload = 'auto';
+    video.crossOrigin = 'anonymous';
 
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
@@ -423,27 +561,63 @@ export default function ReelsMakerPage() {
       recorder.start();
 
       try {
+        const videoWithFrameCallback = video as HTMLVideoElement & {
+          requestVideoFrameCallback?: (callback: () => void) => number;
+          cancelVideoFrameCallback?: (handle: number) => void;
+        };
+
         for (const clip of clipInfos) {
           const { url } = await loadClip(clip);
           canvas.width = video.videoWidth || width;
           canvas.height = video.videoHeight || height;
+          context.fillStyle = '#000';
+          context.fillRect(0, 0, canvas.width, canvas.height);
 
           let rafId = 0;
+          let frameCallbackId = 0;
           const drawFrame = () => {
-            if (!video.paused && !video.ended) {
+            if (!video.paused && !video.ended && video.readyState >= 2) {
               context.drawImage(video, 0, 0, canvas.width, canvas.height);
-              rafId = requestAnimationFrame(drawFrame);
+            }
+            if (!video.paused && !video.ended) {
+              if (videoWithFrameCallback.requestVideoFrameCallback) {
+                frameCallbackId = videoWithFrameCallback.requestVideoFrameCallback(drawFrame);
+              } else {
+                rafId = requestAnimationFrame(drawFrame);
+              }
             }
           };
 
           video.currentTime = 0;
-          await video.play();
+          await new Promise<void>((resolve, reject) => {
+            const onPlaying = () => {
+              cleanup();
+              resolve();
+            };
+            const onError = () => {
+              cleanup();
+              reject(new Error('영상 재생 실패'));
+            };
+            const cleanup = () => {
+              video.removeEventListener('playing', onPlaying);
+              video.removeEventListener('error', onError);
+            };
+            video.addEventListener('playing', onPlaying, { once: true });
+            video.addEventListener('error', onError, { once: true });
+            const playPromise = video.play();
+            if (playPromise) {
+              playPromise.catch(onError);
+            }
+          });
           drawFrame();
           await new Promise<void>((resolveEnded, rejectEnded) => {
             video.onended = () => resolveEnded();
             video.onerror = () => rejectEnded(new Error('영상 재생 실패'));
           });
           if (rafId) cancelAnimationFrame(rafId);
+          if (frameCallbackId && videoWithFrameCallback.cancelVideoFrameCallback) {
+            videoWithFrameCallback.cancelVideoFrameCallback(frameCallbackId);
+          }
           URL.revokeObjectURL(url);
         }
         recorder.stop();
@@ -489,6 +663,9 @@ export default function ReelsMakerPage() {
     if (recordingStatus === 'recording') return;
     if (!activeCut) {
       setCameraError('템플릿 컷 정보를 불러오지 못했습니다.');
+      return;
+    }
+    if (activeCut.isFixed) {
       return;
     }
 
@@ -539,7 +716,14 @@ export default function ReelsMakerPage() {
 
       setRecordingStatus('done');
       if (recordedIndex < cuts.length - 1) {
-        setActiveCutIndex(recordedIndex + 1);
+        const nextCaptureIndex = cuts.findIndex(
+          (cut, index) => index > recordedIndex && !cut.isFixed
+        );
+        if (nextCaptureIndex !== -1) {
+          setActiveCutIndex(nextCaptureIndex);
+        } else {
+          setActiveCutIndex(recordedIndex + 1);
+        }
       }
     };
 
@@ -560,12 +744,41 @@ export default function ReelsMakerPage() {
   };
 
   const handleResetCut = () => {
+    if (activeCut?.isFixed) {
+      if (fixedClipErrors[activeCutIndex]) {
+        setFixedClipErrors((prev) => {
+          const next = { ...prev };
+          delete next[activeCutIndex];
+          return next;
+        });
+        setClips((prev) => {
+          const next = [...prev];
+          if (next[activeCutIndex]?.url) {
+            URL.revokeObjectURL(next[activeCutIndex]!.url);
+          }
+          next[activeCutIndex] = null;
+          return next;
+        });
+        setClipPosters((prev) => {
+          const next = { ...prev };
+          delete next[activeCutIndex];
+          return next;
+        });
+      }
+      setIsResetOpen(false);
+      return;
+    }
     setClips((prev) => {
       const next = [...prev];
       if (next[activeCutIndex]?.url) {
         URL.revokeObjectURL(next[activeCutIndex]!.url);
       }
       next[activeCutIndex] = null;
+      return next;
+    });
+    setClipPosters((prev) => {
+      const next = { ...prev };
+      delete next[activeCutIndex];
       return next;
     });
     setRecordingStatus('idle');
@@ -653,9 +866,28 @@ export default function ReelsMakerPage() {
     setRemainingSeconds(null);
     setCutTitles(cuts.map((cut) => cut.defaultCaption));
     setClips((prev) => {
-      prev.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
-      return Array(cuts.length).fill(null);
+      const next = [...prev];
+      prev.forEach((clip, index) => {
+        const isFixed = cuts[index]?.isFixed;
+        if (clip?.url && !isFixed) {
+          URL.revokeObjectURL(clip.url);
+        }
+        if (!isFixed) {
+          next[index] = null;
+        }
+      });
+      return next;
     });
+    setClipPosters((prev) => {
+      const next = { ...prev };
+      cuts.forEach((cut, index) => {
+        if (!cut.isFixed) {
+          delete next[index];
+        }
+      });
+      return next;
+    });
+    setFixedClipErrors({});
     if (finalVideoUrl) {
       URL.revokeObjectURL(finalVideoUrl);
       setFinalVideoUrl(null);
@@ -916,8 +1148,40 @@ export default function ReelsMakerPage() {
             {activeCut?.guideText || '안내 문구가 준비되지 않았습니다.'}
           </p>
 
+          {isActiveCutFixed && (
+            <p className="text-xs text-center text-white/50 mb-5">
+              고정 영상 컷입니다. 촬영 없이 자동으로 완료됩니다.
+            </p>
+          )}
+
           <div className="relative h-[360px] rounded-[24px] bg-[#243246] flex items-center justify-center overflow-hidden">
-            {cameraError ? (
+            {isActiveCutFixed ? (
+              activeFixedError ? (
+                <div className="text-sm text-white/70 text-center px-6 space-y-3">
+                  <p>{activeFixedError}</p>
+                  <button
+                    type="button"
+                    onClick={() => retryFixedClip(activeCutIndex)}
+                    className="rounded-full bg-white/10 px-4 py-2 text-xs text-white/80"
+                  >
+                    다시 불러오기
+                  </button>
+                </div>
+              ) : activeClip ? (
+                <video
+                  src={activeClip.url}
+                  muted
+                  playsInline
+                  preload="metadata"
+                  poster={clipPosters[activeCutIndex] || undefined}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <div className="text-sm text-white/70 text-center px-6">
+                  고정 영상을 불러오는 중입니다...
+                </div>
+              )
+            ) : cameraError ? (
               <div className="text-sm text-white/70 text-center px-6">
                 {cameraError}
               </div>
@@ -950,6 +1214,10 @@ export default function ReelsMakerPage() {
                   key={cut.id}
                   type="button"
                   onClick={() => {
+                    if (fixedClipErrors[index]) {
+                      retryFixedClip(index);
+                      return;
+                    }
                     if (recordingStatus === 'recording') return;
                     setActiveCutIndex(index);
                   }}
@@ -963,6 +1231,7 @@ export default function ReelsMakerPage() {
                       muted
                       playsInline
                       preload="metadata"
+                      poster={clipPosters[index] || undefined}
                       className="absolute inset-0 h-full w-full object-cover rounded-2xl"
                     />
                   ) : (
@@ -972,6 +1241,16 @@ export default function ReelsMakerPage() {
                   {clip && (
                     <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white">
                       <Check className="w-3 h-3" />
+                    </span>
+                  )}
+                  {cut.isFixed && !clip && !fixedClipErrors[index] && (
+                    <span className="absolute top-2 left-2 rounded-full bg-white/20 px-2 py-0.5 text-[10px] text-white/70">
+                      고정
+                    </span>
+                  )}
+                  {fixedClipErrors[index] && (
+                    <span className="absolute top-2 left-2 rounded-full bg-rose-500/80 px-2 py-0.5 text-[10px] text-white">
+                      오류
                     </span>
                   )}
                 </button>
@@ -992,7 +1271,12 @@ export default function ReelsMakerPage() {
               <button
                 type="button"
                 onClick={recordingStatus === 'recording' ? stopRecording : startRecording}
-                className="relative w-20 h-20 rounded-full border-4 border-[#FF4D6D] flex items-center justify-center shadow-2xl"
+                disabled={isActiveCutFixed}
+                className={`relative w-20 h-20 rounded-full border-4 flex items-center justify-center shadow-2xl ${
+                  isActiveCutFixed
+                    ? 'border-white/20 cursor-not-allowed'
+                    : 'border-[#FF4D6D]'
+                }`}
               >
                 <span
                   className={`transition-all ${
