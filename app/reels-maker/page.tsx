@@ -135,9 +135,21 @@ export default function ReelsMakerPage() {
   const isActiveCutFixed = activeCut?.isFixed ?? false;
   const activeFixedError = fixedClipErrors[activeCutIndex];
   const activeClip = clips[activeCutIndex] ?? null;
-  const guideImageSrc = activeCut?.guideImageUrl
-    ? `/api/templates/guide-image?url=${encodeURIComponent(activeCut.guideImageUrl)}`
-    : null;
+  const guideImageSrc = useMemo(() => {
+    if (!activeCut?.guideImageUrl) return null;
+    try {
+      const parsed = new URL(activeCut.guideImageUrl);
+      if (parsed.hostname.includes('drive.google.com')) {
+        const id = parsed.searchParams.get('id');
+        if (id) {
+          return `/api/templates/guide-image?driveId=${encodeURIComponent(id)}`;
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return `/api/templates/guide-image?url=${encodeURIComponent(activeCut.guideImageUrl)}`;
+  }, [activeCut?.guideImageUrl]);
 
   useEffect(() => {
     if (!templateId) {
@@ -1209,7 +1221,7 @@ export default function ReelsMakerPage() {
                 )}
                 <div className="relative text-center text-white/40">
                   <div className="w-16 h-16 rounded-full border border-white/20 flex items-center justify-center mx-auto mb-3">
-                    <span className="text-sm">📷</s지pan>
+                    <span className="text-sm">📷</span>
                   </div>
                   카메라 뷰
                 </div>
