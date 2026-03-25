@@ -249,15 +249,67 @@ export default function ReelsMakerPage() {
     }
   }, [stream]);
 
+  const buildFixedVideoProxyUrl = useCallback((rawUrl: string) => {
+    try {
+      const parsed = new URL(rawUrl);
+      if (
+        parsed.hostname.includes('drive.google.com') ||
+        parsed.hostname.includes('docs.google.com') ||
+        parsed.hostname.includes('drive.usercontent.google.com')
+      ) {
+        const id =
+          parsed.searchParams.get('id') || parsed.pathname.match(/\/file\/d\/([^/]+)/)?.[1];
+        if (id) {
+          return `/api/templates/fixed-video?driveId=${encodeURIComponent(id)}`;
+        }
+      }
+    } catch {
+      // ignore parsing errors
+    }
+    return `/api/templates/fixed-video?url=${encodeURIComponent(rawUrl)}`;
+  }, []);
+
+  const ensureVideoPlayable = useCallback(async (blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    return new Promise<void>((resolve, reject) => {
+      const cleanup = () => URL.revokeObjectURL(url);
+      video.onloadeddata = () => {
+        cleanup();
+        resolve();
+      };
+      video.onerror = () => {
+        cleanup();
+        reject(new Error('영상 코덱을 지원하지 않습니다.'));
+      };
+      video.src = url;
+      video.load();
+    });
+  }, []);
+
   const downloadFixedClip = useCallback(
     async (url: string, durationSeconds: number): Promise<ClipInfo> => {
-      const response = await fetch(`/api/templates/fixed-video?url=${encodeURIComponent(url)}`);
+      const response = await fetch(`${buildFixedVideoProxyUrl(url)}&v=${Date.now()}`);
       if (!response.ok) {
         const errorPayload = await response.json().catch(() => null);
         throw new Error(errorPayload?.message || '고정 영상을 불러오지 못했습니다.');
       }
+      const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+      if (contentType.includes('text/html')) {
+        throw new Error('고정 영상 링크가 올바르지 않습니다. 직접 다운로드 링크를 확인해주세요.');
+      }
       const blob = await response.blob();
+      if (blob.type.toLowerCase().includes('text/html')) {
+        throw new Error('고정 영상 링크가 올바르지 않습니다. 직접 다운로드 링크를 확인해주세요.');
+      }
+      if (!blob.size) {
+        throw new Error('고정 영상 파일이 비어 있습니다.');
+      }
       const mimeType = blob.type || 'video/mp4';
+      await ensureVideoPlayable(blob);
       const objectUrl = URL.createObjectURL(blob);
       return {
         blob,
@@ -266,7 +318,7 @@ export default function ReelsMakerPage() {
         mimeType,
       };
     },
-    []
+    [buildFixedVideoProxyUrl, ensureVideoPlayable]
   );
 
   const retryFixedClip = useCallback(
@@ -843,7 +895,9 @@ export default function ReelsMakerPage() {
       setFinalVideoMimeType('video/webm');
       setFinalPosterUrl(null);
       setStage('capture');
-      alert('영상 합치기에 실패했습니다. 다시 시도해주세요.');
+      const detail =
+        error instanceof Error && error.message ? ` Error: ${error.message}` : '';
+      alert(`영상 합치기에 실패했습니다.${detail}`);
     } finally {
       timers.forEach((timer) => window.clearTimeout(timer));
     }
