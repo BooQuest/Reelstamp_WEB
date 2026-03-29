@@ -1111,7 +1111,8 @@ export default function ReelsMakerPage() {
   const handleDownload = () => {
     if (!finalVideoUrl) return;
     const anchor = document.createElement('a');
-    anchor.href = finalVideoUrl;
+    const downloadUrl = `/api/reels-maker/download?url=${encodeURIComponent(finalVideoUrl)}`;
+    anchor.href = downloadUrl;
     const isMp4 = finalVideoMimeType.includes('mp4');
     anchor.download = `reelstamp-reel.${isMp4 ? 'mp4' : 'webm'}`;
     document.body.appendChild(anchor);
