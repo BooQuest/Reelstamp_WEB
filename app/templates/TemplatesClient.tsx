@@ -5,91 +5,43 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bookmark, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/app/components/providers/AuthProvider';
+import { useSavedTemplates, type TemplateSummary } from '@/app/hooks/useSavedTemplates';
+import type { WebApiResponse } from '@/app/lib/api/auth';
 
-const STORAGE_KEY = 'reelstamp.savedTrends';
-
-const trendCards = [
-  {
-    id: 'trend-1',
-    badge: '추천 1',
-    title: '고객 인터뷰 스타일',
-    description:
-      '실제 고객 후기와 반응을 담아 신뢰도 UP! “여기 진짜 맛있어요~” 스타일의 바이럴 템플릿',
-    tags: ['고객후기', '신뢰감', 'MZ추천'],
-    image:
-      'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1400&q=80',
-  },
-  {
-    id: 'trend-2',
-    badge: '추천 2',
-    title: '비하인드 스토리',
-    description:
-      '평소 못 본 비하인드 공개! 직원들의 일상과 제품 제작 과정을 보여주기 좋은 템플릿',
-    tags: ['비하인드', '친근함', '일상'],
-    image:
-      'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1400&q=80',
-  },
-  {
-    id: 'trend-3',
-    badge: '추천 3',
-    title: 'Before & After',
-    description:
-      '변화는 눈으로 보여줘야죠! 시각적 임팩트가 강한 비포&애프터 스타일 템플릿',
-    tags: ['변화', '임팩트', '시각적'],
-    image:
-      'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=1400&q=80',
-  },
-];
+type TemplateListResponse = {
+  templates: TemplateSummary[];
+};
 
 export default function TemplatesClient() {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const [activeIndex, setActiveIndex] = useState(0);
-  const [savedIds, setSavedIds] = useState<string[]>([]);
-
-  const savedSet = useMemo(() => new Set(savedIds), [savedIds]);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          setSavedIds(parsed);
-        }
-      }
-    } catch (error) {
-      console.error('저장된 릴스 로드 실패:', error);
-    }
-  }, []);
+  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { savedSet, toggleSave } = useSavedTemplates({ returnUrl: '/templates' });
 
   const handlePrev = () => {
     setActiveIndex((prev) => Math.max(0, prev - 1));
   };
 
   const handleNext = () => {
-    setActiveIndex((prev) => Math.min(trendCards.length - 1, prev + 1));
+    const limit = Math.min(templates.length, 3);
+    if (limit === 0) {
+      return;
+    }
+    setActiveIndex((prev) => Math.min(limit - 1, prev + 1));
   };
 
   const handleStart = () => {
+    if (!activeTemplate) {
+      return;
+    }
     if (!isAuthenticated) {
       router.push('/login?returnUrl=' + encodeURIComponent('/templates'));
       return;
     }
-    router.push('/reels-maker');
-  };
-
-  const toggleSave = (id: string) => {
-    if (!isAuthenticated) {
-      router.push('/login?returnUrl=' + encodeURIComponent('/templates'));
-      return;
-    }
-
-    setSavedIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
+    router.push(`/reels-maker?templateId=${activeTemplate.id}`);
   };
 
   const getCardStyle = (index: number) => {
@@ -120,6 +72,65 @@ export default function TemplatesClient() {
     };
   };
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadTemplates = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const response = await fetch('/api/templates', {
+          method: 'GET',
+          cache: 'no-store',
+        });
+        const payload: WebApiResponse<TemplateListResponse> = await response.json();
+
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.message || '템플릿 목록을 불러오지 못했습니다.');
+        }
+
+        const normalized = (payload.data?.templates ?? []).map((template) => ({
+          ...template,
+          subtitle: template.subtitle ?? '',
+          embedUrl: template.embedUrl ?? null,
+          tags: Array.isArray(template.tags) ? template.tags : [],
+        }));
+
+        if (isMounted) {
+          setTemplates(normalized);
+          setActiveIndex(0);
+        }
+      } catch (error: any) {
+        if (isMounted) {
+          setLoadError(error?.message || '템플릿 목록을 불러오지 못했습니다.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadTemplates();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const recommendations = useMemo(() => templates.slice(0, 3), [templates]);
+  const activeTemplate = useMemo(
+    () => recommendations[activeIndex] ?? null,
+    [recommendations, activeIndex]
+  );
+
+  useEffect(() => {
+    if (activeIndex >= recommendations.length) {
+      setActiveIndex(0);
+    }
+  }, [activeIndex, recommendations.length]);
+
   return (
     <div className="min-h-[calc(100vh-80px)] bg-black text-white">
       <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-8 pb-10 sm:pt-12 sm:pb-14">
@@ -132,7 +143,16 @@ export default function TemplatesClient() {
         </div>
 
         <div className="relative w-full flex items-center justify-center h-[520px] sm:h-[560px] md:h-[600px] pb-6 sm:pb-8">
-          {trendCards.map((card, index) => {
+          {isLoading && (
+            <div className="text-sm sm:text-base text-white/70">템플릿을 불러오는 중입니다...</div>
+          )}
+          {!isLoading && loadError && (
+            <div className="text-sm sm:text-base text-rose-300">{loadError}</div>
+          )}
+          {!isLoading && !loadError && recommendations.length === 0 && (
+            <div className="text-sm sm:text-base text-white/70">추천 템플릿이 없습니다.</div>
+          )}
+          {!isLoading && !loadError && recommendations.map((card, index) => {
             const isActive = index === activeIndex;
             const isSaved = savedSet.has(card.id);
             return (
@@ -142,16 +162,19 @@ export default function TemplatesClient() {
                 style={getCardStyle(index)}
                 aria-hidden={!isActive}
               >
-                <div className="absolute inset-0 bg-center bg-cover" style={{ backgroundImage: `url(${card.image})` }} />
+                <div
+                  className="absolute inset-0 bg-center bg-cover"
+                  style={{ backgroundImage: `url(${card.thumbnailUrl})` }}
+                />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/80" />
 
                 <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-[#FF4D6D] text-xs font-semibold shadow-lg">
-                  {card.badge}
+                  추천 {index + 1}
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => toggleSave(card.id)}
+                  onClick={() => toggleSave(card)}
                   aria-pressed={isSaved}
                   className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center hover:bg-white/30 transition-colors"
                 >
@@ -173,7 +196,7 @@ export default function TemplatesClient() {
                         <ChevronLeft className="w-5 h-5 text-white" />
                       </button>
                     )}
-                    {activeIndex < trendCards.length - 1 && (
+                    {activeIndex < recommendations.length - 1 && (
                       <button
                         type="button"
                         onClick={handleNext}
@@ -191,7 +214,7 @@ export default function TemplatesClient() {
                     {card.title}
                   </h3>
                   <p className="text-sm text-white/80 mb-4 leading-relaxed line-clamp-2">
-                    {card.description}
+                    {card.subtitle}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {card.tags.map((tag) => (
@@ -214,6 +237,7 @@ export default function TemplatesClient() {
             type="button"
             onClick={handleStart}
             className="w-full max-w-md py-4 text-base sm:text-lg font-semibold rounded-full bg-[#FF4D6D] hover:bg-[#FF5F7A] transition-colors shadow-lg"
+            disabled={!activeTemplate}
           >
             3분 만에 만들기
           </button>

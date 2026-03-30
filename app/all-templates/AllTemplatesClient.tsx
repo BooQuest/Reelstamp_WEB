@@ -7,6 +7,7 @@ import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { WebApiResponse } from '@/app/lib/api/auth';
 import InstagramEmbed from '@/app/components/ui/InstagramEmbed';
 import { Bookmark, ChevronLeft, ChevronRight, Play, X } from 'lucide-react';
+import { useSavedTemplates } from '@/app/hooks/useSavedTemplates';
 
 type TemplateItem = {
   id: string;
@@ -25,11 +26,13 @@ export default function AllTemplatesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated } = useAuth();
+  const { savedSet, toggleSave } = useSavedTemplates({ returnUrl: '/all-templates' });
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const showSelectTemplateBanner = searchParams.get('reason') === 'select-template';
+  const templateIdParam = searchParams.get('templateId');
 
   const activeTemplate = useMemo(
     () => (activeIndex === null ? null : templates[activeIndex] ?? null),
@@ -57,6 +60,7 @@ export default function AllTemplatesClient() {
 
         const normalized = (payload.data?.templates ?? []).map((template) => ({
           ...template,
+          subtitle: template.subtitle ?? '',
           embedUrl: template.embedUrl ?? null,
           tags: Array.isArray(template.tags) ? template.tags : [],
         }));
@@ -108,6 +112,17 @@ export default function AllTemplatesClient() {
     }
   }, [templates.length, activeIndex]);
 
+  useEffect(() => {
+    if (!templateIdParam || templates.length === 0) {
+      return;
+    }
+
+    const index = templates.findIndex((template) => template.id === templateIdParam);
+    if (index >= 0) {
+      setActiveIndex(index);
+    }
+  }, [templateIdParam, templates]);
+
   const handleCreate = () => {
     if (activeIndex === null || !activeTemplate) {
       return;
@@ -135,6 +150,16 @@ export default function AllTemplatesClient() {
       }
       return Math.min(templates.length - 1, prev + 1);
     });
+  };
+
+  const handleCloseModal = () => {
+    setActiveIndex(null);
+    if (templateIdParam) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('templateId');
+      const query = params.toString();
+      router.replace(query ? `/all-templates?${query}` : '/all-templates');
+    }
   };
 
   const getCardStyle = (index: number) => {
@@ -234,7 +259,7 @@ export default function AllTemplatesClient() {
       {activeTemplate && (
         <div
           className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm"
-          onClick={() => setActiveIndex(null)}
+          onClick={handleCloseModal}
         >
           <div
             className="absolute inset-0 flex flex-col"
@@ -243,7 +268,7 @@ export default function AllTemplatesClient() {
             <div className="flex items-center justify-end px-6 pt-6">
               <button
                 type="button"
-                onClick={() => setActiveIndex(null)}
+                onClick={handleCloseModal}
                 className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white hover:bg-white/20 transition"
                 aria-label="닫기"
               >
@@ -289,9 +314,17 @@ export default function AllTemplatesClient() {
                         </div>
                       )}
 
-                      <div className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 backdrop-blur flex items-center justify-center">
-                        <Bookmark className="w-5 h-5 text-white/80" />
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleSave(template)}
+                        aria-pressed={savedSet.has(template.id)}
+                        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 backdrop-blur flex items-center justify-center hover:bg-white/25 transition-colors"
+                      >
+                        <Bookmark
+                          className={savedSet.has(template.id) ? 'text-[#FF4D6D]' : 'text-white/80'}
+                          fill={savedSet.has(template.id) ? '#FF4D6D' : 'none'}
+                        />
+                      </button>
 
                       {isActive && (
                         <>
