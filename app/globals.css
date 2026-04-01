@@ -27,6 +27,17 @@ body {
   font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
+button,
+a,
+[role='button'] {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
 /* Instagram Embed 스타일 */
 .instagram-embed-container {
   position: relative;
@@ -55,4 +66,3 @@ body {
 .instagram-media > div > a:last-child {
   display: none !important;
 }
-

@@ -1430,13 +1430,13 @@ export default function ReelsMakerPage() {
                 <span className="text-xs text-white/50">릴스 제작</span>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setIsExampleOpen(true)}
-              className="rounded-full bg-[#FF4D6D] px-4 py-2 text-xs font-semibold shadow-lg"
-            >
-              예시 보기
-            </button>
+              <button
+                type="button"
+                onClick={() => setIsExampleOpen(true)}
+                className="rounded-full bg-[#FF4D6D] px-4 py-2 text-xs font-semibold shadow-lg"
+              >
+                예시 보기
+              </button>
           </div>
 
           <div className="mb-4">
@@ -1593,7 +1593,7 @@ export default function ReelsMakerPage() {
                 disabled={isRecordDisabled}
                 className={`relative w-20 h-20 rounded-full border-4 flex items-center justify-center shadow-2xl ${
                   isRecordDisabled
-                    ? 'border-white/20 cursor-not-allowed'
+                    ? 'border-white/20'
                     : 'border-[#FF4D6D]'
                 }`}
               >
