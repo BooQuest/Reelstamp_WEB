@@ -437,10 +437,28 @@ export default function ReelsMakerPage() {
     }
 
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: true,
-      });
+      let mediaStream: MediaStream | null = null;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            aspectRatio: 9 / 16,
+            width: { ideal: 1080 },
+            height: { ideal: 1920 },
+          },
+          audio: true,
+        });
+      } catch {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: true,
+        });
+      }
+
+      if (!mediaStream) {
+        setCameraError('카메라를 시작하지 못했습니다.');
+        return;
+      }
       if (mediaStream.getAudioTracks().length === 0) {
         setCameraError('마이크 접근이 필요합니다. 권한을 허용해주세요.');
         mediaStream.getTracks().forEach((track) => track.stop());
@@ -1396,10 +1414,10 @@ export default function ReelsMakerPage() {
                     src={finalVideoUrl}
                     controls
                     poster={finalPosterUrl || undefined}
-                    className="w-full h-[70vh] object-cover"
+                    className="w-full aspect-[9/16] max-h-[70vh] object-cover"
                   />
                 ) : (
-                  <div className="w-full h-[70vh] flex items-center justify-center text-white/70 text-sm">
+                  <div className="w-full aspect-[9/16] max-h-[70vh] flex items-center justify-center text-white/70 text-sm">
                     영상 준비 중...
                   </div>
                 )}
@@ -1457,7 +1475,7 @@ export default function ReelsMakerPage() {
             </p>
           )}
 
-          <div className="relative h-[360px] rounded-[24px] bg-[#243246] flex items-center justify-center overflow-hidden">
+          <div className="relative w-full aspect-[9/16] rounded-[24px] bg-[#243246] flex items-center justify-center overflow-hidden">
             {isActiveCutFixed ? (
               activeFixedError ? (
                 <div className="text-sm text-white/70 text-center px-6 space-y-3">
