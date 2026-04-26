@@ -178,6 +178,13 @@ export default function ReelsMakerPage() {
   const activeUploadError = clipUploadErrors[activeCutIndex];
   const isUploadingActiveCut = uploadingCuts[activeCutIndex];
   const activeClip = clips[activeCutIndex] ?? null;
+  const activeCaption = (cutTitles[activeCutIndex] ?? '').trim();
+  const showCaptionOverlay =
+    Boolean(activeCaption) &&
+    !activeUploadError &&
+    !cameraError &&
+    !activeFixedError &&
+    (!isActiveCutFixed || Boolean(activeClip));
   const isRecordDisabled =
     isActiveCutFixed || isUploadingActiveCut || isSessionLoading || !sessionId;
   const guideImageSrc = useMemo(() => {
@@ -1040,6 +1047,18 @@ export default function ReelsMakerPage() {
     if (!sessionId) return;
     if (!allDone) return;
 
+    const captions = cuts
+      .map((cut, index) => {
+        const order = cut.order ?? index + 1;
+        const clipId = sessionClipMap[order];
+        if (!clipId) return null;
+        return {
+          clipId,
+          caption: cutTitles[index] ?? '',
+        };
+      })
+      .filter((item): item is { clipId: number; caption: string } => item !== null);
+
     setProcessingStep(0);
     setStage('processing');
     const timers = [
@@ -1050,6 +1069,8 @@ export default function ReelsMakerPage() {
     try {
       const response = await fetch(`/api/reels-maker/sessions/${sessionId}/complete`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ captions }),
       });
       const payload: WebApiResponse<ReelsMakerStatusResponse> = await response.json();
       if (!response.ok || !payload?.success) {
@@ -1539,6 +1560,11 @@ export default function ReelsMakerPage() {
                   카메라 뷰
                 </div>
               </>
+            )}
+            {showCaptionOverlay && (
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 max-w-[90%] px-4 py-2 rounded-2xl bg-black/50 text-white text-sm font-semibold text-center leading-relaxed line-clamp-2 pointer-events-none">
+                {activeCaption}
+              </div>
             )}
           </div>
 

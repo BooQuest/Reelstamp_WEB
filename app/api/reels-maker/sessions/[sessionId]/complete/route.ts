@@ -25,7 +25,11 @@ export async function POST(
       );
     }
 
-    const response = await apiClient.post(`/api/reels-maker/sessions/${rawSessionId}/complete`);
+    const body = await request.json().catch(() => null);
+    const response = await apiClient.post(
+      `/api/reels-maker/sessions/${rawSessionId}/complete`,
+      body ?? undefined
+    );
 
     return NextResponse.json(response.data, {
       status: response.status,
