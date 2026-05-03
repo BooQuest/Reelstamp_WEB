@@ -26,6 +26,19 @@ export async function POST(
     }
 
     const body = await request.json().catch(() => null);
+    const captions = Array.isArray(body?.captions) ? body.captions : [];
+    console.info(
+      `[CAPTION_TRACE][WEB_PROXY_IN] ${JSON.stringify({
+        sessionId: rawSessionId,
+        captionCount: captions.length,
+        captions: captions.map((item: any) => ({
+          clipId: item?.clipId ?? null,
+          captionLength: typeof item?.caption === 'string' ? item.caption.length : null,
+          captionStyle: item?.captionStyle ?? null,
+        })),
+      })}`
+    );
+
     const response = await apiClient.post(
       `/api/reels-maker/sessions/${rawSessionId}/complete`,
       body ?? undefined
