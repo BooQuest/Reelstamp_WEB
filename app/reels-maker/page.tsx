@@ -1,6 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Check,
@@ -88,17 +95,72 @@ type ReelsMakerStatusResponse = {
   errorMessage?: string | null;
 };
 
+type CaptionStyle = {
+  xRatio: number;
+  yRatio: number;
+  scale: number;
+  boxed: boolean;
+};
+
+type CutCaptionState = {
+  text: string;
+  style: CaptionStyle;
+};
+
+type CaptionGestureMode = 'none' | 'drag' | 'pinch' | 'resize';
+
+type CaptionGestureState = {
+  mode: CaptionGestureMode;
+  pointerMap: Map<number, { x: number; y: number }>;
+  dragPointerId: number | null;
+  startPointer: { x: number; y: number } | null;
+  startStyle: CaptionStyle | null;
+  startDistance: number;
+  startScale: number;
+};
+
+const MIN_CAPTION_SCALE = 0.6;
+const MAX_CAPTION_SCALE = 2.2;
+const DEFAULT_CAPTION_STYLE: CaptionStyle = {
+  xRatio: 0.5,
+  yRatio: 0.08,
+  scale: 1,
+  boxed: true,
+};
+
+const clampValue = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const normalizeCaptionStyle = (style: CaptionStyle): CaptionStyle => ({
+  xRatio: clampValue(style.xRatio, 0, 1),
+  yRatio: clampValue(style.yRatio, 0, 1),
+  scale: clampValue(style.scale, MIN_CAPTION_SCALE, MAX_CAPTION_SCALE),
+  boxed: style.boxed !== false,
+});
+
 export default function ReelsMakerPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const templateId = searchParams.get('templateId');
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraFrameRef = useRef<HTMLDivElement | null>(null);
+  const captionOverlayRef = useRef<HTMLDivElement | null>(null);
+  const captionInputRef = useRef<HTMLInputElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const recordTimeoutRef = useRef<number | null>(null);
   const countdownTimerRef = useRef<number | null>(null);
   const recordingCutRef = useRef<number>(0);
   const recordingMimeTypeRef = useRef<string>('video/webm');
+  const captionGestureRef = useRef<CaptionGestureState>({
+    mode: 'none',
+    pointerMap: new Map(),
+    dragPointerId: null,
+    startPointer: null,
+    startStyle: null,
+    startDistance: 0,
+    startScale: 1,
+  });
 
   const [stage, setStage] = useState<Stage>('capture');
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -117,7 +179,8 @@ export default function ReelsMakerPage() {
   const [recordingStatus, setRecordingStatus] = useState<RecorderStatus>('idle');
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [clips, setClips] = useState<Array<ClipInfo | null>>([]);
-  const [cutTitles, setCutTitles] = useState<string[]>([]);
+  const [cutCaptions, setCutCaptions] = useState<CutCaptionState[]>([]);
+  const [editingCaptionCutIndex, setEditingCaptionCutIndex] = useState<number | null>(null);
   const [isExampleOpen, setIsExampleOpen] = useState(false);
   const [isReelOpen, setIsReelOpen] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
@@ -169,18 +232,22 @@ export default function ReelsMakerPage() {
     if (cuts.length === 0) return false;
     if (!sessionId) return false;
     return cuts.every((cut, index) => {
-      if (cut.isFixed) return true;
+      if (cut.isFixed) {
+        return Boolean(clips[index]) && !fixedClipErrors[index];
+      }
       return uploadedCuts[index];
     });
-  }, [cuts, sessionId, uploadedCuts]);
+  }, [clips, cuts, fixedClipErrors, sessionId, uploadedCuts]);
   const isActiveCutFixed = activeCut?.isFixed ?? false;
   const activeFixedError = fixedClipErrors[activeCutIndex];
   const activeUploadError = clipUploadErrors[activeCutIndex];
   const isUploadingActiveCut = uploadingCuts[activeCutIndex];
   const activeClip = clips[activeCutIndex] ?? null;
-  const activeCaption = (cutTitles[activeCutIndex] ?? '').trim();
+  const activeCaptionState = cutCaptions[activeCutIndex] ?? null;
+  const activeCaptionText = activeCaptionState?.text ?? '';
+  const activeCaptionStyle = activeCaptionState?.style ?? DEFAULT_CAPTION_STYLE;
+  const hasCaptionText = Boolean(activeCaptionText.trim());
   const showCaptionOverlay =
-    Boolean(activeCaption) &&
     !activeUploadError &&
     !cameraError &&
     !activeFixedError &&
@@ -191,6 +258,90 @@ export default function ReelsMakerPage() {
     if (!activeCut?.guideImageUrl) return null;
     return activeCut.guideImageUrl;
   }, [activeCut?.guideImageUrl]);
+
+  const resetCaptionGesture = useCallback(() => {
+    const gesture = captionGestureRef.current;
+    gesture.mode = 'none';
+    gesture.pointerMap.clear();
+    gesture.dragPointerId = null;
+    gesture.startPointer = null;
+    gesture.startStyle = null;
+    gesture.startDistance = 0;
+    gesture.startScale = 1;
+  }, []);
+
+  const updateCutCaptionAtIndex = useCallback(
+    (index: number, updater: (current: CutCaptionState) => CutCaptionState) => {
+      setCutCaptions((prev) => {
+        const current = prev[index];
+        if (!current) return prev;
+        const next = [...prev];
+        next[index] = updater(current);
+        return next;
+      });
+    },
+    []
+  );
+
+  const clampCaptionPosition = useCallback((rawXRatio: number, rawYRatio: number) => {
+    const normalizedX = clampValue(rawXRatio, 0, 1);
+    const normalizedY = clampValue(rawYRatio, 0, 1);
+
+    const frameRect = cameraFrameRef.current?.getBoundingClientRect();
+    if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) {
+      return { xRatio: normalizedX, yRatio: normalizedY };
+    }
+
+    const overlayRect = captionOverlayRef.current?.getBoundingClientRect();
+    const halfWidth = overlayRect
+      ? Math.min(overlayRect.width / 2, frameRect.width / 2)
+      : 0;
+    const halfHeight = overlayRect
+      ? Math.min(overlayRect.height / 2, frameRect.height / 2)
+      : 0;
+
+    const minX = halfWidth / frameRect.width;
+    const maxX = 1 - minX;
+    const minY = halfHeight / frameRect.height;
+    const maxY = 1 - minY;
+
+    return {
+      xRatio: minX > maxX ? 0.5 : clampValue(normalizedX, minX, maxX),
+      yRatio: minY > maxY ? 0.5 : clampValue(normalizedY, minY, maxY),
+    };
+  }, []);
+
+  const applyClampedCaptionStyle = useCallback(
+    (style: CaptionStyle) => {
+      const normalized = normalizeCaptionStyle(style);
+      const position = clampCaptionPosition(normalized.xRatio, normalized.yRatio);
+      return {
+        ...normalized,
+        ...position,
+      };
+    },
+    [clampCaptionPosition]
+  );
+
+  const updateActiveCaptionText = useCallback(
+    (text: string) => {
+      updateCutCaptionAtIndex(activeCutIndex, (current) => ({
+        ...current,
+        text,
+      }));
+    },
+    [activeCutIndex, updateCutCaptionAtIndex]
+  );
+
+  const updateActiveCaptionStyle = useCallback(
+    (updater: (style: CaptionStyle) => CaptionStyle) => {
+      updateCutCaptionAtIndex(activeCutIndex, (current) => ({
+        ...current,
+        style: applyClampedCaptionStyle(updater(current.style)),
+      }));
+    },
+    [activeCutIndex, applyClampedCaptionStyle, updateCutCaptionAtIndex]
+  );
 
   useEffect(() => {
     if (!templateId) {
@@ -303,7 +454,14 @@ export default function ReelsMakerPage() {
     setUploadedCuts({});
     setUploadingCuts({});
     setClipUploadErrors({});
-    setCutTitles(cuts.map((cut) => cut.defaultCaption));
+    setCutCaptions(
+      cuts.map((cut) => ({
+        text: cut.defaultCaption,
+        style: { ...DEFAULT_CAPTION_STYLE },
+      }))
+    );
+    setEditingCaptionCutIndex(null);
+    resetCaptionGesture();
     setClips((prev) => {
       prev.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
       return Array(cuts.length).fill(null);
@@ -317,7 +475,7 @@ export default function ReelsMakerPage() {
     setFinalPosterUrl(null);
     setFinalVideoMimeType('video/mp4');
     setIsPreviewOpen(false);
-  }, [template?.id, cuts]);
+  }, [template?.id, cuts, resetCaptionGesture]);
 
   useEffect(() => {
     if (cuts.length === 0) return;
@@ -1040,8 +1198,10 @@ export default function ReelsMakerPage() {
     if (stage !== 'capture') {
       stopRecording();
       setRemainingSeconds(null);
+      setEditingCaptionCutIndex(null);
+      resetCaptionGesture();
     }
-  }, [stage, stopRecording]);
+  }, [resetCaptionGesture, stage, stopRecording]);
 
   const handleComplete = async () => {
     if (!sessionId) return;
@@ -1052,12 +1212,25 @@ export default function ReelsMakerPage() {
         const order = cut.order ?? index + 1;
         const clipId = sessionClipMap[order];
         if (!clipId) return null;
+        const captionState = cutCaptions[index];
+        const captionStyle = normalizeCaptionStyle(
+          captionState?.style ?? DEFAULT_CAPTION_STYLE
+        );
         return {
           clipId,
-          caption: cutTitles[index] ?? '',
+          caption: captionState?.text ?? '',
+          captionStyle,
         };
       })
-      .filter((item): item is { clipId: number; caption: string } => item !== null);
+      .filter(
+        (
+          item
+        ): item is {
+          clipId: number;
+          caption: string;
+          captionStyle: CaptionStyle;
+        } => item !== null
+      );
 
     setProcessingStep(0);
     setStage('processing');
@@ -1139,13 +1312,307 @@ export default function ReelsMakerPage() {
     return () => window.clearTimeout(timer);
   }, [downloadToastMessage]);
 
-  const handleTitleChange = (value: string) => {
-    setCutTitles((prev) => {
-      const next = [...prev];
-      next[activeCutIndex] = value;
-      return next;
+  const distanceBetweenPoints = useCallback(
+    (a: { x: number; y: number }, b: { x: number; y: number }) => {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    },
+    []
+  );
+
+  const handleCaptionPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const gesture = captionGestureRef.current;
+      if (!gesture.pointerMap.has(event.pointerId)) return;
+
+      gesture.pointerMap.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      if (gesture.mode === 'pinch') {
+        if (!gesture.startStyle || gesture.pointerMap.size < 2 || gesture.startDistance <= 0) {
+          return;
+        }
+
+        const points = Array.from(gesture.pointerMap.values());
+        const nextDistance = distanceBetweenPoints(points[0], points[1]);
+        if (!Number.isFinite(nextDistance) || nextDistance <= 0) return;
+
+        const nextScale = clampValue(
+          gesture.startScale * (nextDistance / gesture.startDistance),
+          MIN_CAPTION_SCALE,
+          MAX_CAPTION_SCALE
+        );
+        updateActiveCaptionStyle(() => ({
+          ...gesture.startStyle!,
+          scale: nextScale,
+        }));
+        return;
+      }
+
+      if (
+        gesture.mode === 'drag' &&
+        gesture.dragPointerId === event.pointerId &&
+        gesture.startPointer &&
+        gesture.startStyle
+      ) {
+        const frameRect = cameraFrameRef.current?.getBoundingClientRect();
+        if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) return;
+
+        const deltaX = event.clientX - gesture.startPointer.x;
+        const deltaY = event.clientY - gesture.startPointer.y;
+
+        updateActiveCaptionStyle(() => ({
+          ...gesture.startStyle!,
+          xRatio: gesture.startStyle!.xRatio + deltaX / frameRect.width,
+          yRatio: gesture.startStyle!.yRatio + deltaY / frameRect.height,
+        }));
+      }
+    },
+    [distanceBetweenPoints, updateActiveCaptionStyle]
+  );
+
+  const handleCaptionPointerEnd = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const gesture = captionGestureRef.current;
+
+      if (gesture.pointerMap.has(event.pointerId)) {
+        gesture.pointerMap.delete(event.pointerId);
+      }
+
+      const target = event.currentTarget;
+      if (target.hasPointerCapture(event.pointerId)) {
+        target.releasePointerCapture(event.pointerId);
+      }
+
+      if (gesture.pointerMap.size === 0) {
+        resetCaptionGesture();
+        return;
+      }
+
+      if (gesture.mode === 'pinch') {
+        if (gesture.pointerMap.size >= 2 && gesture.startStyle) {
+          const points = Array.from(gesture.pointerMap.values());
+          gesture.startDistance = distanceBetweenPoints(points[0], points[1]);
+          gesture.startScale = activeCaptionStyle.scale;
+          gesture.startStyle = { ...activeCaptionStyle };
+          return;
+        }
+        resetCaptionGesture();
+        return;
+      }
+
+      if (gesture.mode === 'drag' && gesture.dragPointerId === event.pointerId) {
+        resetCaptionGesture();
+      }
+    },
+    [activeCaptionStyle, distanceBetweenPoints, resetCaptionGesture]
+  );
+
+  const handleCaptionPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (!showCaptionOverlay) return;
+      if (editingCaptionCutIndex === activeCutIndex) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+
+      event.stopPropagation();
+      setEditingCaptionCutIndex(null);
+
+      const gesture = captionGestureRef.current;
+      gesture.pointerMap.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      event.currentTarget.setPointerCapture(event.pointerId);
+
+      if (gesture.pointerMap.size >= 2) {
+        if (!gesture.startStyle) {
+          gesture.startStyle = { ...activeCaptionStyle };
+        }
+        gesture.mode = 'pinch';
+        const points = Array.from(gesture.pointerMap.values());
+        gesture.startDistance = distanceBetweenPoints(points[0], points[1]);
+        gesture.startScale = activeCaptionStyle.scale;
+        return;
+      }
+
+      gesture.mode = 'drag';
+      gesture.dragPointerId = event.pointerId;
+      gesture.startPointer = { x: event.clientX, y: event.clientY };
+      gesture.startStyle = { ...activeCaptionStyle };
+    },
+    [
+      activeCaptionStyle,
+      activeCutIndex,
+      distanceBetweenPoints,
+      editingCaptionCutIndex,
+      showCaptionOverlay,
+    ]
+  );
+
+  const handleResizeHandlePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const gesture = captionGestureRef.current;
+      if (gesture.mode !== 'resize' || gesture.dragPointerId !== event.pointerId) return;
+      if (!gesture.startStyle || !gesture.startPointer || gesture.startDistance <= 0) return;
+
+      const frameRect = cameraFrameRef.current?.getBoundingClientRect();
+      if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) return;
+
+      const center = {
+        x: frameRect.left + gesture.startStyle.xRatio * frameRect.width,
+        y: frameRect.top + gesture.startStyle.yRatio * frameRect.height,
+      };
+
+      const currentDistance = distanceBetweenPoints(center, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      if (!Number.isFinite(currentDistance) || currentDistance <= 0) return;
+
+      const nextScale = clampValue(
+        gesture.startScale * (currentDistance / gesture.startDistance),
+        MIN_CAPTION_SCALE,
+        MAX_CAPTION_SCALE
+      );
+
+      updateActiveCaptionStyle(() => ({
+        ...gesture.startStyle!,
+        scale: nextScale,
+      }));
+    },
+    [distanceBetweenPoints, updateActiveCaptionStyle]
+  );
+
+  const handleResizeHandlePointerEnd = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const gesture = captionGestureRef.current;
+      if (gesture.dragPointerId === event.pointerId) {
+        const target = event.currentTarget;
+        if (target.hasPointerCapture(event.pointerId)) {
+          target.releasePointerCapture(event.pointerId);
+        }
+        resetCaptionGesture();
+      }
+    },
+    [resetCaptionGesture]
+  );
+
+  const handleResizeHandlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!showCaptionOverlay) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+
+      event.stopPropagation();
+      setEditingCaptionCutIndex(null);
+
+      const frameRect = cameraFrameRef.current?.getBoundingClientRect();
+      if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) return;
+
+      const center = {
+        x: frameRect.left + activeCaptionStyle.xRatio * frameRect.width,
+        y: frameRect.top + activeCaptionStyle.yRatio * frameRect.height,
+      };
+      const startPoint = { x: event.clientX, y: event.clientY };
+
+      const gesture = captionGestureRef.current;
+      gesture.mode = 'resize';
+      gesture.pointerMap.clear();
+      gesture.pointerMap.set(event.pointerId, startPoint);
+      gesture.dragPointerId = event.pointerId;
+      gesture.startPointer = startPoint;
+      gesture.startStyle = { ...activeCaptionStyle };
+      gesture.startScale = activeCaptionStyle.scale;
+      gesture.startDistance = Math.max(
+        1,
+        distanceBetweenPoints(center, startPoint)
+      );
+
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    [activeCaptionStyle, distanceBetweenPoints, showCaptionOverlay]
+  );
+
+  const handleCaptionTextChange = useCallback(
+    (value: string) => {
+      updateActiveCaptionText(value);
+    },
+    [updateActiveCaptionText]
+  );
+
+  const handleCaptionToggleBox = useCallback(() => {
+    updateActiveCaptionStyle((current) => ({
+      ...current,
+      boxed: !current.boxed,
+    }));
+  }, [updateActiveCaptionStyle]);
+
+  const ensureActiveCaptionInFrame = useCallback(() => {
+    const current = cutCaptions[activeCutIndex];
+    if (!current) return;
+
+    const nextStyle = applyClampedCaptionStyle(current.style);
+    if (
+      Math.abs(nextStyle.xRatio - current.style.xRatio) < 0.0001 &&
+      Math.abs(nextStyle.yRatio - current.style.yRatio) < 0.0001 &&
+      Math.abs(nextStyle.scale - current.style.scale) < 0.0001 &&
+      nextStyle.boxed === current.style.boxed
+    ) {
+      return;
+    }
+
+    updateCutCaptionAtIndex(activeCutIndex, (prev) => ({
+      ...prev,
+      style: nextStyle,
+    }));
+  }, [
+    activeCutIndex,
+    applyClampedCaptionStyle,
+    cutCaptions,
+    updateCutCaptionAtIndex,
+  ]);
+
+  useEffect(() => {
+    if (!showCaptionOverlay) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      ensureActiveCaptionInFrame();
     });
-  };
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    activeCutIndex,
+    activeCaptionStyle.boxed,
+    activeCaptionStyle.scale,
+    activeCaptionStyle.xRatio,
+    activeCaptionStyle.yRatio,
+    activeCaptionText,
+    ensureActiveCaptionInFrame,
+    showCaptionOverlay,
+  ]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (!showCaptionOverlay) return;
+      ensureActiveCaptionInFrame();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [ensureActiveCaptionInFrame, showCaptionOverlay]);
+
+  useEffect(() => {
+    if (editingCaptionCutIndex !== activeCutIndex) return;
+    const input = captionInputRef.current;
+    if (!input) return;
+    input.focus();
+    const valueLength = input.value.length;
+    input.setSelectionRange(valueLength, valueLength);
+  }, [activeCutIndex, editingCaptionCutIndex]);
+
+  useEffect(() => {
+    setEditingCaptionCutIndex(null);
+    resetCaptionGesture();
+  }, [activeCutIndex, resetCaptionGesture]);
 
   const handleDownload = () => {
     if (!finalVideoUrl) return;
@@ -1178,7 +1645,14 @@ export default function ReelsMakerPage() {
     });
     setUploadingCuts({});
     setClipUploadErrors({});
-    setCutTitles(cuts.map((cut) => cut.defaultCaption));
+    setCutCaptions(
+      cuts.map((cut) => ({
+        text: cut.defaultCaption,
+        style: { ...DEFAULT_CAPTION_STYLE },
+      }))
+    );
+    setEditingCaptionCutIndex(null);
+    resetCaptionGesture();
     setClips((prev) => {
       const next = [...prev];
       prev.forEach((clip, index) => {
@@ -1478,14 +1952,6 @@ export default function ReelsMakerPage() {
               </button>
           </div>
 
-          <div className="mb-4">
-            <input
-              value={cutTitles[activeCutIndex] ?? ''}
-              onChange={(event) => handleTitleChange(event.target.value)}
-              className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-center text-base font-semibold text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#FF4D6D]"
-            />
-          </div>
-
           <p className="text-sm text-[#58C4FF] text-center mb-5">
             {activeCut?.guideText || '안내 문구가 준비되지 않았습니다.'}
           </p>
@@ -1496,7 +1962,16 @@ export default function ReelsMakerPage() {
             </p>
           )}
 
-          <div className="relative w-full aspect-[9/16] rounded-[24px] bg-[#243246] flex items-center justify-center overflow-hidden">
+          <div
+            ref={cameraFrameRef}
+            className="relative w-full aspect-[9/16] rounded-[24px] bg-[#243246] flex items-center justify-center overflow-hidden"
+            onPointerDownCapture={(event) => {
+              if (editingCaptionCutIndex !== activeCutIndex) return;
+              const targetNode = event.target as Node;
+              if (captionOverlayRef.current?.contains(targetNode)) return;
+              setEditingCaptionCutIndex(null);
+            }}
+          >
             {isActiveCutFixed ? (
               activeFixedError ? (
                 <div className="text-sm text-white/70 text-center px-6 space-y-3">
@@ -1562,10 +2037,91 @@ export default function ReelsMakerPage() {
               </>
             )}
             {showCaptionOverlay && (
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 max-w-[90%] px-4 py-2 rounded-2xl bg-black/50 text-white text-sm font-semibold text-center leading-relaxed line-clamp-2 pointer-events-none">
-                {activeCaption}
+              <div
+                ref={captionOverlayRef}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setEditingCaptionCutIndex(activeCutIndex);
+                }}
+                onPointerDown={handleCaptionPointerDown}
+                onPointerMove={handleCaptionPointerMove}
+                onPointerUp={handleCaptionPointerEnd}
+                onPointerCancel={handleCaptionPointerEnd}
+                className="absolute z-20 max-w-[85%] select-none"
+                style={{
+                  left: `${activeCaptionStyle.xRatio * 100}%`,
+                  top: `${activeCaptionStyle.yRatio * 100}%`,
+                  transform: 'translate(-50%, -50%)',
+                  touchAction: 'none',
+                  cursor:
+                    editingCaptionCutIndex === activeCutIndex ? 'text' : 'move',
+                  fontSize: `${Math.round(28 * activeCaptionStyle.scale)}px`,
+                  lineHeight: 1.25,
+                  padding: activeCaptionStyle.boxed
+                    ? `${Math.round(8 * activeCaptionStyle.scale)}px ${Math.round(
+                        16 * activeCaptionStyle.scale
+                      )}px`
+                    : '0px',
+                  borderRadius: `${Math.round(18 * activeCaptionStyle.scale)}px`,
+                  backgroundColor: activeCaptionStyle.boxed
+                    ? 'rgba(0, 0, 0, 0.5)'
+                    : 'transparent',
+                  boxShadow: activeCaptionStyle.boxed
+                    ? '0 8px 20px rgba(0,0,0,0.28)'
+                    : 'none',
+                }}
+              >
+                {editingCaptionCutIndex === activeCutIndex ? (
+                  <input
+                    ref={captionInputRef}
+                    value={activeCaptionText}
+                    onChange={(event) => handleCaptionTextChange(event.target.value)}
+                    onBlur={() => setEditingCaptionCutIndex(null)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        setEditingCaptionCutIndex(null);
+                      }
+                    }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    placeholder="텍스트 입력"
+                    className="w-full min-w-[140px] max-w-[75vw] bg-transparent text-center font-semibold text-white placeholder:text-white/60 focus:outline-none"
+                  />
+                ) : (
+                  <span
+                    className={`block text-center font-semibold whitespace-pre-wrap break-words ${
+                      hasCaptionText ? 'text-white' : 'text-white/55'
+                    }`}
+                  >
+                    {hasCaptionText ? activeCaptionText : '텍스트 입력'}
+                  </span>
+                )}
+                {editingCaptionCutIndex !== activeCutIndex && (
+                  <button
+                    type="button"
+                    onPointerDown={handleResizeHandlePointerDown}
+                    onPointerMove={handleResizeHandlePointerMove}
+                    onPointerUp={handleResizeHandlePointerEnd}
+                    onPointerCancel={handleResizeHandlePointerEnd}
+                    onClick={(event) => event.stopPropagation()}
+                    className="absolute -right-3 -bottom-3 w-7 h-7 rounded-full bg-[#FF4D6D] border border-white/40 text-white text-[10px] font-bold flex items-center justify-center shadow-lg"
+                    aria-label="텍스트 크기 조절"
+                  >
+                    ↔
+                  </button>
+                )}
               </div>
             )}
+          </div>
+
+          <div className="mt-4 flex items-center justify-center">
+            <button
+              type="button"
+              onClick={handleCaptionToggleBox}
+              disabled={!showCaptionOverlay}
+              className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white/85 disabled:opacity-40"
+            >
+              텍스트 박스: {activeCaptionStyle.boxed ? 'ON' : 'OFF'}
+            </button>
           </div>
 
           <div className="mt-6 flex items-center justify-center gap-3">
