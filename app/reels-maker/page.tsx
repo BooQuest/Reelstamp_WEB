@@ -180,6 +180,7 @@ export default function ReelsMakerPage() {
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [clips, setClips] = useState<Array<ClipInfo | null>>([]);
   const [cutCaptions, setCutCaptions] = useState<CutCaptionState[]>([]);
+  const [cutGuideVisibility, setCutGuideVisibility] = useState<Record<number, boolean>>({});
   const [editingCaptionCutIndex, setEditingCaptionCutIndex] = useState<number | null>(null);
   const [isExampleOpen, setIsExampleOpen] = useState(false);
   const [isReelOpen, setIsReelOpen] = useState(false);
@@ -258,6 +259,8 @@ export default function ReelsMakerPage() {
     if (!activeCut?.guideImageUrl) return null;
     return activeCut.guideImageUrl;
   }, [activeCut?.guideImageUrl]);
+  const isGuideImageVisible =
+    Boolean(guideImageSrc) && (cutGuideVisibility[activeCutIndex] ?? true);
 
   const resetCaptionGesture = useCallback(() => {
     const gesture = captionGestureRef.current;
@@ -342,6 +345,14 @@ export default function ReelsMakerPage() {
     },
     [activeCutIndex, applyClampedCaptionStyle, updateCutCaptionAtIndex]
   );
+
+  const handleGuideImageToggle = useCallback(() => {
+    if (!guideImageSrc) return;
+    setCutGuideVisibility((prev) => ({
+      ...prev,
+      [activeCutIndex]: !(prev[activeCutIndex] ?? true),
+    }));
+  }, [activeCutIndex, guideImageSrc]);
 
   useEffect(() => {
     if (!templateId) {
@@ -460,6 +471,13 @@ export default function ReelsMakerPage() {
         style: { ...DEFAULT_CAPTION_STYLE },
       }))
     );
+    setCutGuideVisibility(() => {
+      const next: Record<number, boolean> = {};
+      cuts.forEach((cut, index) => {
+        next[index] = Boolean(cut.guideImageUrl);
+      });
+      return next;
+    });
     setEditingCaptionCutIndex(null);
     resetCaptionGesture();
     setClips((prev) => {
@@ -1651,6 +1669,13 @@ export default function ReelsMakerPage() {
         style: { ...DEFAULT_CAPTION_STYLE },
       }))
     );
+    setCutGuideVisibility(() => {
+      const next: Record<number, boolean> = {};
+      cuts.forEach((cut, index) => {
+        next[index] = Boolean(cut.guideImageUrl);
+      });
+      return next;
+    });
     setEditingCaptionCutIndex(null);
     resetCaptionGesture();
     setClips((prev) => {
@@ -2021,7 +2046,7 @@ export default function ReelsMakerPage() {
                   className="absolute inset-0 h-full w-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/30" />
-                {guideImageSrc && (
+                {guideImageSrc && isGuideImageVisible && (
                   <img
                     src={guideImageSrc}
                     alt="가이드 이미지"
@@ -2113,7 +2138,16 @@ export default function ReelsMakerPage() {
             )}
           </div>
 
-          <div className="mt-4 flex items-center justify-center">
+          <div className="mt-4 flex items-center justify-center gap-2">
+            {guideImageSrc && (
+              <button
+                type="button"
+                onClick={handleGuideImageToggle}
+                className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white/85"
+              >
+                가이드 이미지: {isGuideImageVisible ? 'ON' : 'OFF'}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleCaptionToggleBox}
