@@ -41,10 +41,12 @@ type ClipInfo = {
 
 type RecorderStatus = 'idle' | 'recording' | 'done';
 type Stage = 'capture' | 'processing' | 'preview';
+type CutDurationMode = 'RECOMMENDED' | 'FORCED';
 
 type TemplateCut = {
   order: number;
   durationSeconds: number;
+  durationMode?: string | null;
   title?: string | null;
   guideText?: string | null;
   guideImageUrl?: string | null;
@@ -123,6 +125,9 @@ type CaptionGestureState = {
 
 const MIN_CAPTION_SCALE = 0.6;
 const MAX_CAPTION_SCALE = 2.2;
+const DURATION_MODE_RECOMMENDED: CutDurationMode = 'RECOMMENDED';
+const DURATION_MODE_FORCED: CutDurationMode = 'FORCED';
+const RECOMMENDED_AUTO_STOP_SECONDS = 60;
 const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   xRatio: 0.5,
   yRatio: 0.08,
@@ -179,7 +184,7 @@ export default function ReelsMakerPage() {
   const [clipUploadErrors, setClipUploadErrors] = useState<Record<number, string>>({});
   const [activeCutIndex, setActiveCutIndex] = useState(0);
   const [recordingStatus, setRecordingStatus] = useState<RecorderStatus>('idle');
-  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState<number | null>(null);
   const [clips, setClips] = useState<Array<ClipInfo | null>>([]);
   const [cutCaptions, setCutCaptions] = useState<CutCaptionState[]>([]);
   const [cutGuideVisibility, setCutGuideVisibility] = useState<Record<number, boolean>>({});
@@ -216,11 +221,16 @@ export default function ReelsMakerPage() {
       const order = cut.order ?? index + 1;
       const captureType = (cut.captureType ?? 'CAPTURE').toUpperCase();
       const isFixed = captureType === 'FIXED';
+      const durationMode =
+        (cut.durationMode ?? '').trim().toUpperCase() === DURATION_MODE_FORCED
+          ? DURATION_MODE_FORCED
+          : DURATION_MODE_RECOMMENDED;
       return {
         id: `${template.id}-cut-${order}`,
         order,
         durationSeconds: duration,
-        label: `${duration}초`,
+        durationMode,
+        label: `${duration}초 [${durationMode === DURATION_MODE_FORCED ? '강제' : '권장'}]`,
         guideText: cut.guideText ?? '',
         guideImageUrl: cut.guideImageUrl ?? null,
         defaultCaption: cut.defaultCaption ?? cut.title ?? '',
@@ -269,6 +279,14 @@ export default function ReelsMakerPage() {
   const currentExampleReelUrl = exampleReelUrls[exampleReelIndex] ?? null;
   const isFirstExampleReel = exampleReelIndex <= 0;
   const isLastExampleReel = exampleReelIndex >= exampleReelUrls.length - 1;
+  const activeCutDurationMode = activeCut?.durationMode ?? DURATION_MODE_RECOMMENDED;
+  const activeCutDurationSeconds = Math.max(0, activeCut?.durationSeconds ?? 0);
+  const elapsedSeconds = Math.max(0, recordingElapsedSeconds ?? 0);
+  const forcedRemainingSeconds = Math.max(0, activeCutDurationSeconds - elapsedSeconds);
+  const isRecommendedTimingExceeded =
+    activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
+    activeCutDurationSeconds > 0 &&
+    elapsedSeconds >= activeCutDurationSeconds;
 
   const resetCaptionGesture = useCallback(() => {
     const gesture = captionGestureRef.current;
@@ -480,7 +498,7 @@ export default function ReelsMakerPage() {
 
     setActiveCutIndex(0);
     setRecordingStatus('idle');
-    setRemainingSeconds(null);
+    setRecordingElapsedSeconds(null);
     setSessionId(null);
     setSessionClipMap({});
     setSessionError(null);
@@ -1094,7 +1112,7 @@ export default function ReelsMakerPage() {
       window.clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
-    setRemainingSeconds(null);
+    setRecordingElapsedSeconds(null);
 
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== 'inactive') {
@@ -1185,18 +1203,22 @@ export default function ReelsMakerPage() {
 
     recorder.start();
     setRecordingStatus('recording');
-    setRemainingSeconds(activeCut.durationSeconds);
+    setRecordingElapsedSeconds(0);
+
+    const isForcedDurationMode = activeCut.durationMode === DURATION_MODE_FORCED;
+    const autoStopSeconds = isForcedDurationMode
+      ? Math.max(0, activeCut.durationSeconds)
+      : RECOMMENDED_AUTO_STOP_SECONDS;
 
     const startedAt = Date.now();
     countdownTimerRef.current = window.setInterval(() => {
       const elapsed = Math.floor((Date.now() - startedAt) / 1000);
-      const remaining = Math.max(0, activeCut.durationSeconds - elapsed);
-      setRemainingSeconds(remaining);
+      setRecordingElapsedSeconds(elapsed);
     }, 500);
 
     recordTimeoutRef.current = window.setTimeout(() => {
       stopRecording();
-    }, activeCut.durationSeconds * 1000);
+    }, autoStopSeconds * 1000);
   };
 
   const handleResetCut = () => {
@@ -1251,7 +1273,7 @@ export default function ReelsMakerPage() {
   useEffect(() => {
     if (stage !== 'capture') {
       stopRecording();
-      setRemainingSeconds(null);
+      setRecordingElapsedSeconds(null);
       setEditingCaptionCutIndex(null);
       resetCaptionGesture();
     }
@@ -1686,7 +1708,7 @@ export default function ReelsMakerPage() {
     setProcessingStep(0);
     setActiveCutIndex(0);
     setRecordingStatus('idle');
-    setRemainingSeconds(null);
+    setRecordingElapsedSeconds(null);
     setSessionId(null);
     setSessionClipMap({});
     setSessionError(null);
@@ -2279,9 +2301,26 @@ export default function ReelsMakerPage() {
             )}
           </div>
 
-          {remainingSeconds !== null && (
-            <div className="mt-3 text-center text-sm text-white/70">
-              {remainingSeconds}s 남음
+          {recordingElapsedSeconds !== null && (
+            <div className="mt-3 space-y-2 text-center">
+              <p
+                className={`text-sm ${
+                  activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
+                  isRecommendedTimingExceeded
+                    ? 'text-rose-400 font-semibold'
+                    : 'text-white/70'
+                }`}
+              >
+                {activeCutDurationMode === DURATION_MODE_FORCED
+                  ? `${forcedRemainingSeconds}s 남음`
+                  : `${elapsedSeconds}s 경과`}
+              </p>
+              {activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
+                isRecommendedTimingExceeded && (
+                  <p className="text-xs text-rose-300">
+                    이 포맷은 이 시간 내에 마무리하는 것을 추천합니다.
+                  </p>
+                )}
             </div>
           )}
         </div>
