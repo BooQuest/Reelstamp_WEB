@@ -229,8 +229,10 @@ export default function ReelsMakerPage() {
         id: `${template.id}-cut-${order}`,
         order,
         durationSeconds: duration,
-        durationMode,
-        label: `${duration}초 [${durationMode === DURATION_MODE_FORCED ? '강제' : '권장'}]`,
+        durationMode: isFixed ? null : durationMode,
+        label: isFixed
+          ? `${duration}초`
+          : `${duration}초 [${durationMode === DURATION_MODE_FORCED ? '강제' : '권장'}]`,
         guideText: cut.guideText ?? '',
         guideImageUrl: cut.guideImageUrl ?? null,
         defaultCaption: cut.defaultCaption ?? cut.title ?? '',
@@ -279,7 +281,9 @@ export default function ReelsMakerPage() {
   const currentExampleReelUrl = exampleReelUrls[exampleReelIndex] ?? null;
   const isFirstExampleReel = exampleReelIndex <= 0;
   const isLastExampleReel = exampleReelIndex >= exampleReelUrls.length - 1;
-  const activeCutDurationMode = activeCut?.durationMode ?? DURATION_MODE_RECOMMENDED;
+  const activeCutDurationMode = activeCut?.isFixed
+    ? null
+    : (activeCut?.durationMode ?? DURATION_MODE_RECOMMENDED);
   const activeCutDurationSeconds = Math.max(0, activeCut?.durationSeconds ?? 0);
   const elapsedSeconds = Math.max(0, recordingElapsedSeconds ?? 0);
   const forcedRemainingSeconds = Math.max(0, activeCutDurationSeconds - elapsedSeconds);
