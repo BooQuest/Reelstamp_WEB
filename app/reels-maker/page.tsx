@@ -10,6 +10,8 @@ import {
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
+  ChevronLeft,
+  ChevronRight,
   Check,
   Download,
   Music2,
@@ -21,14 +23,13 @@ import {
   X,
 } from 'lucide-react';
 import type { WebApiResponse } from '@/app/lib/api/auth';
+import InstagramEmbed from '@/app/components/ui/InstagramEmbed';
 
 const EXAMPLE_ASSETS = {
   point:
     '카메라를 천천히 좌에서 우로 이동하며 매장 전체 분위기를 담아주세요. 조명이 잘 보이도록 촬영하면 더 좋아요!',
   exampleImage:
     'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1200&q=80',
-  exampleVideo:
-    'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
 } as const;
 
 type ClipInfo = {
@@ -58,6 +59,7 @@ type TemplateDetailResponse = {
   subtitle?: string | null;
   thumbnailUrl?: string | null;
   embedUrl?: string | null;
+  exampleReelUrls?: string[];
   tags?: string[];
   cuts: TemplateCut[];
 };
@@ -184,6 +186,7 @@ export default function ReelsMakerPage() {
   const [editingCaptionCutIndex, setEditingCaptionCutIndex] = useState<number | null>(null);
   const [isExampleOpen, setIsExampleOpen] = useState(false);
   const [isReelOpen, setIsReelOpen] = useState(false);
+  const [exampleReelIndex, setExampleReelIndex] = useState(0);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
@@ -261,6 +264,11 @@ export default function ReelsMakerPage() {
   }, [activeCut?.guideImageUrl]);
   const isGuideImageVisible =
     Boolean(guideImageSrc) && (cutGuideVisibility[activeCutIndex] ?? true);
+  const exampleReelUrls = template?.exampleReelUrls ?? [];
+  const hasExampleReels = exampleReelUrls.length > 0;
+  const currentExampleReelUrl = exampleReelUrls[exampleReelIndex] ?? null;
+  const isFirstExampleReel = exampleReelIndex <= 0;
+  const isLastExampleReel = exampleReelIndex >= exampleReelUrls.length - 1;
 
   const resetCaptionGesture = useCallback(() => {
     const gesture = captionGestureRef.current;
@@ -354,6 +362,14 @@ export default function ReelsMakerPage() {
     }));
   }, [activeCutIndex, guideImageSrc]);
 
+  const handlePrevExampleReel = useCallback(() => {
+    setExampleReelIndex((prev) => Math.max(0, prev - 1));
+  }, []);
+
+  const handleNextExampleReel = useCallback(() => {
+    setExampleReelIndex((prev) => Math.min(exampleReelUrls.length - 1, prev + 1));
+  }, [exampleReelUrls.length]);
+
   useEffect(() => {
     if (!templateId) {
       router.replace('/all-templates?reason=select-template');
@@ -387,6 +403,12 @@ export default function ReelsMakerPage() {
           ...data,
           tags: Array.isArray(data?.tags) ? data.tags : [],
           cuts: Array.isArray(data?.cuts) ? data.cuts : [],
+          exampleReelUrls: Array.isArray(data?.exampleReelUrls)
+            ? data.exampleReelUrls.filter((url): url is string => {
+                if (typeof url !== 'string') return false;
+                return url.trim().length > 0;
+              })
+            : [],
         };
 
         if (!normalized.cuts || normalized.cuts.length === 0) {
@@ -512,6 +534,20 @@ export default function ReelsMakerPage() {
       setActiveCutIndex(0);
     }
   }, [cuts.length, activeCutIndex]);
+
+  useEffect(() => {
+    if (!isReelOpen) {
+      setExampleReelIndex(0);
+    }
+  }, [isReelOpen]);
+
+  useEffect(() => {
+    if (exampleReelUrls.length === 0) {
+      setExampleReelIndex(0);
+      return;
+    }
+    setExampleReelIndex((prev) => Math.min(prev, exampleReelUrls.length - 1));
+  }, [exampleReelUrls.length]);
 
   const stopCamera = useCallback(() => {
     if (stream) {
@@ -1712,6 +1748,7 @@ export default function ReelsMakerPage() {
     setIsPreviewOpen(false);
     setIsExampleOpen(false);
     setIsReelOpen(false);
+    setExampleReelIndex(0);
     setIsResetOpen(false);
     setDownloadToastMessage(null);
     setupCamera();
@@ -2304,13 +2341,19 @@ export default function ReelsMakerPage() {
               <button
                 type="button"
                 onClick={() => {
+                  if (!hasExampleReels) return;
                   setIsExampleOpen(false);
+                  setExampleReelIndex(0);
                   setIsReelOpen(true);
                 }}
-                className="w-full rounded-full bg-[#FF4D6D] py-3 text-sm font-semibold"
+                disabled={!hasExampleReels}
+                className="w-full rounded-full bg-[#FF4D6D] py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45"
               >
                 실제 릴스 보기
               </button>
+              {!hasExampleReels && (
+                <p className="text-xs text-center text-white/55">예시 릴스 준비 중입니다.</p>
+              )}
               <div>
                 <p className="text-sm font-semibold text-white/80 mb-2">이 컷의 포인트</p>
                 <p className="text-xs text-white/60 leading-relaxed">{EXAMPLE_ASSETS.point}</p>
@@ -2324,18 +2367,76 @@ export default function ReelsMakerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
           <button
             type="button"
-            onClick={() => setIsReelOpen(false)}
+            onClick={() => {
+              setIsReelOpen(false);
+              setExampleReelIndex(0);
+            }}
             className="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center"
           >
             <X className="w-5 h-5" />
           </button>
           <div className="w-full max-w-sm">
-            <div className="rounded-[28px] overflow-hidden bg-black">
-              <video
-                src={EXAMPLE_ASSETS.exampleVideo}
-                controls
-                className="w-full h-[70vh] object-cover"
-              />
+            <div className="rounded-[28px] overflow-hidden bg-[#1E2A3B] p-4">
+              <div className="relative rounded-[20px] overflow-hidden bg-black aspect-[9/16]">
+                {currentExampleReelUrl ? (
+                  <InstagramEmbed
+                    url={currentExampleReelUrl}
+                    className="absolute inset-0 h-full w-full rounded-none"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
+                    예시 릴스가 없습니다.
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handlePrevExampleReel}
+                  disabled={isFirstExampleReel}
+                  className="absolute left-3 top-1/2 z-20 -translate-y-1/2 w-9 h-9 rounded-full bg-[#FF4D6D] text-white flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed"
+                  aria-label="이전 릴스"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextExampleReel}
+                  disabled={isLastExampleReel}
+                  className="absolute right-3 top-1/2 z-20 -translate-y-1/2 w-9 h-9 rounded-full bg-[#FF4D6D] text-white flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed"
+                  aria-label="다음 릴스"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="mt-4 flex items-center justify-center gap-2">
+                {exampleReelUrls.map((url, index) => (
+                  <button
+                    key={`${url}-${index}`}
+                    type="button"
+                    onClick={() => setExampleReelIndex(index)}
+                    className={`h-2.5 rounded-full transition-all ${
+                      index === exampleReelIndex ? 'w-6 bg-[#FF4D6D]' : 'w-2.5 bg-white/35'
+                    }`}
+                    aria-label={`${index + 1}번 릴스로 이동`}
+                    aria-current={index === exampleReelIndex}
+                  />
+                ))}
+              </div>
+
+              <p className="mt-3 text-center text-xs text-white/60">
+                좌우 버튼 또는 하단 점을 눌러 다른 예시 릴스를 확인하세요.
+              </p>
+              {currentExampleReelUrl && (
+                <a
+                  href={currentExampleReelUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex w-full items-center justify-center rounded-full bg-[#FF4D6D] py-3 text-sm font-semibold text-white hover:brightness-105 transition"
+                >
+                  Instagram에서 열기
+                </a>
+              )}
             </div>
           </div>
         </div>
