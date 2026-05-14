@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Check,
@@ -291,6 +292,10 @@ export default function ReelsMakerPage() {
     activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
     activeCutDurationSeconds > 0 &&
     elapsedSeconds >= activeCutDurationSeconds;
+  const showRecommendedTimingToast =
+    recordingStatus === 'recording' &&
+    activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
+    isRecommendedTimingExceeded;
 
   const resetCaptionGesture = useCallback(() => {
     const gesture = captionGestureRef.current;
@@ -2014,6 +2019,21 @@ export default function ReelsMakerPage() {
 
   return (
     <div className="min-h-[calc(100vh-80px)] bg-black text-white">
+      {showRecommendedTimingToast && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="fixed left-1/2 z-[60] w-full max-w-md -translate-x-1/2 px-4"
+          style={{ top: 'calc(72px + env(safe-area-inset-top, 0px))' }}
+        >
+          <div className="rounded-xl border border-rose-300/70 bg-rose-600 px-4 py-3 text-sm font-bold text-white shadow-2xl motion-safe:animate-pulse">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <p>이 포맷은 이 시간 내에 마무리하는 것을 추천합니다.</p>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="max-w-md mx-auto px-4 pt-6 pb-10">
         <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
           모바일 웹앱에서 촬영하면 더 안정적으로 카메라를 사용할 수 있어요.
@@ -2306,7 +2326,7 @@ export default function ReelsMakerPage() {
           </div>
 
           {recordingElapsedSeconds !== null && (
-            <div className="mt-3 space-y-2 text-center">
+            <div className="mt-3 text-center">
               <p
                 className={`text-sm ${
                   activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
@@ -2319,12 +2339,6 @@ export default function ReelsMakerPage() {
                   ? `${forcedRemainingSeconds}s 남음`
                   : `${elapsedSeconds}s 경과`}
               </p>
-              {activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
-                isRecommendedTimingExceeded && (
-                  <p className="text-xs text-rose-300">
-                    이 포맷은 이 시간 내에 마무리하는 것을 추천합니다.
-                  </p>
-                )}
             </div>
           )}
         </div>
