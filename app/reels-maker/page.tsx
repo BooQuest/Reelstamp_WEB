@@ -100,11 +100,16 @@ type ReelsMakerStatusResponse = {
   errorMessage?: string | null;
 };
 
+type CaptionStyleVersion = 'WEB_BOX_V2';
+
 type CaptionStyle = {
   xRatio: number;
   yRatio: number;
   scale: number;
   boxed: boolean;
+  styleVersion?: CaptionStyleVersion;
+  maxWidthRatio?: number;
+  maxLines?: number | null;
 };
 
 type CutCaptionState = {
@@ -126,14 +131,21 @@ type CaptionGestureState = {
 
 const MIN_CAPTION_SCALE = 0.6;
 const MAX_CAPTION_SCALE = 2.2;
+const MIN_CAPTION_MAX_WIDTH_RATIO = 0.5;
+const MAX_CAPTION_MAX_WIDTH_RATIO = 0.95;
 const DURATION_MODE_RECOMMENDED: CutDurationMode = 'RECOMMENDED';
 const DURATION_MODE_FORCED: CutDurationMode = 'FORCED';
 const RECOMMENDED_AUTO_STOP_SECONDS = 60;
+const CAPTION_STYLE_VERSION_WEB_BOX_V2: CaptionStyleVersion = 'WEB_BOX_V2';
+const DEFAULT_CAPTION_MAX_WIDTH_RATIO = 0.85;
 const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   xRatio: 0.5,
   yRatio: 0.08,
   scale: 1,
   boxed: true,
+  styleVersion: CAPTION_STYLE_VERSION_WEB_BOX_V2,
+  maxWidthRatio: DEFAULT_CAPTION_MAX_WIDTH_RATIO,
+  maxLines: null,
 };
 
 const clampValue = (value: number, min: number, max: number) =>
@@ -144,6 +156,16 @@ const normalizeCaptionStyle = (style: CaptionStyle): CaptionStyle => ({
   yRatio: clampValue(style.yRatio, 0, 1),
   scale: clampValue(style.scale, MIN_CAPTION_SCALE, MAX_CAPTION_SCALE),
   boxed: style.boxed !== false,
+  styleVersion: CAPTION_STYLE_VERSION_WEB_BOX_V2,
+  maxWidthRatio: clampValue(
+    typeof style.maxWidthRatio === 'number' ? style.maxWidthRatio : DEFAULT_CAPTION_MAX_WIDTH_RATIO,
+    MIN_CAPTION_MAX_WIDTH_RATIO,
+    MAX_CAPTION_MAX_WIDTH_RATIO
+  ),
+  maxLines:
+    typeof style.maxLines === 'number' && Number.isFinite(style.maxLines)
+      ? Math.max(1, Math.round(style.maxLines))
+      : null,
 });
 
 export default function ReelsMakerPage() {
