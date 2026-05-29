@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -168,7 +169,7 @@ const normalizeCaptionStyle = (style: CaptionStyle): CaptionStyle => ({
       : null,
 });
 
-export default function ReelsMakerPage() {
+function ReelsMakerInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const templateId = searchParams.get('templateId');
@@ -2548,5 +2549,13 @@ export default function ReelsMakerPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ReelsMakerPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReelsMakerInner />
+    </Suspense>
   );
 }
