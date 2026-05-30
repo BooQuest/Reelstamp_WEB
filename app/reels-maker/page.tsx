@@ -52,9 +52,12 @@ type TemplateCut = {
   title?: string | null;
   guideText?: string | null;
   guideImageUrl?: string | null;
+  exampleImageUrl?: string | null;
+  exampleVideoUrl?: string | null;
   defaultCaption?: string | null;
   captureType?: string | null;
   fixedVideoUrl?: string | null;
+  fixedPreviewImageUrl?: string | null;
 };
 
 type TemplateDetailResponse = {
@@ -225,6 +228,12 @@ function ReelsMakerInner() {
   const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
   const [fixedClipErrors, setFixedClipErrors] = useState<Record<number, string>>({});
   const [clipPosters, setClipPosters] = useState<Record<number, string>>({});
+  const [exampleImageLoadedByCutKey, setExampleImageLoadedByCutKey] = useState<Record<string, boolean>>(
+    {}
+  );
+  const [exampleImageFailedByCutKey, setExampleImageFailedByCutKey] = useState<Record<string, boolean>>(
+    {}
+  );
 
   const cuts = useMemo(() => {
     if (!template) return [];
@@ -259,9 +268,12 @@ function ReelsMakerInner() {
           : `${duration}초 [${durationMode === DURATION_MODE_FORCED ? '강제' : '권장'}]`,
         guideText: cut.guideText ?? '',
         guideImageUrl: cut.guideImageUrl ?? null,
+        exampleImageUrl: cut.exampleImageUrl ?? null,
+        exampleVideoUrl: cut.exampleVideoUrl ?? null,
         defaultCaption: cut.defaultCaption ?? cut.title ?? '',
         captureType,
         fixedVideoUrl: cut.fixedVideoUrl ?? null,
+        fixedPreviewImageUrl: cut.fixedPreviewImageUrl ?? null,
         isFixed,
       };
     });
@@ -300,6 +312,29 @@ function ReelsMakerInner() {
   }, [activeCut?.guideImageUrl]);
   const isGuideImageVisible =
     Boolean(guideImageSrc) && (cutGuideVisibility[activeCutIndex] ?? true);
+  const activeCutKey = useMemo(() => {
+    if (!template?.id || activeCut?.order == null) return null;
+    return `${template.id}:${activeCut.order}`;
+  }, [template?.id, activeCut?.order]);
+  const activeCutExampleImageSrc = useMemo(() => {
+    const exampleImageUrl = activeCut?.exampleImageUrl?.trim();
+    if (exampleImageUrl) return exampleImageUrl;
+    const fixedPreviewImageUrl = activeCut?.fixedPreviewImageUrl?.trim();
+    if (fixedPreviewImageUrl) return fixedPreviewImageUrl;
+    return null;
+  }, [activeCut?.exampleImageUrl, activeCut?.fixedPreviewImageUrl]);
+  const isActiveExampleImageLoaded = Boolean(
+    activeCutKey && exampleImageLoadedByCutKey[activeCutKey]
+  );
+  const isActiveExampleImageFailed = Boolean(
+    activeCutKey && exampleImageFailedByCutKey[activeCutKey]
+  );
+  const isActiveExampleImageLoading = Boolean(
+    isExampleOpen &&
+      activeCutExampleImageSrc &&
+      !isActiveExampleImageLoaded &&
+      !isActiveExampleImageFailed
+  );
   const exampleReelUrls = template?.exampleReelUrls ?? [];
   const hasExampleReels = exampleReelUrls.length > 0;
   const currentExampleReelUrl = exampleReelUrls[exampleReelIndex] ?? null;
@@ -565,6 +600,8 @@ function ReelsMakerInner() {
     setFinalPosterUrl(null);
     setFinalVideoMimeType('video/mp4');
     setIsPreviewOpen(false);
+    setExampleImageLoadedByCutKey({});
+    setExampleImageFailedByCutKey({});
   }, [template?.id, cuts, resetCaptionGesture]);
 
   useEffect(() => {
@@ -2406,16 +2443,57 @@ function ReelsMakerInner() {
             <button
               type="button"
               onClick={() => setIsExampleOpen(false)}
-              className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
+              className="absolute top-4 right-4 z-30 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
             >
               <X className="w-4 h-4" />
             </button>
-            <div className="h-64 bg-black">
-              <img
-                src={EXAMPLE_ASSETS.exampleImage}
-                alt="예시 이미지"
-                className="h-full w-full object-cover"
-              />
+            <div className="bg-black p-4 pb-3">
+              {activeCutExampleImageSrc && !isActiveExampleImageFailed ? (
+                <div className="relative mx-auto w-full max-w-[300px] aspect-[9/16] overflow-hidden rounded-[20px] bg-black">
+                  {isActiveExampleImageLoading && (
+                    <div className="absolute inset-0 z-20 animate-pulse bg-white/10" />
+                  )}
+                  <img
+                    src={activeCutExampleImageSrc}
+                    alt=""
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-xl"
+                  />
+                  <img
+                    src={activeCutExampleImageSrc}
+                    alt="예시 이미지"
+                    className={`pointer-events-none absolute inset-0 z-10 h-full w-full object-contain transition-opacity duration-200 ${
+                      isActiveExampleImageLoaded ? 'opacity-100' : 'opacity-0'
+                    }`}
+                    onLoad={() => {
+                      if (!activeCutKey) return;
+                      setExampleImageLoadedByCutKey((prev) => ({
+                        ...prev,
+                        [activeCutKey]: true,
+                      }));
+                      setExampleImageFailedByCutKey((prev) => ({
+                        ...prev,
+                        [activeCutKey]: false,
+                      }));
+                    }}
+                    onError={() => {
+                      if (!activeCutKey) return;
+                      setExampleImageFailedByCutKey((prev) => ({
+                        ...prev,
+                        [activeCutKey]: true,
+                      }));
+                      setExampleImageLoadedByCutKey((prev) => ({
+                        ...prev,
+                        [activeCutKey]: false,
+                      }));
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="mx-auto w-full max-w-[300px] aspect-[9/16] rounded-[20px] bg-black flex items-center justify-center text-sm text-white/60 text-center px-5">
+                  해당 컷 예시 이미지가 없습니다.
+                </div>
+              )}
             </div>
             <div className="p-5 space-y-4">
               <button
