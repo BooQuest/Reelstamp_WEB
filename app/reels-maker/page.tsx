@@ -103,6 +103,13 @@ type ReelsMakerStatusResponse = {
   processingJobId?: string | null;
   errorMessage?: string | null;
 };
+type ReelsMakerErrorResponse = {
+  success?: boolean;
+  status?: number;
+  message?: string;
+  errorCode?: string;
+  data?: unknown;
+};
 
 type CaptionStyleVersion = 'WEB_BOX_V2';
 
@@ -142,6 +149,13 @@ const DURATION_MODE_FORCED: CutDurationMode = 'FORCED';
 const RECOMMENDED_AUTO_STOP_SECONDS = 60;
 const CAPTION_STYLE_VERSION_WEB_BOX_V2: CaptionStyleVersion = 'WEB_BOX_V2';
 const DEFAULT_CAPTION_MAX_WIDTH_RATIO = 0.85;
+const PROCESSING_STATUS_TIMEOUT_MS = 5 * 60 * 1000;
+const COMPLETE_START_FAILED_ERROR_CODE = 'RS-VID-001';
+const PROCESSING_FAILED_ERROR_CODE = 'RS-VID-002';
+const PROCESSING_TIMEOUT_ERROR_CODE = 'RS-VID-003';
+const COMPLETE_START_FAILED_USER_MESSAGE = `영상 생성을 시작하지 못했어요. 잠시 후 다시 시도해 주세요. 문제가 계속되면 고객센터로 문의해 주세요. (코드: ${COMPLETE_START_FAILED_ERROR_CODE})`;
+const PROCESSING_FAILED_USER_MESSAGE = `영상 생성 중 문제가 발생했어요. 잠시 후 다시 시도해 주세요. 문제가 계속되면 고객센터로 문의해 주세요. (코드: ${PROCESSING_FAILED_ERROR_CODE})`;
+const PROCESSING_TIMEOUT_USER_MESSAGE = `영상 생성이 예상보다 오래 걸리고 있어요. 잠시 후 다시 확인해 주세요. 문제가 계속되면 고객센터로 문의해 주세요. (코드: ${PROCESSING_TIMEOUT_ERROR_CODE})`;
 const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   xRatio: 0.5,
   yRatio: 0.08,
@@ -186,6 +200,8 @@ function ReelsMakerInner() {
   const countdownTimerRef = useRef<number | null>(null);
   const recordingCutRef = useRef<number>(0);
   const recordingMimeTypeRef = useRef<string>('video/webm');
+  const cameraSetupInProgressRef = useRef(false);
+  const latestClipsRef = useRef<Array<ClipInfo | null>>([]);
   const captionGestureRef = useRef<CaptionGestureState>({
     mode: 'none',
     pointerMap: new Map(),
@@ -637,11 +653,16 @@ function ReelsMakerInner() {
   }, [exampleReelUrls.length]);
 
   const stopCamera = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
-  }, [stream]);
+    setStream((current) => {
+      if (current) {
+        current.getTracks().forEach((track) => track.stop());
+      }
+      return null;
+    });
+  }, []);
 
   const buildFixedVideoProxyUrl = useCallback((rawUrl: string) => {
     return rawUrl;
@@ -735,10 +756,16 @@ function ReelsMakerInner() {
   );
 
   const setupCamera = useCallback(async () => {
+    if (cameraSetupInProgressRef.current) {
+      return;
+    }
+
+    cameraSetupInProgressRef.current = true;
     setCameraError(null);
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('이 브라우저에서는 카메라 기능을 사용할 수 없습니다.');
+      cameraSetupInProgressRef.current = false;
       return;
     }
 
@@ -770,31 +797,56 @@ function ReelsMakerInner() {
         mediaStream.getTracks().forEach((track) => track.stop());
         return;
       }
-      setStream(mediaStream);
-    } catch (error) {
+      setStream((current) => {
+        if (current && current !== mediaStream) {
+          current.getTracks().forEach((track) => track.stop());
+        }
+        return mediaStream;
+      });
+    } catch {
       setCameraError('카메라/마이크 접근이 거부되었어요. 권한을 확인해주세요.');
+    } finally {
+      cameraSetupInProgressRef.current = false;
     }
   }, []);
 
   useEffect(() => {
     if (stage === 'capture' && template) {
-      setupCamera();
+      if (!stream) {
+        setupCamera();
+      }
     } else {
       stopCamera();
     }
-  }, [stage, setupCamera, stopCamera, template]);
+  }, [stage, setupCamera, stopCamera, stream, template]);
 
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
     }
-  }, [stream]);
+
+    if (stream) {
+      const playPromise = video.play();
+      if (playPromise) {
+        playPromise.catch(() => {
+          // Autoplay can be blocked on some mobile browsers.
+        });
+      }
+    }
+  }, [isSessionLoading, stage, stream]);
+
+  useEffect(() => {
+    latestClipsRef.current = clips;
+  }, [clips]);
 
   useEffect(() => {
     return () => {
-      clips.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
+      latestClipsRef.current.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
     };
-  }, [clips]);
+  }, []);
 
   const createRecorder = () => {
     if (!stream) return null;
@@ -1390,13 +1442,33 @@ function ReelsMakerInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ captions }),
       });
-      const payload: WebApiResponse<ReelsMakerStatusResponse> = await response.json();
+      const payload = (await response.json()) as
+        | WebApiResponse<ReelsMakerStatusResponse>
+        | ReelsMakerErrorResponse;
       if (!response.ok || !payload?.success) {
-        throw new Error(payload?.message || '릴스 합성이 시작되지 않았습니다.');
+        const statusCode =
+          typeof payload?.status === 'number' ? payload.status : response.status;
+        const errorCode =
+          typeof payload?.errorCode === 'string' ? payload.errorCode : 'UNKNOWN';
+        const backendMessage =
+          typeof payload?.message === 'string' && payload.message.trim().length > 0
+            ? payload.message
+            : '릴스 합성이 시작되지 않았습니다.';
+        console.error('[ReelsMakerCompleteStartFailed]', {
+          sessionId,
+          statusCode,
+          errorCode,
+          backendMessage,
+        });
+        throw new Error('REELS_COMPLETE_START_FAILED');
       }
       setFinalVideoUrl(null);
       setFinalVideoMimeType('video/mp4');
     } catch (error) {
+      console.error('[ReelsMakerCompleteRequestError]', {
+        sessionId,
+        error,
+      });
       setFinalVideoUrl((prev) => {
         revokeBlobUrl(prev);
         return null;
@@ -1404,9 +1476,7 @@ function ReelsMakerInner() {
       setFinalVideoMimeType('video/mp4');
       setFinalPosterUrl(null);
       setStage('capture');
-      const detail =
-        error instanceof Error && error.message ? ` Error: ${error.message}` : '';
-      alert(`영상 합치기에 실패했습니다.${detail}`);
+      alert(COMPLETE_START_FAILED_USER_MESSAGE);
     } finally {
       timers.forEach((timer) => window.clearTimeout(timer));
     }
@@ -1416,6 +1486,7 @@ function ReelsMakerInner() {
     if (stage !== 'processing' || !sessionId) return;
 
     let isCancelled = false;
+    const startedAt = Date.now();
 
     const fetchStatus = async () => {
       try {
@@ -1434,8 +1505,22 @@ function ReelsMakerInner() {
           setFinalVideoMimeType('video/mp4');
           setStage('preview');
         } else if (data.status === 'FAILED') {
+          console.error('[ReelsMakerProcessingFailed]', {
+            sessionId,
+            processingJobId: data.processingJobId ?? null,
+            errorMessage: data.errorMessage ?? null,
+          });
           setStage('capture');
-          alert(data.errorMessage || '릴스 합성에 실패했습니다.');
+          alert(PROCESSING_FAILED_USER_MESSAGE);
+        } else if (Date.now() - startedAt > PROCESSING_STATUS_TIMEOUT_MS) {
+          console.error('[ReelsMakerProcessingTimeout]', {
+            sessionId,
+            elapsedMs: Date.now() - startedAt,
+            lastKnownStatus: data.status,
+            processingJobId: data.processingJobId ?? null,
+          });
+          setStage('capture');
+          alert(PROCESSING_TIMEOUT_USER_MESSAGE);
         }
       } catch {
         // ignore polling errors
