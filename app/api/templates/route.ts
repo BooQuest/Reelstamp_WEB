@@ -1,11 +1,7 @@
 // 릴스 템플릿 목록 조회 API Route: Spring API의 /api/templates를 프록시
 import { NextRequest, NextResponse } from 'next/server';
-import { API_CONFIG } from '@/app/lib/constants/api';
 
 export async function GET(_request: NextRequest) {
-  // 🔍 디버그 1: baseURL 실제 값
-  console.error('[DEBUG] WEB_BASE_URL =', JSON.stringify(API_CONFIG.WEB_BASE_URL));
-
   try {
     const { getServerApiClient } = await import('@/app/lib/api/server-client');
     const apiClient = await getServerApiClient();
@@ -18,7 +14,6 @@ export async function GET(_request: NextRequest) {
   } catch (error: any) {
     console.error('[Templates API Error]', {
       message: error.message,
-      stack: error.stack,
       status: error.response?.status,
       data: error.response?.data,
     });
