@@ -158,7 +158,7 @@ const PROCESSING_FAILED_USER_MESSAGE = `영상 생성 중 문제가 발생했어
 const PROCESSING_TIMEOUT_USER_MESSAGE = `영상 생성이 예상보다 오래 걸리고 있어요. 잠시 후 다시 확인해 주세요. 문제가 계속되면 고객센터로 문의해 주세요. (코드: ${PROCESSING_TIMEOUT_ERROR_CODE})`;
 const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   xRatio: 0.5,
-  yRatio: 0.08,
+  yRatio: 0.12,
   scale: 1,
   boxed: true,
   styleVersion: CAPTION_STYLE_VERSION_WEB_BOX_V2,
@@ -194,6 +194,9 @@ function ReelsMakerInner() {
   const cameraFrameRef = useRef<HTMLDivElement | null>(null);
   const captionOverlayRef = useRef<HTMLDivElement | null>(null);
   const captionInputRef = useRef<HTMLInputElement | null>(null);
+  const captureViewportRef = useRef<HTMLDivElement | null>(null);
+  const captureContentRef = useRef<HTMLDivElement | null>(null);
+  const captureMeasureRef = useRef<HTMLDivElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const recordTimeoutRef = useRef<number | null>(null);
@@ -250,6 +253,7 @@ function ReelsMakerInner() {
   const [exampleImageFailedByCutKey, setExampleImageFailedByCutKey] = useState<Record<string, boolean>>(
     {}
   );
+  const [captureScale, setCaptureScale] = useState(1);
 
   const cuts = useMemo(() => {
     if (!template) return [];
@@ -1846,6 +1850,108 @@ function ReelsMakerInner() {
     resetCaptionGesture();
   }, [activeCutIndex, resetCaptionGesture]);
 
+  useEffect(() => {
+    if (stage !== 'capture') {
+      setCaptureScale(1);
+      return;
+    }
+
+    let frameId: number | null = null;
+
+    const recalculateScale = () => {
+      frameId = null;
+      const viewport = captureViewportRef.current;
+      const content = captureContentRef.current;
+      const measure = captureMeasureRef.current;
+      if (!viewport || !content || !measure) return;
+
+      const viewportWidth = viewport.clientWidth;
+      let viewportHeight = viewport.clientHeight;
+      const visualViewportHeight = window.visualViewport?.height;
+      if (typeof visualViewportHeight === 'number' && Number.isFinite(visualViewportHeight)) {
+        const visualViewportCaptureHeight = Math.max(0, visualViewportHeight - 72);
+        if (visualViewportCaptureHeight > 0) {
+          viewportHeight = Math.min(viewportHeight, visualViewportCaptureHeight);
+        }
+      }
+      const contentWidth = Math.max(measure.scrollWidth, measure.offsetWidth);
+      const contentHeight = Math.max(measure.scrollHeight, measure.offsetHeight);
+
+      if (
+        viewportWidth <= 0 ||
+        viewportHeight <= 0 ||
+        contentWidth <= 0 ||
+        contentHeight <= 0
+      ) {
+        return;
+      }
+
+      const fitScale = Math.min(
+        1,
+        viewportWidth / contentWidth,
+        viewportHeight / contentHeight
+      );
+      const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
+      const targetScale = isDesktop ? Math.min(0.85, fitScale) : fitScale;
+      const safeScale = Math.max(0.35, Math.min(1, targetScale));
+
+      setCaptureScale((prev) =>
+        Math.abs(prev - safeScale) < 0.001 ? prev : safeScale
+      );
+    };
+
+    const scheduleRecalculate = () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      frameId = window.requestAnimationFrame(recalculateScale);
+    };
+
+    scheduleRecalculate();
+    const settleTimeoutId = window.setTimeout(scheduleRecalculate, 80);
+    const lateSettleTimeoutId = window.setTimeout(scheduleRecalculate, 240);
+    let isDisposed = false;
+    if (document.fonts?.ready) {
+      document.fonts.ready
+        .then(() => {
+          if (!isDisposed) {
+            scheduleRecalculate();
+          }
+        })
+        .catch(() => undefined);
+    }
+
+    const viewport = captureViewportRef.current;
+    const measure = captureMeasureRef.current;
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(scheduleRecalculate)
+        : null;
+
+    if (resizeObserver && viewport && measure) {
+      resizeObserver.observe(viewport);
+      resizeObserver.observe(measure);
+    }
+
+    const visualViewport = window.visualViewport;
+    window.addEventListener('resize', scheduleRecalculate);
+    window.addEventListener('orientationchange', scheduleRecalculate);
+    visualViewport?.addEventListener('resize', scheduleRecalculate);
+
+    return () => {
+      isDisposed = true;
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      window.clearTimeout(settleTimeoutId);
+      window.clearTimeout(lateSettleTimeoutId);
+      window.removeEventListener('resize', scheduleRecalculate);
+      window.removeEventListener('orientationchange', scheduleRecalculate);
+      visualViewport?.removeEventListener('resize', scheduleRecalculate);
+      resizeObserver?.disconnect();
+    };
+  }, [stage, template?.id, cuts.length, activeCutIndex, allDone]);
+
   const handleDownload = () => {
     if (!finalVideoUrl) return;
     const anchor = document.createElement('a');
@@ -2165,7 +2271,13 @@ function ReelsMakerInner() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-80px)] bg-black text-white">
+    <div
+      className="bg-black text-white overflow-hidden"
+      style={{
+        height: 'calc(100dvh - 72px)',
+        minHeight: 'calc(100vh - 72px)',
+      }}
+    >
       {showRecommendedTimingToast && (
         <div
           role="alert"
@@ -2181,347 +2293,346 @@ function ReelsMakerInner() {
           </div>
         </div>
       )}
-      <div className="max-w-md mx-auto px-4 pt-6 pb-10">
-        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-          모바일 웹앱에서 촬영하면 더 안정적으로 카메라를 사용할 수 있어요.
-        </div>
-
-        <div className="relative rounded-[28px] bg-[#1E2A3B] px-4 pt-5 pb-6 shadow-2xl">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2 text-white/80">
-              {recordingStatus === 'recording' ? (
-                <div className="flex items-center gap-2 rounded-full bg-[#FF4D6D] px-3 py-1 text-xs font-semibold">
-                  <span className="w-2 h-2 rounded-full bg-white" />
-                  REC
-                </div>
-              ) : (
-                <span className="text-xs text-white/50">릴스 제작</span>
-              )}
-            </div>
-              <button
-                type="button"
-                onClick={() => setIsExampleOpen(true)}
-                className="rounded-full bg-[#FF4D6D] px-4 py-2 text-xs font-semibold shadow-lg"
-              >
-                예시 보기
-              </button>
-          </div>
-
-          <p className="text-sm text-[#58C4FF] text-center mb-5">
-            {activeCut?.guideText || '안내 문구가 준비되지 않았습니다.'}
-          </p>
-
-          {isActiveCutFixed && (
-            <p className="text-xs text-center text-white/50 mb-5">
-              고정 영상 컷입니다. 촬영 없이 자동으로 완료됩니다.
-            </p>
-          )}
-
+      <div
+        ref={captureViewportRef}
+        className="mx-auto h-full w-full max-w-md overflow-hidden"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
+        <div className="flex h-full w-full items-start justify-center overflow-hidden">
           <div
-            ref={cameraFrameRef}
-            className="relative w-full aspect-[9/16] rounded-[24px] bg-[#243246] flex items-center justify-center overflow-hidden"
-            onPointerDownCapture={(event) => {
-              if (editingCaptionCutIndex !== activeCutIndex) return;
-              const targetNode = event.target as Node;
-              if (captionOverlayRef.current?.contains(targetNode)) return;
-              setEditingCaptionCutIndex(null);
+            ref={captureContentRef}
+            className="w-full origin-top self-start shrink-0"
+            style={{
+              transform: `scale(${captureScale})`,
+              transformOrigin: 'top center',
             }}
           >
-            {isActiveCutFixed ? (
-              activeFixedError ? (
-                <div className="text-sm text-white/70 text-center px-6 space-y-3">
-                  <p>{activeFixedError}</p>
-                  <button
-                    type="button"
-                    onClick={() => retryFixedClip(activeCutIndex)}
-                    className="rounded-full bg-white/10 px-4 py-2 text-xs text-white/80"
-                  >
-                    다시 불러오기
-                  </button>
-                </div>
-              ) : activeClip ? (
-                <video
-                  src={activeClip.url}
-                  muted
-                  playsInline
-                  preload="metadata"
-                  poster={clipPosters[activeCutIndex] || undefined}
-                  className="absolute inset-0 h-full w-full object-cover"
-                />
-              ) : (
-                <div className="text-sm text-white/70 text-center px-6">
-                  고정 영상을 불러오는 중입니다...
-                </div>
-              )
-            ) : activeUploadError ? (
-              <div className="text-sm text-white/70 text-center px-6 space-y-3">
-                <p>{activeUploadError}</p>
-                <button
-                  type="button"
-                  onClick={handleResetCut}
-                  className="rounded-full bg-white/10 px-4 py-2 text-xs text-white/80"
-                >
-                  다시 촬영하기
-                </button>
+            <div ref={captureMeasureRef} className="max-w-md mx-auto px-4 pt-6 pb-10">
+              <div className="mb-4 hidden lg:block rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+                모바일 웹앱에서 촬영하면 더 안정적으로 카메라를 사용할 수 있어요.
               </div>
-            ) : cameraError ? (
-              <div className="text-sm text-white/70 text-center px-6">{cameraError}</div>
-            ) : (
-              <>
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="absolute inset-0 h-full w-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/5 via-transparent to-black/30" />
-                {guideImageSrc && isGuideImageVisible && (
-                  <img
-                    src={guideImageSrc}
-                    alt="가이드 이미지"
-                    className="absolute inset-0 h-full w-full object-contain opacity-70 pointer-events-none"
-                  />
-                )}
-                <div className="relative text-center text-white/40">
-                  <div className="w-16 h-16 rounded-full border border-white/20 flex items-center justify-center mx-auto mb-3">
-                    <span className="text-sm">📷</span>
+
+              <div className="relative rounded-[28px] bg-[#1E2A3B] px-4 pt-5 pb-4 shadow-2xl">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-white/80">
+                    {recordingStatus === 'recording' ? (
+                      <div className="flex h-9 min-w-[80px] items-center justify-center gap-2 rounded-full bg-[#FF4D6D] px-3 py-1 text-xs font-semibold">
+                        <span className="h-2 w-2 rounded-full bg-white" />
+                        REC
+                      </div>
+                    ) : (
+                      <span className="text-xs text-white/50">릴스 제작</span>
+                    )}
                   </div>
-                  카메라 뷰
-                </div>
-              </>
-            )}
-            {showCaptionOverlay && (
-              <div
-                ref={captionOverlayRef}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setEditingCaptionCutIndex(activeCutIndex);
-                }}
-                onPointerDown={handleCaptionPointerDown}
-                onPointerMove={handleCaptionPointerMove}
-                onPointerUp={handleCaptionPointerEnd}
-                onPointerCancel={handleCaptionPointerEnd}
-                className="absolute z-20 max-w-[85%] select-none"
-                style={{
-                  left: `${activeCaptionStyle.xRatio * 100}%`,
-                  top: `${activeCaptionStyle.yRatio * 100}%`,
-                  transform: 'translate(-50%, -50%)',
-                  touchAction: 'none',
-                  cursor:
-                    editingCaptionCutIndex === activeCutIndex ? 'text' : 'move',
-                  fontSize: `${Math.round(28 * activeCaptionStyle.scale)}px`,
-                  lineHeight: 1.25,
-                  padding: activeCaptionStyle.boxed
-                    ? `${Math.round(8 * activeCaptionStyle.scale)}px ${Math.round(
-                        16 * activeCaptionStyle.scale
-                      )}px`
-                    : '0px',
-                  borderRadius: `${Math.round(18 * activeCaptionStyle.scale)}px`,
-                  backgroundColor: activeCaptionStyle.boxed
-                    ? 'rgba(0, 0, 0, 0.5)'
-                    : 'transparent',
-                  boxShadow: activeCaptionStyle.boxed
-                    ? '0 8px 20px rgba(0,0,0,0.28)'
-                    : 'none',
-                }}
-              >
-                {editingCaptionCutIndex === activeCutIndex ? (
-                  <input
-                    ref={captionInputRef}
-                    value={activeCaptionText}
-                    onChange={(event) => handleCaptionTextChange(event.target.value)}
-                    onBlur={() => setEditingCaptionCutIndex(null)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        setEditingCaptionCutIndex(null);
-                      }
-                    }}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    placeholder="텍스트 입력"
-                    className="w-full min-w-[140px] max-w-[75vw] bg-transparent text-center font-semibold text-white placeholder:text-white/60 focus:outline-none"
-                  />
-                ) : (
-                  <span
-                    className={`block text-center font-semibold whitespace-pre-wrap break-words ${
-                      hasCaptionText ? 'text-white' : 'text-white/55'
-                    }`}
-                  >
-                    {hasCaptionText ? activeCaptionText : '텍스트 입력'}
-                  </span>
-                )}
-                {editingCaptionCutIndex !== activeCutIndex && (
                   <button
                     type="button"
-                    onPointerDown={handleResizeHandlePointerDown}
-                    onPointerMove={handleResizeHandlePointerMove}
-                    onPointerUp={handleResizeHandlePointerEnd}
-                    onPointerCancel={handleResizeHandlePointerEnd}
-                    onClick={(event) => event.stopPropagation()}
-                    className="absolute -right-3 -bottom-3 w-7 h-7 rounded-full bg-[#FF4D6D] border border-white/40 text-white text-[10px] font-bold flex items-center justify-center shadow-lg"
-                    aria-label="텍스트 크기 조절"
+                    onClick={() => setIsExampleOpen(true)}
+                    className="h-11 min-w-[96px] rounded-full bg-[#FF4D6D] px-4 text-xs font-semibold shadow-lg"
                   >
-                    ↔
+                    예시 보기
                   </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 flex items-center justify-center gap-2">
-            {guideImageSrc && (
-              <button
-                type="button"
-                onClick={handleGuideImageToggle}
-                className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white/85"
-              >
-                가이드 이미지: {isGuideImageVisible ? 'ON' : 'OFF'}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleCaptionToggleBox}
-              disabled={!showCaptionOverlay}
-              className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white/85 disabled:opacity-40"
-            >
-              텍스트 박스: {activeCaptionStyle.boxed ? 'ON' : 'OFF'}
-            </button>
-          </div>
-
-          <div className="mt-6 flex items-center justify-center gap-3">
-            {cuts.map((cut, index) => {
-              const clip = clips[index];
-              const isActive = index === activeCutIndex;
-              return (
-                <button
-                  key={cut.id}
-                  type="button"
-                  onClick={() => {
-                    if (fixedClipErrors[index]) {
-                      retryFixedClip(index);
-                      return;
-                    }
-                    if (recordingStatus === 'recording') return;
-                    setActiveCutIndex(index);
-                  }}
-                  className={`relative flex flex-col items-center justify-center w-20 h-24 rounded-2xl border-2 transition-all ${
-                    isActive ? 'border-[#FF4D6D] bg-white/10' : 'border-white/10 bg-white/5'
-                  }`}
-                >
-                  {clip ? (
-                    <video
-                      src={clip.url}
-                      muted
-                      playsInline
-                      preload="metadata"
-                      poster={clipPosters[index] || undefined}
-                      className="absolute inset-0 h-full w-full object-cover rounded-2xl"
-                    />
-                  ) : (
-                    <Plus className="w-6 h-6 text-white/40" />
-                  )}
-                  <span className="absolute bottom-2 text-xs text-white/70">{cut.label}</span>
-                  {clip && (
-                    <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white">
-                      <Check className="w-3 h-3" />
-                    </span>
-                  )}
-                  {cut.isFixed && !clip && !fixedClipErrors[index] && (
-                    <span className="absolute top-2 left-2 rounded-full bg-white/20 px-2 py-0.5 text-[10px] text-white/70">
-                      고정
-                    </span>
-                  )}
-                  {fixedClipErrors[index] && (
-                    <span className="absolute top-2 left-2 rounded-full bg-rose-500/80 px-2 py-0.5 text-[10px] text-white">
-                      오류
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-6 flex items-center justify-center">
-            {allDone ? (
-              <button
-                type="button"
-                onClick={handleComplete}
-                className="w-full rounded-full bg-[#FF4D6D] py-4 text-base font-semibold shadow-lg"
-              >
-                ✓ 완료하기
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={recordingStatus === 'recording' ? stopRecording : startRecording}
-                disabled={isRecordDisabled}
-                className={`relative w-20 h-20 rounded-full border-4 flex items-center justify-center shadow-2xl ${
-                  isRecordDisabled
-                    ? 'border-white/20'
-                    : 'border-[#FF4D6D]'
-                }`}
-              >
-                <span
-                  className={`transition-all ${
-                    recordingStatus === 'recording'
-                      ? 'w-8 h-8 rounded-lg bg-[#FF4D6D]'
-                      : 'w-12 h-12 rounded-full bg-white'
-                  }`}
-                />
-              </button>
-            )}
-          </div>
-
-          {recordingElapsedSeconds !== null && (
-            <div className="mt-3 text-center">
-              <p
-                className={`text-sm ${
-                  activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
-                  isRecommendedTimingExceeded
-                    ? 'text-rose-400 font-semibold'
-                    : 'text-white/70'
-                }`}
-              >
-                {activeCutDurationMode === DURATION_MODE_FORCED
-                  ? `${forcedRemainingSeconds}s 남음`
-                  : `${elapsedSeconds}s 경과`}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {allDone && (
-          <div className="mt-6 flex flex-col items-center gap-5">
-            <div className="flex items-center gap-3">
-              {clips.map((clip, index) => (
-                <div
-                  key={`thumb-${cuts[index]?.id ?? index}`}
-                  className="relative w-16 h-20 rounded-xl overflow-hidden border-2 border-emerald-400"
-                >
-                  {clip && (
-                    <video
-                      src={clip.url}
-                      muted
-                      playsInline
-                      preload="metadata"
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                  )}
-                  <span className="absolute bottom-1 left-0 right-0 text-center text-[10px] text-white/80">
-                    {cuts[index]?.label ?? ''}
-                  </span>
                 </div>
-              ))}
+
+                <div
+                  ref={cameraFrameRef}
+                  className="relative flex w-full aspect-[9/16] items-center justify-center overflow-hidden rounded-[24px] bg-[#243246]"
+                  onPointerDownCapture={(event) => {
+                    if (editingCaptionCutIndex !== activeCutIndex) return;
+                    const targetNode = event.target as Node;
+                    if (captionOverlayRef.current?.contains(targetNode)) return;
+                    setEditingCaptionCutIndex(null);
+                  }}
+                >
+                  {isActiveCutFixed ? (
+                    activeFixedError ? (
+                      <div className="space-y-3 px-6 text-center text-sm text-white/70">
+                        <p>{activeFixedError}</p>
+                        <button
+                          type="button"
+                          onClick={() => retryFixedClip(activeCutIndex)}
+                          className="h-10 rounded-full bg-white/10 px-4 text-xs text-white/80"
+                        >
+                          다시 불러오기
+                        </button>
+                      </div>
+                    ) : activeClip ? (
+                      <video
+                        src={activeClip.url}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        poster={clipPosters[activeCutIndex] || undefined}
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="px-6 text-center text-sm text-white/70">
+                        고정 영상을 불러오는 중입니다...
+                      </div>
+                    )
+                  ) : activeUploadError ? (
+                    <div className="space-y-3 px-6 text-center text-sm text-white/70">
+                      <p>{activeUploadError}</p>
+                      <button
+                        type="button"
+                        onClick={handleResetCut}
+                        className="h-10 rounded-full bg-white/10 px-4 text-xs text-white/80"
+                      >
+                        다시 촬영하기
+                      </button>
+                    </div>
+                  ) : cameraError ? (
+                    <div className="px-6 text-center text-sm text-white/70">{cameraError}</div>
+                  ) : (
+                    <>
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                      {guideImageSrc && isGuideImageVisible && (
+                        <img
+                          src={guideImageSrc}
+                          alt="가이드 이미지"
+                          className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-70"
+                        />
+                      )}
+                      <div className="relative text-center text-white/40">
+                        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-white/20">
+                          <span className="text-sm">📷</span>
+                        </div>
+                        카메라 뷰
+                      </div>
+                    </>
+                  )}
+
+                  {showCaptionOverlay && (
+                    <div
+                      ref={captionOverlayRef}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setEditingCaptionCutIndex(activeCutIndex);
+                      }}
+                      onPointerDown={handleCaptionPointerDown}
+                      onPointerMove={handleCaptionPointerMove}
+                      onPointerUp={handleCaptionPointerEnd}
+                      onPointerCancel={handleCaptionPointerEnd}
+                      className="absolute z-20 max-w-[85%] select-none"
+                      style={{
+                        left: `${activeCaptionStyle.xRatio * 100}%`,
+                        top: `${activeCaptionStyle.yRatio * 100}%`,
+                        transform: 'translate(-50%, -50%)',
+                        touchAction: 'none',
+                        cursor:
+                          editingCaptionCutIndex === activeCutIndex ? 'text' : 'move',
+                        fontSize: `${Math.round(28 * activeCaptionStyle.scale)}px`,
+                        lineHeight: 1.25,
+                        padding: activeCaptionStyle.boxed
+                          ? `${Math.round(8 * activeCaptionStyle.scale)}px ${Math.round(
+                              16 * activeCaptionStyle.scale
+                            )}px`
+                          : '0px',
+                        borderRadius: `${Math.round(18 * activeCaptionStyle.scale)}px`,
+                        backgroundColor: activeCaptionStyle.boxed
+                          ? 'rgba(0, 0, 0, 0.5)'
+                          : 'transparent',
+                        boxShadow: activeCaptionStyle.boxed
+                          ? '0 8px 20px rgba(0,0,0,0.28)'
+                          : 'none',
+                      }}
+                    >
+                      {editingCaptionCutIndex === activeCutIndex ? (
+                        <input
+                          ref={captionInputRef}
+                          value={activeCaptionText}
+                          onChange={(event) => handleCaptionTextChange(event.target.value)}
+                          onBlur={() => setEditingCaptionCutIndex(null)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              setEditingCaptionCutIndex(null);
+                            }
+                          }}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          placeholder="Text"
+                          className="w-full min-w-[140px] max-w-[75vw] bg-transparent text-center font-semibold text-white placeholder:text-white/60 focus:outline-none"
+                        />
+                      ) : (
+                        <span
+                          className={`block text-center font-semibold whitespace-pre-wrap break-words ${
+                            hasCaptionText ? 'text-white' : 'text-white/55'
+                          }`}
+                        >
+                          {hasCaptionText ? activeCaptionText : 'Text'}
+                        </span>
+                      )}
+                      {editingCaptionCutIndex !== activeCutIndex && (
+                        <button
+                          type="button"
+                          onPointerDown={handleResizeHandlePointerDown}
+                          onPointerMove={handleResizeHandlePointerMove}
+                          onPointerUp={handleResizeHandlePointerEnd}
+                          onPointerCancel={handleResizeHandlePointerEnd}
+                          onClick={(event) => event.stopPropagation()}
+                          className="absolute -right-3 -bottom-3 flex h-7 w-7 items-center justify-center rounded-full border border-white/40 bg-[#FF4D6D] text-[10px] font-bold text-white shadow-lg"
+                          aria-label="텍스트 크기 조절"
+                        >
+                          ↔
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="pointer-events-none absolute inset-x-3 top-3 z-30 space-y-2">
+                    <div className="pointer-events-auto">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={handleGuideImageToggle}
+                          disabled={!guideImageSrc}
+                          className="h-10 min-w-0 w-full rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          가이드 이미지 {isGuideImageVisible ? 'ON' : 'OFF'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCaptionToggleBox}
+                          disabled={!showCaptionOverlay}
+                          className="h-10 min-w-0 w-full rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:opacity-40"
+                        >
+                          텍스트 박스 {activeCaptionStyle.boxed ? 'ON' : 'OFF'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {isActiveCutFixed && (
+                      <p className="rounded-lg bg-black/35 px-3 py-1.5 text-center text-[11px] text-white/80">
+                        고정 영상 컷입니다. 촬영 없이 자동으로 완료됩니다.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-3 pb-4 pt-16">
+                    <div className="pointer-events-auto space-y-3">
+                      <div className="flex items-end justify-center gap-2">
+                        {cuts.map((cut, index) => {
+                          const clip = clips[index];
+                          const isActive = index === activeCutIndex;
+                          return (
+                            <button
+                              key={cut.id}
+                              type="button"
+                              onClick={() => {
+                                if (fixedClipErrors[index]) {
+                                  retryFixedClip(index);
+                                  return;
+                                }
+                                if (recordingStatus === 'recording') return;
+                                setActiveCutIndex(index);
+                              }}
+                              className={`relative h-[92px] w-[52px] overflow-hidden rounded-xl border-2 transition-all ${
+                                isActive ? 'border-[#FF4D6D] bg-white/10' : 'border-white/15 bg-black/30'
+                              }`}
+                            >
+                              {clip ? (
+                                <video
+                                  src={clip.url}
+                                  muted
+                                  playsInline
+                                  preload="metadata"
+                                  poster={clipPosters[index] || undefined}
+                                  className="absolute inset-0 h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                  <Plus className="h-6 w-6 text-white/45" />
+                                </div>
+                              )}
+                              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-white/85">
+                                {cut.label}
+                              </span>
+                              {clip && (
+                                <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
+                                  <Check className="h-3 w-3" />
+                                </span>
+                              )}
+                              {cut.isFixed && !clip && !fixedClipErrors[index] && (
+                                <span className="absolute left-1.5 top-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] text-white/75">
+                                  고정
+                                </span>
+                              )}
+                              {fixedClipErrors[index] && (
+                                <span className="absolute left-1.5 top-1.5 rounded-full bg-rose-500/80 px-1.5 py-0.5 text-[10px] text-white">
+                                  오류
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {allDone ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsResetOpen(true)}
+                            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/35 bg-black/35 text-white/80"
+                            aria-label="촬영 다시 시도"
+                          >
+                            <RotateCcw className="h-5 w-5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleComplete}
+                            className="h-12 w-full rounded-full bg-[#FF4D6D] px-4 text-sm font-semibold shadow-lg"
+                          >
+                            ✓ 완료하기
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center">
+                          <button
+                            type="button"
+                            onClick={recordingStatus === 'recording' ? stopRecording : startRecording}
+                            disabled={isRecordDisabled}
+                            className={`relative flex h-20 w-20 items-center justify-center rounded-full border-4 shadow-2xl ${
+                              isRecordDisabled ? 'border-white/20' : 'border-[#FF4D6D]'
+                            }`}
+                          >
+                            <span
+                              className={`transition-all ${
+                                recordingStatus === 'recording'
+                                  ? 'h-8 w-8 rounded-lg bg-[#FF4D6D]'
+                                  : 'h-12 w-12 rounded-full bg-white'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      )}
+
+                      {recordingElapsedSeconds !== null && (
+                        <div className="text-center">
+                          <p
+                            className={`text-sm ${
+                              activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
+                              isRecommendedTimingExceeded
+                                ? 'font-semibold text-rose-400'
+                                : 'text-white/75'
+                            }`}
+                          >
+                            {activeCutDurationMode === DURATION_MODE_FORCED
+                              ? `${forcedRemainingSeconds}s 남음`
+                              : `${elapsedSeconds}s 경과`}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsResetOpen(true)}
-              className="w-16 h-16 rounded-full border-2 border-white/30 flex items-center justify-center text-white/70"
-            >
-              <RotateCcw className="w-6 h-6" />
-            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {isExampleOpen && (
