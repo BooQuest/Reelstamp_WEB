@@ -1449,7 +1449,9 @@ function ReelsMakerInner() {
         const statusCode =
           typeof payload?.status === 'number' ? payload.status : response.status;
         const errorCode =
-          typeof payload?.errorCode === 'string' ? payload.errorCode : 'UNKNOWN';
+          payload && 'errorCode' in payload && typeof payload.errorCode === 'string'
+            ? payload.errorCode
+            : 'UNKNOWN';
         const backendMessage =
           typeof payload?.message === 'string' && payload.message.trim().length > 0
             ? payload.message
