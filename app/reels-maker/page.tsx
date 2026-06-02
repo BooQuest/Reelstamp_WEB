@@ -3989,36 +3989,42 @@ function ReelsMakerInner() {
                 <div className="space-y-3">
                   <div
                     ref={trimTimelineRef}
-                    className="relative h-20 overflow-hidden rounded-xl border border-white/10 bg-black/40 touch-none select-none"
+                    className="relative h-20 rounded-xl border border-white/10 bg-black/40 touch-none select-none"
                     onPointerDown={handleTrimScrubPointerDown}
                   >
-                    {trimThumbnails.length > 0 ? (
-                      <div className="flex h-full">
-                        {trimThumbnails.map((thumbnail, index) => (
-                          <img
-                            key={`${thumbnail}-${index}`}
-                            src={thumbnail}
-                            alt=""
-                            aria-hidden
-                            className="min-w-0 flex-1 object-cover"
+                    <div className="absolute inset-0 overflow-hidden rounded-xl">
+                      {trimThumbnails.length > 0 ? (
+                        <div className="flex h-full">
+                          {trimThumbnails.map((thumbnail, index) => (
+                            <img
+                              key={`${thumbnail}-${index}`}
+                              src={thumbnail}
+                              alt=""
+                              aria-hidden
+                              className="min-w-0 flex-1 object-cover"
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-[11px] text-white/55">
+                          타임라인 미리보기 생성 중...
+                        </div>
+                      )}
+                      {trimSliderMax > 0 && (
+                        <>
+                          <div
+                            className="pointer-events-none absolute inset-y-0 left-0 bg-black/60"
+                            style={{ width: `${secondsToTimelineX(trimStartSeconds)}%` }}
                           />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-[11px] text-white/55">
-                        타임라인 미리보기 생성 중...
-                      </div>
-                    )}
+                          <div
+                            className="pointer-events-none absolute inset-y-0 right-0 bg-black/60"
+                            style={{ width: `${100 - secondsToTimelineX(trimEndSeconds)}%` }}
+                          />
+                        </>
+                      )}
+                    </div>
                     {trimSliderMax > 0 && (
                       <>
-                        <div
-                          className="pointer-events-none absolute inset-y-0 left-0 bg-black/60"
-                          style={{ width: `${secondsToTimelineX(trimStartSeconds)}%` }}
-                        />
-                        <div
-                          className="pointer-events-none absolute inset-y-0 right-0 bg-black/60"
-                          style={{ width: `${100 - secondsToTimelineX(trimEndSeconds)}%` }}
-                        />
                         <div
                           className={`absolute inset-y-0 z-20 rounded-md border-2 bg-white/10 ${
                             activeTrimDrag === 'window' ? 'border-[#4DE8FF]' : 'border-white/90'
@@ -4055,11 +4061,15 @@ function ReelsMakerInner() {
                           />
                         </div>
                         <div
-                          className="absolute inset-y-0 z-40 w-7 -translate-x-1/2 cursor-ew-resize touch-none"
-                          style={{ left: `${secondsToTimelineX(trimScrubSeconds)}%` }}
+                          className="absolute z-40 w-7 -translate-x-1/2 cursor-ew-resize touch-none"
+                          style={{
+                            left: `${secondsToTimelineX(trimScrubSeconds)}%`,
+                            top: '-4px',
+                            height: 'calc(100% + 8px)',
+                          }}
                           onPointerDown={(event) => handleTrimPointerDown(event, 'scrub')}
                         >
-                          <div className="pointer-events-none absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2 rounded-full bg-[#4DE8FF]" />
+                          <div className="pointer-events-none absolute left-1/2 top-0 h-full w-[2px] -translate-x-1/2 rounded-full bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]" />
                         </div>
                       </>
                     )}
