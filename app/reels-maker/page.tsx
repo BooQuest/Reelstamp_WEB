@@ -7,21 +7,27 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
+  Camera,
   ChevronLeft,
   ChevronRight,
   Check,
   Download,
+  Image as ImageIcon,
+  Loader2,
   Music2,
+  Pause,
   Play,
   Plus,
   RotateCcw,
   Share2,
   Sparkles,
+  SwitchCamera,
   X,
 } from 'lucide-react';
 import type { WebApiResponse } from '@/app/lib/api/auth';
@@ -44,6 +50,7 @@ type ClipInfo = {
 type RecorderStatus = 'idle' | 'recording' | 'done';
 type Stage = 'capture' | 'processing' | 'preview';
 type CutDurationMode = 'RECOMMENDED' | 'FORCED';
+type CameraFacingMode = 'environment' | 'user';
 
 type TemplateCut = {
   order: number;
@@ -140,10 +147,27 @@ type CaptionGestureState = {
   startScale: number;
 };
 
+type VideoMetadata = {
+  duration: number;
+  width: number;
+  height: number;
+};
+
+type TrimDragMode = 'none' | 'start' | 'end' | 'window' | 'scrub';
+type TrimDragStartState = {
+  pointerX: number;
+  startSeconds: number;
+  endSeconds: number;
+  scrubSeconds: number;
+};
+
 const MIN_CAPTION_SCALE = 0.6;
 const MAX_CAPTION_SCALE = 2.2;
 const MIN_CAPTION_MAX_WIDTH_RATIO = 0.5;
 const MAX_CAPTION_MAX_WIDTH_RATIO = 0.95;
+const MIN_TRIM_DURATION_SECONDS = 0.3;
+const DEFAULT_GALLERY_CLIP_DURATION_SECONDS = 3;
+const TIMELINE_THUMBNAIL_COUNT = 10;
 const DURATION_MODE_RECOMMENDED: CutDurationMode = 'RECOMMENDED';
 const DURATION_MODE_FORCED: CutDurationMode = 'FORCED';
 const RECOMMENDED_AUTO_STOP_SECONDS = 60;
@@ -168,6 +192,13 @@ const DEFAULT_CAPTION_STYLE: CaptionStyle = {
 
 const clampValue = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+};
 
 const normalizeCaptionStyle = (style: CaptionStyle): CaptionStyle => ({
   xRatio: clampValue(style.xRatio, 0, 1),
@@ -194,6 +225,16 @@ function ReelsMakerInner() {
   const cameraFrameRef = useRef<HTMLDivElement | null>(null);
   const captionOverlayRef = useRef<HTMLDivElement | null>(null);
   const captionInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryFileInputRef = useRef<HTMLInputElement | null>(null);
+  const trimPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const trimViewportRef = useRef<HTMLDivElement | null>(null);
+  const trimMeasureRef = useRef<HTMLDivElement | null>(null);
+  const trimPreviewContainerRef = useRef<HTMLDivElement | null>(null);
+  const trimTimelineRef = useRef<HTMLDivElement | null>(null);
+  const trimPlaybackRafRef = useRef<number | null>(null);
+  const trimDragPointerIdRef = useRef<number | null>(null);
+  const trimDragStartRef = useRef<TrimDragStartState | null>(null);
+  const trimBoundsRef = useRef({ start: 0, end: 0, scrub: 0 });
   const captureViewportRef = useRef<HTMLDivElement | null>(null);
   const captureContentRef = useRef<HTMLDivElement | null>(null);
   const captureMeasureRef = useRef<HTMLDivElement | null>(null);
@@ -204,6 +245,7 @@ function ReelsMakerInner() {
   const recordingCutRef = useRef<number>(0);
   const recordingMimeTypeRef = useRef<string>('video/webm');
   const cameraSetupInProgressRef = useRef(false);
+  const switchCameraInProgressRef = useRef(false);
   const latestClipsRef = useRef<Array<ClipInfo | null>>([]);
   const captionGestureRef = useRef<CaptionGestureState>({
     mode: 'none',
@@ -247,6 +289,22 @@ function ReelsMakerInner() {
   const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
   const [fixedClipErrors, setFixedClipErrors] = useState<Record<number, string>>({});
   const [clipPosters, setClipPosters] = useState<Record<number, string>>({});
+  const [cameraFacingMode, setCameraFacingMode] = useState<CameraFacingMode>('environment');
+  const [galleryError, setGalleryError] = useState<string | null>(null);
+  const [isGalleryProcessing, setIsGalleryProcessing] = useState(false);
+  const [isTrimOpen, setIsTrimOpen] = useState(false);
+  const [trimSourceFile, setTrimSourceFile] = useState<File | null>(null);
+  const [trimSourceUrl, setTrimSourceUrl] = useState<string | null>(null);
+  const [trimSourceMetadata, setTrimSourceMetadata] = useState<VideoMetadata | null>(null);
+  const [trimStartSeconds, setTrimStartSeconds] = useState(0);
+  const [trimEndSeconds, setTrimEndSeconds] = useState(0);
+  const [trimScrubSeconds, setTrimScrubSeconds] = useState(0);
+  const [isTrimPlaying, setIsTrimPlaying] = useState(false);
+  const [activeTrimDrag, setActiveTrimDrag] = useState<TrimDragMode>('none');
+  const [trimPreviewMaxHeight, setTrimPreviewMaxHeight] = useState<number | null>(null);
+  const [trimThumbnails, setTrimThumbnails] = useState<string[]>([]);
+  const [isTrimPreparing, setIsTrimPreparing] = useState(false);
+  const [trimError, setTrimError] = useState<string | null>(null);
   const [exampleImageLoadedByCutKey, setExampleImageLoadedByCutKey] = useState<Record<string, boolean>>(
     {}
   );
@@ -326,6 +384,21 @@ function ReelsMakerInner() {
     (!isActiveCutFixed || Boolean(activeClip));
   const isRecordDisabled =
     isActiveCutFixed || isUploadingActiveCut || isSessionLoading || !sessionId;
+  const isGalleryDisabled =
+    isActiveCutFixed ||
+    isUploadingActiveCut ||
+    isSessionLoading ||
+    !sessionId ||
+    recordingStatus === 'recording' ||
+    isGalleryProcessing ||
+    isTrimPreparing ||
+    isTrimOpen;
+  const isSwitchCameraDisabled =
+    recordingStatus === 'recording' ||
+    isActiveCutFixed ||
+    isGalleryProcessing ||
+    isTrimPreparing ||
+    isTrimOpen;
   const guideImageSrc = useMemo(() => {
     if (!activeCut?.guideImageUrl) return null;
     return activeCut.guideImageUrl;
@@ -374,6 +447,14 @@ function ReelsMakerInner() {
     recordingStatus === 'recording' &&
     activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
     isRecommendedTimingExceeded;
+  const trimDurationSeconds = Math.max(0, trimEndSeconds - trimStartSeconds);
+  const trimSliderMax = trimSourceMetadata?.duration ?? 0;
+  const recommendedTrimSeconds =
+    activeCutDurationSeconds > 0 ? activeCutDurationSeconds : trimDurationSeconds;
+  const minTrimDurationForSource = Math.min(
+    MIN_TRIM_DURATION_SECONDS,
+    trimSliderMax > 0 ? trimSliderMax : MIN_TRIM_DURATION_SECONDS
+  );
 
   const resetCaptionGesture = useCallback(() => {
     const gesture = captionGestureRef.current;
@@ -475,6 +556,249 @@ function ReelsMakerInner() {
     setExampleReelIndex((prev) => Math.min(exampleReelUrls.length - 1, prev + 1));
   }, [exampleReelUrls.length]);
 
+  const pauseTrimPlayback = useCallback(() => {
+    if (trimPlaybackRafRef.current !== null) {
+      cancelAnimationFrame(trimPlaybackRafRef.current);
+      trimPlaybackRafRef.current = null;
+    }
+    const previewVideo = trimPreviewVideoRef.current;
+    if (previewVideo && !previewVideo.paused) {
+      previewVideo.pause();
+    }
+    setIsTrimPlaying(false);
+  }, []);
+
+  const timelineXToSeconds = useCallback(
+    (clientX: number) => {
+      const timeline = trimTimelineRef.current;
+      if (!timeline || trimSliderMax <= 0) return 0;
+      const rect = timeline.getBoundingClientRect();
+      if (rect.width <= 0) return 0;
+      const progress = clampValue((clientX - rect.left) / rect.width, 0, 1);
+      return progress * trimSliderMax;
+    },
+    [trimSliderMax]
+  );
+
+  const secondsToTimelineX = useCallback(
+    (seconds: number) => {
+      if (trimSliderMax <= 0) return 0;
+      return clampValue((seconds / trimSliderMax) * 100, 0, 100);
+    },
+    [trimSliderMax]
+  );
+
+  const handleTrimPlayToggle = useCallback(async () => {
+    const previewVideo = trimPreviewVideoRef.current;
+    if (!previewVideo || !trimSourceMetadata) return;
+
+    if (isTrimPlaying) {
+      pauseTrimPlayback();
+      return;
+    }
+
+    const startAt = clampValue(trimScrubSeconds, trimStartSeconds, trimEndSeconds);
+    if (trimEndSeconds - startAt < 0.02) {
+      setTrimScrubSeconds(trimEndSeconds);
+      return;
+    }
+
+    try {
+      previewVideo.currentTime = startAt;
+      const playPromise = previewVideo.play();
+      if (playPromise) {
+        await playPromise;
+      }
+      setIsTrimPlaying(true);
+      setTrimError(null);
+    } catch {
+      setIsTrimPlaying(false);
+      setTrimError('미리보기를 재생하지 못했습니다.');
+    }
+  }, [
+    isTrimPlaying,
+    pauseTrimPlayback,
+    trimEndSeconds,
+    trimScrubSeconds,
+    trimSourceMetadata,
+    trimStartSeconds,
+  ]);
+
+  const handleTrimPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>, dragMode: Exclude<TrimDragMode, 'none'>) => {
+      if (trimSliderMax <= 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      pauseTrimPlayback();
+      trimDragPointerIdRef.current = event.pointerId;
+      trimDragStartRef.current = {
+        pointerX: event.clientX,
+        startSeconds: trimStartSeconds,
+        endSeconds: trimEndSeconds,
+        scrubSeconds: trimScrubSeconds,
+      };
+      setActiveTrimDrag(dragMode);
+      setTrimError(null);
+    },
+    [pauseTrimPlayback, trimEndSeconds, trimScrubSeconds, trimSliderMax, trimStartSeconds]
+  );
+
+  const handleTrimScrubPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (trimSliderMax <= 0) return;
+      const rawSeconds = timelineXToSeconds(event.clientX);
+      const currentStart = trimBoundsRef.current.start;
+      const currentEnd = trimBoundsRef.current.end;
+      const safeScrub = clampValue(rawSeconds, currentStart, currentEnd);
+      setTrimScrubSeconds(safeScrub);
+      handleTrimPointerDown(event, 'scrub');
+    },
+    [handleTrimPointerDown, timelineXToSeconds, trimSliderMax]
+  );
+
+  const resetTrimState = useCallback(() => {
+    pauseTrimPlayback();
+    trimDragPointerIdRef.current = null;
+    trimDragStartRef.current = null;
+    setTrimSourceFile(null);
+    setTrimSourceMetadata(null);
+    setTrimStartSeconds(0);
+    setTrimEndSeconds(0);
+    setTrimScrubSeconds(0);
+    setActiveTrimDrag('none');
+    setTrimPreviewMaxHeight(null);
+    setTrimThumbnails([]);
+    setIsTrimPreparing(false);
+    setTrimError(null);
+    setTrimSourceUrl((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+      return null;
+    });
+  }, [pauseTrimPlayback]);
+
+  const closeTrimModal = useCallback(() => {
+    setIsTrimOpen(false);
+    resetTrimState();
+  }, [resetTrimState]);
+
+  const loadVideoMetadataFromUrl = useCallback(async (url: string): Promise<VideoMetadata> => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.playsInline = true;
+    video.muted = true;
+    video.src = url;
+
+    const metadata = await new Promise<VideoMetadata>((resolve, reject) => {
+      const onLoadedMetadata = () => {
+        cleanup();
+        const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+        const width = video.videoWidth || 720;
+        const height = video.videoHeight || 1280;
+        resolve({ duration, width, height });
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error('영상 정보를 불러오지 못했습니다.'));
+      };
+      const cleanup = () => {
+        video.removeEventListener('loadedmetadata', onLoadedMetadata);
+        video.removeEventListener('error', onError);
+      };
+      video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+      video.addEventListener('error', onError, { once: true });
+    });
+
+    video.src = '';
+    return metadata;
+  }, []);
+
+  const seekVideoTo = useCallback(async (video: HTMLVideoElement, time: number) => {
+    if (Math.abs(video.currentTime - time) < 0.02) {
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const onSeeked = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error('영상 탐색 중 오류가 발생했습니다.'));
+      };
+      const cleanup = () => {
+        video.removeEventListener('seeked', onSeeked);
+        video.removeEventListener('error', onError);
+      };
+      video.addEventListener('seeked', onSeeked, { once: true });
+      video.addEventListener('error', onError, { once: true });
+      video.currentTime = time;
+    });
+  }, []);
+
+  const generateTimelineThumbnails = useCallback(
+    async (url: string, metadata: VideoMetadata): Promise<string[]> => {
+      const video = document.createElement('video');
+      video.src = url;
+      video.preload = 'auto';
+      video.playsInline = true;
+      video.muted = true;
+
+      await new Promise<void>((resolve, reject) => {
+        const onLoadedData = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = () => {
+          cleanup();
+          reject(new Error('썸네일을 생성하지 못했습니다.'));
+        };
+        const cleanup = () => {
+          video.removeEventListener('loadeddata', onLoadedData);
+          video.removeEventListener('error', onError);
+        };
+        video.addEventListener('loadeddata', onLoadedData, { once: true });
+        video.addEventListener('error', onError, { once: true });
+      });
+
+      const sourceWidth = metadata.width || video.videoWidth || 720;
+      const sourceHeight = metadata.height || video.videoHeight || 1280;
+      const ratio = sourceWidth / Math.max(1, sourceHeight);
+      const thumbnailHeight = 72;
+      const thumbnailWidth = Math.max(48, Math.round(thumbnailHeight * ratio));
+      const canvas = document.createElement('canvas');
+      canvas.width = thumbnailWidth;
+      canvas.height = thumbnailHeight;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        throw new Error('썸네일 캔버스를 준비하지 못했습니다.');
+      }
+
+      const maxFrameCount = Math.min(
+        TIMELINE_THUMBNAIL_COUNT,
+        Math.max(2, Math.ceil(metadata.duration || 2))
+      );
+      const thumbnails: string[] = [];
+      for (let i = 0; i < maxFrameCount; i += 1) {
+        const progress = maxFrameCount === 1 ? 0 : i / (maxFrameCount - 1);
+        const targetTime = Math.max(0, (metadata.duration || 0) * progress);
+        try {
+          await seekVideoTo(video, targetTime);
+        } catch {
+          // iOS 일부 환경에서 마지막 seek가 실패할 수 있어 가능한 프레임만 사용한다.
+        }
+        context.clearRect(0, 0, thumbnailWidth, thumbnailHeight);
+        context.drawImage(video, 0, 0, thumbnailWidth, thumbnailHeight);
+        thumbnails.push(canvas.toDataURL('image/jpeg', 0.78));
+      }
+
+      video.src = '';
+      return thumbnails;
+    },
+    [seekVideoTo]
+  );
+
   useEffect(() => {
     if (!templateId) {
       router.replace('/all-templates?reason=select-template');
@@ -523,9 +847,9 @@ function ReelsMakerInner() {
         if (isMounted) {
           setTemplate(normalized);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (isMounted) {
-          setTemplateError(error?.message || '템플릿 정보를 불러오지 못했습니다.');
+          setTemplateError(getErrorMessage(error, '템플릿 정보를 불러오지 못했습니다.'));
         }
       } finally {
         if (isMounted) {
@@ -567,8 +891,8 @@ function ReelsMakerInner() {
       });
       setSessionId(session.sessionId);
       setSessionClipMap(mapping);
-    } catch (error: any) {
-      setSessionError(error?.message || '릴스 제작 세션을 생성하지 못했습니다.');
+    } catch (error: unknown) {
+      setSessionError(getErrorMessage(error, '릴스 제작 세션을 생성하지 못했습니다.'));
       setSessionId(null);
       setSessionClipMap({});
     } finally {
@@ -622,7 +946,11 @@ function ReelsMakerInner() {
     setIsPreviewOpen(false);
     setExampleImageLoadedByCutKey({});
     setExampleImageFailedByCutKey({});
-  }, [template?.id, cuts, resetCaptionGesture]);
+    setGalleryError(null);
+    setIsGalleryProcessing(false);
+    setIsTrimOpen(false);
+    resetTrimState();
+  }, [template?.id, cuts, resetCaptionGesture, resetTrimState]);
 
   useEffect(() => {
     if (cuts.length === 0) return;
@@ -759,60 +1087,80 @@ function ReelsMakerInner() {
     [cuts]
   );
 
-  const setupCamera = useCallback(async () => {
-    if (cameraSetupInProgressRef.current) {
-      return;
-    }
+  const setupCamera = useCallback(
+    async (overrideFacingMode?: CameraFacingMode) => {
+      const targetFacingMode = overrideFacingMode ?? cameraFacingMode;
+      if (cameraSetupInProgressRef.current) {
+        return;
+      }
 
-    cameraSetupInProgressRef.current = true;
-    setCameraError(null);
+      cameraSetupInProgressRef.current = true;
+      setCameraError(null);
 
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError('이 브라우저에서는 카메라 기능을 사용할 수 없습니다.');
-      cameraSetupInProgressRef.current = false;
-      return;
-    }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError('이 브라우저에서는 카메라 기능을 사용할 수 없습니다.');
+        cameraSetupInProgressRef.current = false;
+        return;
+      }
 
-    try {
-      let mediaStream: MediaStream | null = null;
       try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            aspectRatio: 9 / 16,
-            width: { ideal: 1080 },
-            height: { ideal: 1920 },
-          },
-          audio: true,
+        let mediaStream: MediaStream | null = null;
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: targetFacingMode },
+              aspectRatio: 9 / 16,
+              width: { ideal: 1080 },
+              height: { ideal: 1920 },
+            },
+            audio: true,
+          });
+        } catch {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: targetFacingMode } },
+            audio: true,
+          });
+        }
+
+        if (!mediaStream) {
+          setCameraError('카메라를 시작하지 못했습니다.');
+          return;
+        }
+        if (mediaStream.getAudioTracks().length === 0) {
+          setCameraError('마이크 접근이 필요합니다. 권한을 허용해주세요.');
+          mediaStream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        setStream((current) => {
+          if (current && current !== mediaStream) {
+            current.getTracks().forEach((track) => track.stop());
+          }
+          return mediaStream;
         });
       } catch {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: true,
-        });
+        setCameraError('카메라/마이크 접근이 거부되었어요. 권한을 확인해주세요.');
+      } finally {
+        cameraSetupInProgressRef.current = false;
       }
+    },
+    [cameraFacingMode]
+  );
 
-      if (!mediaStream) {
-        setCameraError('카메라를 시작하지 못했습니다.');
-        return;
-      }
-      if (mediaStream.getAudioTracks().length === 0) {
-        setCameraError('마이크 접근이 필요합니다. 권한을 허용해주세요.');
-        mediaStream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-      setStream((current) => {
-        if (current && current !== mediaStream) {
-          current.getTracks().forEach((track) => track.stop());
-        }
-        return mediaStream;
-      });
-    } catch {
-      setCameraError('카메라/마이크 접근이 거부되었어요. 권한을 확인해주세요.');
-    } finally {
-      cameraSetupInProgressRef.current = false;
+  const handleSwitchCamera = useCallback(async () => {
+    if (switchCameraInProgressRef.current || isSwitchCameraDisabled) {
+      return;
     }
-  }, []);
+
+    switchCameraInProgressRef.current = true;
+    try {
+      const nextMode: CameraFacingMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
+      setCameraFacingMode(nextMode);
+      stopCamera();
+      await setupCamera(nextMode);
+    } finally {
+      switchCameraInProgressRef.current = false;
+    }
+  }, [cameraFacingMode, isSwitchCameraDisabled, setupCamera, stopCamera]);
 
   useEffect(() => {
     if (stage === 'capture' && template) {
@@ -852,6 +1200,20 @@ function ReelsMakerInner() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (trimSourceUrl) {
+        URL.revokeObjectURL(trimSourceUrl);
+      }
+    };
+  }, [trimSourceUrl]);
+
+  useEffect(() => {
+    return () => {
+      pauseTrimPlayback();
+    };
+  }, [pauseTrimPlayback]);
+
   const createRecorder = () => {
     if (!stream) return null;
     if (!window.MediaRecorder) return null;
@@ -870,10 +1232,254 @@ function ReelsMakerInner() {
     return recorder;
   };
 
-  const getSupportedMimeType = (types: string[]) => {
+  const getSupportedMimeType = useCallback((types: string[]) => {
     if (!window.MediaRecorder) return null;
     return types.find((type) => MediaRecorder.isTypeSupported(type)) || null;
-  };
+  }, []);
+
+  const captureVideoSegmentToBlob = useCallback(
+    async (
+      sourceUrl: string,
+      metadata: VideoMetadata,
+      startSeconds: number,
+      endSeconds: number
+    ): Promise<{ blob: Blob; mimeType: string; duration: number }> => {
+      const duration = Math.max(MIN_TRIM_DURATION_SECONDS, endSeconds - startSeconds);
+      const preferredTypes = [
+        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+        'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+      ];
+      const mimeType = getSupportedMimeType(preferredTypes);
+
+      const video = document.createElement('video');
+      video.src = sourceUrl;
+      video.crossOrigin = 'anonymous';
+      video.preload = 'auto';
+      video.playsInline = true;
+      video.muted = false;
+
+      await new Promise<void>((resolve, reject) => {
+        const onLoadedData = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = () => {
+          cleanup();
+          reject(new Error('영상을 불러오지 못했습니다.'));
+        };
+        const cleanup = () => {
+          video.removeEventListener('loadeddata', onLoadedData);
+          video.removeEventListener('error', onError);
+        };
+        video.addEventListener('loadeddata', onLoadedData, { once: true });
+        video.addEventListener('error', onError, { once: true });
+      });
+
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (!context || !canvas.captureStream || !window.MediaRecorder) {
+        throw new Error('이 브라우저에서는 영상 구간 편집을 지원하지 않습니다.');
+      }
+
+      const width = metadata.width || video.videoWidth || 720;
+      const height = metadata.height || video.videoHeight || 1280;
+      canvas.width = width;
+      canvas.height = height;
+
+      const captureStream = canvas.captureStream(30);
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      const audioContext = AudioContextClass ? new AudioContextClass() : null;
+      let audioDestination: MediaStreamAudioDestinationNode | null = null;
+
+      if (audioContext) {
+        try {
+          await audioContext.resume();
+          const audioSource = audioContext.createMediaElementSource(video);
+          const gainNode = audioContext.createGain();
+          gainNode.gain.value = 0;
+          audioDestination = audioContext.createMediaStreamDestination();
+          audioSource.connect(audioDestination);
+          audioSource.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+        } catch {
+          audioDestination = null;
+        }
+      }
+
+      const combinedStream = new MediaStream([
+        ...captureStream.getVideoTracks(),
+        ...(audioDestination?.stream.getAudioTracks() ?? []),
+      ]);
+
+      const recorder = new MediaRecorder(combinedStream, mimeType ? { mimeType } : undefined);
+      const chunks: BlobPart[] = [];
+
+      const outputBlob = await new Promise<Blob>(async (resolve, reject) => {
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            chunks.push(event.data);
+          }
+        };
+        recorder.onerror = () => reject(new Error('영상 구간 처리 중 오류가 발생했습니다.'));
+        recorder.onstop = () => {
+          resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || 'video/webm' }));
+        };
+
+        const videoWithFrameCallback = video as HTMLVideoElement & {
+          requestVideoFrameCallback?: (callback: () => void) => number;
+          cancelVideoFrameCallback?: (handle: number) => void;
+        };
+        let rafId = 0;
+        let frameCallbackId = 0;
+        const drawFrame = () => {
+          if (!video.paused && !video.ended && video.readyState >= 2) {
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          }
+          if (!video.paused && !video.ended) {
+            if (videoWithFrameCallback.requestVideoFrameCallback) {
+              frameCallbackId = videoWithFrameCallback.requestVideoFrameCallback(drawFrame);
+            } else {
+              rafId = requestAnimationFrame(drawFrame);
+            }
+          }
+        };
+
+        try {
+          await seekVideoTo(video, Math.max(0, startSeconds));
+          recorder.start();
+          drawFrame();
+
+          video.currentTime = Math.max(0, startSeconds);
+          await new Promise<void>((resolvePlay, rejectPlay) => {
+            const onPlaying = () => {
+              cleanup();
+              resolvePlay();
+            };
+            const onError = () => {
+              cleanup();
+              rejectPlay(new Error('영상 재생에 실패했습니다.'));
+            };
+            const cleanup = () => {
+              video.removeEventListener('playing', onPlaying);
+              video.removeEventListener('error', onError);
+            };
+            video.addEventListener('playing', onPlaying, { once: true });
+            video.addEventListener('error', onError, { once: true });
+            const playPromise = video.play();
+            if (playPromise) {
+              playPromise.catch(onError);
+            }
+          });
+
+          await new Promise<void>((resolveEnd) => {
+            const checkTime = () => {
+              if (video.currentTime >= endSeconds || video.ended) {
+                resolveEnd();
+                return;
+              }
+              requestAnimationFrame(checkTime);
+            };
+            checkTime();
+          });
+          video.pause();
+          if (rafId) cancelAnimationFrame(rafId);
+          if (frameCallbackId && videoWithFrameCallback.cancelVideoFrameCallback) {
+            videoWithFrameCallback.cancelVideoFrameCallback(frameCallbackId);
+          }
+          recorder.stop();
+        } catch (error) {
+          if (recorder.state !== 'inactive') {
+            recorder.stop();
+          }
+          reject(error);
+        }
+      });
+
+      captureStream.getTracks().forEach((track) => track.stop());
+      audioDestination?.stream.getTracks().forEach((track) => track.stop());
+      if (audioContext) {
+        audioContext.close().catch(() => undefined);
+      }
+
+      return {
+        blob: outputBlob,
+        mimeType: outputBlob.type || mimeType || 'video/webm',
+        duration,
+      };
+    },
+    [getSupportedMimeType, seekVideoTo]
+  );
+
+  const imageToVideoBlob = useCallback(
+    async (
+      file: File,
+      durationSeconds: number
+    ): Promise<{ blob: Blob; mimeType: string; duration: number }> => {
+      if (!window.MediaRecorder) {
+        throw new Error('이 브라우저에서는 사진을 영상으로 변환할 수 없습니다.');
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+      const image = document.createElement('img');
+      image.src = objectUrl;
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error('사진을 불러오지 못했습니다.'));
+      });
+
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (!context || !canvas.captureStream) {
+        URL.revokeObjectURL(objectUrl);
+        throw new Error('이 브라우저에서는 사진 변환을 지원하지 않습니다.');
+      }
+
+      const width = image.naturalWidth || 720;
+      const height = image.naturalHeight || 1280;
+      canvas.width = width;
+      canvas.height = height;
+      context.drawImage(image, 0, 0, width, height);
+
+      const preferredTypes = [
+        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+        'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+      ];
+      const mimeType = getSupportedMimeType(preferredTypes);
+      const streamFromCanvas = canvas.captureStream(30);
+      const recorder = new MediaRecorder(streamFromCanvas, mimeType ? { mimeType } : undefined);
+      const chunks: BlobPart[] = [];
+      const outputBlob = await new Promise<Blob>((resolve, reject) => {
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) chunks.push(event.data);
+        };
+        recorder.onerror = () => reject(new Error('사진 변환 중 오류가 발생했습니다.'));
+        recorder.onstop = () => {
+          resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || 'video/webm' }));
+        };
+        recorder.start();
+        window.setTimeout(() => {
+          recorder.stop();
+        }, Math.max(MIN_TRIM_DURATION_SECONDS, durationSeconds) * 1000);
+      });
+
+      streamFromCanvas.getTracks().forEach((track) => track.stop());
+      URL.revokeObjectURL(objectUrl);
+      return {
+        blob: outputBlob,
+        mimeType: outputBlob.type || mimeType || 'video/webm',
+        duration: Math.max(MIN_TRIM_DURATION_SECONDS, durationSeconds),
+      };
+    },
+    [getSupportedMimeType]
+  );
 
   const createPosterFromClip = useCallback(async (clip: ClipInfo) => {
     const video = document.createElement('video');
@@ -972,6 +1578,477 @@ function ReelsMakerInner() {
     [cuts, sessionClipMap, sessionId]
   );
 
+  const saveClipAtIndex = useCallback(
+    async (
+      index: number,
+      clipPayload: { blob: Blob; mimeType: string; duration: number },
+      shouldAdvanceToNextCut: boolean = true
+    ) => {
+      const { blob, mimeType, duration } = clipPayload;
+      const url = URL.createObjectURL(blob);
+
+      setClips((prev) => {
+        const next = [...prev];
+        if (next[index]?.url) {
+          URL.revokeObjectURL(next[index]!.url);
+        }
+        next[index] = {
+          blob,
+          url,
+          duration,
+          mimeType,
+        };
+        return next;
+      });
+
+      try {
+        const poster = await createPosterFromClip({
+          blob,
+          url,
+          duration,
+          mimeType,
+        });
+        setClipPosters((prev) => ({
+          ...prev,
+          [index]: poster,
+        }));
+      } catch {
+        // 포스터 생성 실패는 업로드를 막지 않는다.
+      }
+
+      await uploadRecordedClip(index, blob, mimeType);
+      setRecordingStatus('done');
+      setGalleryError(null);
+      setCameraError(null);
+
+      if (!shouldAdvanceToNextCut) return;
+      if (index >= cuts.length - 1) return;
+
+      const nextCaptureIndex = cuts.findIndex((cut, cutIndex) => cutIndex > index && !cut.isFixed);
+      if (nextCaptureIndex !== -1) {
+        setActiveCutIndex(nextCaptureIndex);
+      } else {
+        setActiveCutIndex(index + 1);
+      }
+    },
+    [createPosterFromClip, cuts, uploadRecordedClip]
+  );
+
+  const openGalleryPicker = useCallback(() => {
+    if (isGalleryDisabled) return;
+    setGalleryError(null);
+    setTrimError(null);
+    galleryFileInputRef.current?.click();
+  }, [isGalleryDisabled]);
+
+  const handleGalleryFileChange = useCallback(
+    async (event: ReactChangeEvent<HTMLInputElement>) => {
+      const input = event.target;
+      const file = input.files?.[0];
+      input.value = '';
+      if (!file) return;
+      if (!activeCut || activeCut.isFixed) return;
+
+      const isVideo = file.type.startsWith('video/');
+      const isImage = file.type.startsWith('image/');
+      if (!isVideo && !isImage) {
+        setGalleryError('사진 또는 영상 파일만 선택할 수 있습니다.');
+        return;
+      }
+
+      setGalleryError(null);
+      setTrimError(null);
+
+      if (isImage) {
+        setIsGalleryProcessing(true);
+        try {
+          const targetDuration =
+            activeCutDurationSeconds > 0
+              ? activeCutDurationSeconds
+              : DEFAULT_GALLERY_CLIP_DURATION_SECONDS;
+          const converted = await imageToVideoBlob(file, targetDuration);
+          await saveClipAtIndex(activeCutIndex, converted, true);
+        } catch (error: unknown) {
+          const message = getErrorMessage(error, '사진을 영상으로 변환하지 못했습니다.');
+          setGalleryError(message);
+          alert(message);
+        } finally {
+          setIsGalleryProcessing(false);
+        }
+        return;
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+      setIsTrimPreparing(true);
+      try {
+        const metadata = await loadVideoMetadataFromUrl(objectUrl);
+        if (!Number.isFinite(metadata.duration) || metadata.duration <= 0) {
+          throw new Error('선택한 영상 길이를 확인하지 못했습니다.');
+        }
+
+        const preferredDuration =
+          activeCutDurationSeconds > 0
+            ? Math.min(metadata.duration, activeCutDurationSeconds)
+            : metadata.duration;
+        const safeStart = 0;
+        const safeEnd = Math.max(
+          Math.min(metadata.duration, preferredDuration),
+          Math.min(metadata.duration, minTrimDurationForSource)
+        );
+        setTrimSourceFile(file);
+        setTrimSourceUrl((current) => {
+          if (current) {
+            URL.revokeObjectURL(current);
+          }
+          return objectUrl;
+        });
+        setTrimSourceMetadata(metadata);
+        setTrimStartSeconds(safeStart);
+        setTrimEndSeconds(safeEnd);
+        setTrimScrubSeconds(safeStart);
+        setActiveTrimDrag('none');
+        setIsTrimPlaying(false);
+        setIsTrimOpen(true);
+        setTrimError(null);
+
+        try {
+          const thumbnails = await generateTimelineThumbnails(objectUrl, metadata);
+          setTrimThumbnails(thumbnails);
+        } catch {
+          setTrimThumbnails([]);
+        }
+      } catch (error: unknown) {
+        URL.revokeObjectURL(objectUrl);
+        const message = getErrorMessage(error, '영상을 준비하지 못했습니다.');
+        setGalleryError(message);
+        setTrimError(message);
+      } finally {
+        setIsTrimPreparing(false);
+      }
+    },
+    [
+      activeCut,
+      activeCutDurationSeconds,
+      activeCutIndex,
+      generateTimelineThumbnails,
+      imageToVideoBlob,
+      loadVideoMetadataFromUrl,
+      minTrimDurationForSource,
+      saveClipAtIndex,
+    ]
+  );
+
+  const handleTrimConfirm = useCallback(async () => {
+    if (!trimSourceUrl || !trimSourceMetadata) {
+      setTrimError('영상 정보가 없습니다.');
+      return;
+    }
+    if (!activeCut || activeCut.isFixed) {
+      setTrimError('현재 컷에는 갤러리 영상을 적용할 수 없습니다.');
+      return;
+    }
+    if (trimDurationSeconds < minTrimDurationForSource) {
+      setTrimError('선택 구간이 너무 짧습니다.');
+      return;
+    }
+
+    pauseTrimPlayback();
+    setIsGalleryProcessing(true);
+    setTrimError(null);
+    try {
+      const converted = await captureVideoSegmentToBlob(
+        trimSourceUrl,
+        trimSourceMetadata,
+        trimStartSeconds,
+        trimEndSeconds
+      );
+      await saveClipAtIndex(activeCutIndex, converted, true);
+      closeTrimModal();
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, '영상 구간을 처리하지 못했습니다.');
+      setTrimError(message);
+      setGalleryError(message);
+    } finally {
+      setIsGalleryProcessing(false);
+    }
+  }, [
+    activeCut,
+    activeCutIndex,
+    captureVideoSegmentToBlob,
+    closeTrimModal,
+    minTrimDurationForSource,
+    pauseTrimPlayback,
+    saveClipAtIndex,
+    trimDurationSeconds,
+    trimEndSeconds,
+    trimSourceMetadata,
+    trimSourceUrl,
+    trimStartSeconds,
+  ]);
+
+  useEffect(() => {
+    trimBoundsRef.current = {
+      start: trimStartSeconds,
+      end: trimEndSeconds,
+      scrub: trimScrubSeconds,
+    };
+  }, [trimEndSeconds, trimScrubSeconds, trimStartSeconds]);
+
+  useEffect(() => {
+    if (!isTrimOpen || !trimSourceMetadata) return;
+    const maxDuration = trimSourceMetadata.duration;
+    if (!Number.isFinite(maxDuration) || maxDuration <= 0) return;
+
+    const epsilon = 0.0001;
+    const safeStart = clampValue(
+      trimStartSeconds,
+      0,
+      Math.max(0, maxDuration - minTrimDurationForSource)
+    );
+    const safeEnd = clampValue(
+      trimEndSeconds,
+      safeStart + minTrimDurationForSource,
+      maxDuration
+    );
+    const safeScrub = clampValue(trimScrubSeconds, safeStart, safeEnd);
+
+    if (Math.abs(safeStart - trimStartSeconds) > epsilon) {
+      setTrimStartSeconds(safeStart);
+    }
+    if (Math.abs(safeEnd - trimEndSeconds) > epsilon) {
+      setTrimEndSeconds(safeEnd);
+    }
+    if (Math.abs(safeScrub - trimScrubSeconds) > epsilon) {
+      setTrimScrubSeconds(safeScrub);
+    }
+  }, [
+    isTrimOpen,
+    minTrimDurationForSource,
+    trimEndSeconds,
+    trimScrubSeconds,
+    trimSourceMetadata,
+    trimStartSeconds,
+  ]);
+
+  useEffect(() => {
+    if (!isTrimOpen || !trimSourceUrl || isTrimPlaying) return;
+    const previewVideo = trimPreviewVideoRef.current;
+    if (!previewVideo) return;
+    const targetSeconds = clampValue(trimScrubSeconds, trimStartSeconds, trimEndSeconds);
+
+    const seekPreview = () => {
+      if (!Number.isFinite(targetSeconds) || targetSeconds < 0) return;
+      try {
+        previewVideo.currentTime = targetSeconds;
+      } catch {
+        // iOS에서는 메타데이터 로드 직후 seek가 실패할 수 있다.
+      }
+    };
+
+    if (previewVideo.readyState >= 1) {
+      seekPreview();
+      return;
+    }
+
+    previewVideo.addEventListener('loadedmetadata', seekPreview, { once: true });
+    return () => {
+      previewVideo.removeEventListener('loadedmetadata', seekPreview);
+    };
+  }, [isTrimOpen, isTrimPlaying, trimEndSeconds, trimScrubSeconds, trimSourceUrl, trimStartSeconds]);
+
+  useEffect(() => {
+    if (!isTrimPlaying) return;
+    const previewVideo = trimPreviewVideoRef.current;
+    if (!previewVideo) {
+      setIsTrimPlaying(false);
+      return;
+    }
+
+    const tick = () => {
+      const currentSeconds = previewVideo.currentTime;
+      if (Number.isFinite(currentSeconds)) {
+        const safeCurrent = clampValue(currentSeconds, trimStartSeconds, trimEndSeconds);
+        setTrimScrubSeconds(safeCurrent);
+        if (currentSeconds >= trimEndSeconds - 0.02) {
+          previewVideo.pause();
+          setTrimScrubSeconds(trimEndSeconds);
+          setIsTrimPlaying(false);
+          trimPlaybackRafRef.current = null;
+          return;
+        }
+      }
+      trimPlaybackRafRef.current = requestAnimationFrame(tick);
+    };
+
+    trimPlaybackRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (trimPlaybackRafRef.current !== null) {
+        cancelAnimationFrame(trimPlaybackRafRef.current);
+        trimPlaybackRafRef.current = null;
+      }
+    };
+  }, [isTrimPlaying, trimEndSeconds, trimStartSeconds]);
+
+  useEffect(() => {
+    if (activeTrimDrag === 'none') return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (trimDragPointerIdRef.current !== event.pointerId || trimSliderMax <= 0) {
+        return;
+      }
+      const dragStart = trimDragStartRef.current;
+      const timeline = trimTimelineRef.current;
+      if (!dragStart || !timeline) return;
+      const rect = timeline.getBoundingClientRect();
+      if (rect.width <= 0) return;
+
+      const deltaSeconds =
+        ((event.clientX - dragStart.pointerX) / Math.max(1, rect.width)) * trimSliderMax;
+
+      if (activeTrimDrag === 'start') {
+        const maxStart = Math.max(0, dragStart.endSeconds - minTrimDurationForSource);
+        const nextStart = clampValue(dragStart.startSeconds + deltaSeconds, 0, maxStart);
+        setTrimStartSeconds(nextStart);
+        setTrimScrubSeconds((prev) => clampValue(prev, nextStart, dragStart.endSeconds));
+        return;
+      }
+
+      if (activeTrimDrag === 'end') {
+        const minEnd = dragStart.startSeconds + minTrimDurationForSource;
+        const nextEnd = clampValue(dragStart.endSeconds + deltaSeconds, minEnd, trimSliderMax);
+        setTrimEndSeconds(nextEnd);
+        setTrimScrubSeconds((prev) => clampValue(prev, dragStart.startSeconds, nextEnd));
+        return;
+      }
+
+      if (activeTrimDrag === 'window') {
+        const windowDuration = Math.max(
+          minTrimDurationForSource,
+          dragStart.endSeconds - dragStart.startSeconds
+        );
+        const maxStart = Math.max(0, trimSliderMax - windowDuration);
+        const nextStart = clampValue(dragStart.startSeconds + deltaSeconds, 0, maxStart);
+        const nextEnd = nextStart + windowDuration;
+        const scrubOffset = dragStart.scrubSeconds - dragStart.startSeconds;
+        const nextScrub = clampValue(nextStart + scrubOffset, nextStart, nextEnd);
+        setTrimStartSeconds(nextStart);
+        setTrimEndSeconds(nextEnd);
+        setTrimScrubSeconds(nextScrub);
+        return;
+      }
+
+      if (activeTrimDrag === 'scrub') {
+        const nextScrub = clampValue(
+          timelineXToSeconds(event.clientX),
+          trimBoundsRef.current.start,
+          trimBoundsRef.current.end
+        );
+        setTrimScrubSeconds(nextScrub);
+      }
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (trimDragPointerIdRef.current !== event.pointerId) return;
+      trimDragPointerIdRef.current = null;
+      trimDragStartRef.current = null;
+      setActiveTrimDrag('none');
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [
+    activeTrimDrag,
+    minTrimDurationForSource,
+    timelineXToSeconds,
+    trimSliderMax,
+  ]);
+
+  useEffect(() => {
+    if (!isTrimOpen) {
+      setTrimPreviewMaxHeight(null);
+      return;
+    }
+
+    let frameId: number | null = null;
+
+    const recalculateTrimPreviewHeight = () => {
+      frameId = null;
+      const viewport = trimViewportRef.current;
+      const measure = trimMeasureRef.current;
+      const previewContainer = trimPreviewContainerRef.current;
+      if (!viewport || !measure || !previewContainer) return;
+
+      let viewportHeight = viewport.clientHeight || window.innerHeight;
+      const visualViewportHeight = window.visualViewport?.height;
+      if (typeof visualViewportHeight === 'number' && Number.isFinite(visualViewportHeight)) {
+        viewportHeight = Math.min(viewportHeight, visualViewportHeight);
+      }
+
+      const previewAvailableWidth =
+        previewContainer.parentElement?.clientWidth || Math.max(0, measure.clientWidth - 32);
+      const naturalPreviewHeight = previewAvailableWidth * (16 / 9);
+      const previewHeight = previewContainer.getBoundingClientRect().height || naturalPreviewHeight;
+      const fixedContentHeight = Math.max(0, measure.scrollHeight - previewHeight);
+      const availablePreviewHeight = viewportHeight - 16 - fixedContentHeight;
+      const nextPreviewHeight = Math.floor(
+        clampValue(availablePreviewHeight, 140, naturalPreviewHeight)
+      );
+
+      setTrimPreviewMaxHeight((prev) =>
+        prev !== null && Math.abs(prev - nextPreviewHeight) < 1 ? prev : nextPreviewHeight
+      );
+    };
+
+    const scheduleRecalculate = () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      frameId = window.requestAnimationFrame(recalculateTrimPreviewHeight);
+    };
+
+    scheduleRecalculate();
+    const settleTimeoutId = window.setTimeout(scheduleRecalculate, 80);
+    const lateSettleTimeoutId = window.setTimeout(scheduleRecalculate, 240);
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleRecalculate) : null;
+    const observedViewport = trimViewportRef.current;
+    const observedMeasure = trimMeasureRef.current;
+
+    if (resizeObserver && observedViewport && observedMeasure) {
+      resizeObserver.observe(observedViewport);
+      resizeObserver.observe(observedMeasure);
+    }
+
+    const visualViewport = window.visualViewport;
+    window.addEventListener('resize', scheduleRecalculate);
+    window.addEventListener('orientationchange', scheduleRecalculate);
+    visualViewport?.addEventListener('resize', scheduleRecalculate);
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      window.clearTimeout(settleTimeoutId);
+      window.clearTimeout(lateSettleTimeoutId);
+      window.removeEventListener('resize', scheduleRecalculate);
+      window.removeEventListener('orientationchange', scheduleRecalculate);
+      visualViewport?.removeEventListener('resize', scheduleRecalculate);
+      resizeObserver?.disconnect();
+    };
+  }, [
+    isGalleryProcessing,
+    isTrimOpen,
+    trimError,
+    trimSourceUrl,
+    trimThumbnails.length,
+  ]);
+
   useEffect(() => {
     if (cuts.length === 0) return;
 
@@ -1020,11 +2097,11 @@ function ReelsMakerInner() {
             delete next[index];
             return next;
           });
-        } catch (error: any) {
+        } catch (error: unknown) {
           if (isCancelled) return;
           setFixedClipErrors((prev) => ({
             ...prev,
-            [index]: error?.message || '고정 영상을 불러오지 못했습니다.',
+            [index]: getErrorMessage(error, '고정 영상을 불러오지 못했습니다.'),
           }));
         }
       }
@@ -1226,7 +2303,7 @@ function ReelsMakerInner() {
       blob: mergedBlob,
       mimeType: mergedBlob.type || mimeType || 'video/webm',
     };
-  }, []);
+  }, [getSupportedMimeType]);
 
   const stopRecording = useCallback(() => {
     if (recordTimeoutRef.current) {
@@ -1288,42 +2365,24 @@ function ReelsMakerInner() {
       const recordedIndex = recordingCutRef.current;
       const mimeType = recorder.mimeType || recordingMimeTypeRef.current || 'video/webm';
       const blob = new Blob(chunksRef.current, { type: mimeType });
-      const url = URL.createObjectURL(blob);
-
-      setClips((prev) => {
-        const next = [...prev];
-        if (next[recordedIndex]?.url) {
-          URL.revokeObjectURL(next[recordedIndex]!.url);
-        }
-        const recordedCut = cuts[recordedIndex];
-        next[recordedIndex] = {
+      const recordedCut = cuts[recordedIndex];
+      saveClipAtIndex(
+        recordedIndex,
+        {
           blob,
-          url,
           duration: recordedCut?.durationSeconds ?? activeCut.durationSeconds,
           mimeType,
-        };
-        return next;
-      });
-
-      setRecordingStatus('done');
-      uploadRecordedClip(recordedIndex, blob, mimeType).catch((error: any) => {
+        },
+        true
+      ).catch((error: unknown) => {
+        const message = getErrorMessage(error, '클립 업로드에 실패했습니다.');
         setClipUploadErrors((prev) => ({
           ...prev,
-          [recordedIndex]: error?.message || '클립 업로드에 실패했습니다.',
+          [recordedIndex]: message,
         }));
         setUploadedCuts((prev) => ({ ...prev, [recordedIndex]: false }));
-        alert(error?.message || '클립 업로드에 실패했습니다. 다시 시도해주세요.');
+        alert(message || '클립 업로드에 실패했습니다. 다시 시도해주세요.');
       });
-      if (recordedIndex < cuts.length - 1) {
-        const nextCaptureIndex = cuts.findIndex(
-          (cut, index) => index > recordedIndex && !cut.isFixed
-        );
-        if (nextCaptureIndex !== -1) {
-          setActiveCutIndex(nextCaptureIndex);
-        } else {
-          setActiveCutIndex(recordedIndex + 1);
-        }
-      }
     };
 
     recorder.start();
@@ -1391,6 +2450,7 @@ function ReelsMakerInner() {
       delete next[activeCutIndex];
       return next;
     });
+    setGalleryError(null);
     setRecordingStatus('idle');
     setIsResetOpen(false);
   };
@@ -1401,8 +2461,11 @@ function ReelsMakerInner() {
       setRecordingElapsedSeconds(null);
       setEditingCaptionCutIndex(null);
       resetCaptionGesture();
+      if (isTrimOpen) {
+        closeTrimModal();
+      }
     }
-  }, [resetCaptionGesture, stage, stopRecording]);
+  }, [closeTrimModal, isTrimOpen, resetCaptionGesture, stage, stopRecording]);
 
   const handleComplete = async () => {
     if (!sessionId) return;
@@ -1848,6 +2911,8 @@ function ReelsMakerInner() {
   useEffect(() => {
     setEditingCaptionCutIndex(null);
     resetCaptionGesture();
+    setGalleryError(null);
+    setTrimError(null);
   }, [activeCutIndex, resetCaptionGesture]);
 
   useEffect(() => {
@@ -2035,6 +3100,10 @@ function ReelsMakerInner() {
     setExampleReelIndex(0);
     setIsResetOpen(false);
     setDownloadToastMessage(null);
+    setGalleryError(null);
+    setIsGalleryProcessing(false);
+    setIsTrimOpen(false);
+    resetTrimState();
     setupCamera();
     createReelsSession();
   };
@@ -2293,6 +3362,13 @@ function ReelsMakerInner() {
           </div>
         </div>
       )}
+      <input
+        ref={galleryFileInputRef}
+        type="file"
+        accept="image/*,video/*"
+        className="hidden"
+        onChange={handleGalleryFileChange}
+      />
       <div
         ref={captureViewportRef}
         className="mx-auto h-full w-full max-w-md overflow-hidden"
@@ -2400,7 +3476,7 @@ function ReelsMakerInner() {
                       )}
                       <div className="relative text-center text-white/40">
                         <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-white/20">
-                          <span className="text-sm">📷</span>
+                          <Camera className="h-6 w-6 text-white/60" />
                         </div>
                         카메라 뷰
                       </div>
@@ -2590,23 +3666,63 @@ function ReelsMakerInner() {
                           </button>
                         </div>
                       ) : (
-                        <div className="flex items-center justify-center">
-                          <button
-                            type="button"
-                            onClick={recordingStatus === 'recording' ? stopRecording : startRecording}
-                            disabled={isRecordDisabled}
-                            className={`relative flex h-20 w-20 items-center justify-center rounded-full border-4 shadow-2xl ${
-                              isRecordDisabled ? 'border-white/20' : 'border-[#FF4D6D]'
-                            }`}
-                          >
-                            <span
-                              className={`transition-all ${
-                                recordingStatus === 'recording'
-                                  ? 'h-8 w-8 rounded-lg bg-[#FF4D6D]'
-                                  : 'h-12 w-12 rounded-full bg-white'
-                              }`}
-                            />
-                          </button>
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-3 items-center">
+                            <div className="flex justify-start">
+                              <button
+                                type="button"
+                                onClick={openGalleryPicker}
+                                disabled={isGalleryDisabled}
+                                className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/35 bg-black/35 disabled:cursor-not-allowed disabled:opacity-45"
+                                aria-label="갤러리에서 불러오기"
+                              >
+                                {isGalleryProcessing || isTrimPreparing ? (
+                                  <Loader2 className="h-5 w-5 animate-spin text-white/75" />
+                                ) : clipPosters[activeCutIndex] ? (
+                                  <img
+                                    src={clipPosters[activeCutIndex]}
+                                    alt=""
+                                    aria-hidden
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <ImageIcon className="h-5 w-5 text-white/80" />
+                                )}
+                              </button>
+                            </div>
+                            <div className="flex justify-center">
+                              <button
+                                type="button"
+                                onClick={recordingStatus === 'recording' ? stopRecording : startRecording}
+                                disabled={isRecordDisabled}
+                                className={`relative flex h-20 w-20 items-center justify-center rounded-full border-4 shadow-2xl ${
+                                  isRecordDisabled ? 'border-white/20' : 'border-[#FF4D6D]'
+                                }`}
+                              >
+                                <span
+                                  className={`transition-all ${
+                                    recordingStatus === 'recording'
+                                      ? 'h-8 w-8 rounded-lg bg-[#FF4D6D]'
+                                      : 'h-12 w-12 rounded-full bg-white'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={handleSwitchCamera}
+                                disabled={isSwitchCameraDisabled}
+                                className="flex h-12 w-12 items-center justify-center rounded-full border border-white/35 bg-black/35 disabled:cursor-not-allowed disabled:opacity-45"
+                                aria-label="전면/후면 카메라 전환"
+                              >
+                                <SwitchCamera className="h-5 w-5 text-white/80" />
+                              </button>
+                            </div>
+                          </div>
+                          {(galleryError || trimError) && (
+                            <p className="text-center text-xs text-rose-300">{galleryError || trimError}</p>
+                          )}
                         </div>
                       )}
 
@@ -2793,6 +3909,193 @@ function ReelsMakerInner() {
                   Instagram에서 열기
                 </a>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isTrimOpen && (
+        <div
+          ref={trimViewportRef}
+          className="fixed inset-0 z-[70] flex items-center justify-center overflow-hidden bg-black/80 py-2"
+        >
+          <div className="w-full max-w-sm px-4">
+            <div
+              ref={trimMeasureRef}
+              className="w-full overflow-hidden rounded-[24px] bg-[#1E2A3B] text-white shadow-2xl"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                <h3 className="text-sm font-semibold">영상 구간 선택</h3>
+                <button
+                  type="button"
+                  onClick={closeTrimModal}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10"
+                  aria-label="구간 선택 닫기"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-4 p-4">
+                <div className="flex justify-center">
+                  {trimSourceUrl ? (
+                    <div
+                      ref={trimPreviewContainerRef}
+                      className="relative aspect-[9/16] overflow-hidden rounded-[18px] bg-black"
+                      style={{
+                        width: trimPreviewMaxHeight
+                          ? `min(100%, ${Math.floor(trimPreviewMaxHeight * 9 / 16)}px)`
+                          : '100%',
+                        maxHeight: trimPreviewMaxHeight
+                          ? `${trimPreviewMaxHeight}px`
+                          : undefined,
+                      }}
+                    >
+                      <video
+                        ref={trimPreviewVideoRef}
+                        src={trimSourceUrl}
+                        playsInline
+                        preload="metadata"
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleTrimPlayToggle}
+                        className="absolute bottom-3 left-3 z-10 inline-flex items-center gap-2 rounded-full bg-black/65 px-3 py-2 text-xs font-semibold text-white backdrop-blur"
+                        aria-label={isTrimPlaying ? '구간 재생 일시정지' : '선택 구간 재생'}
+                      >
+                        {isTrimPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                        {isTrimPlaying ? '일시정지' : '재생'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      ref={trimPreviewContainerRef}
+                      className="flex aspect-[9/16] items-center justify-center rounded-[18px] bg-black text-xs text-white/60"
+                      style={{
+                        width: trimPreviewMaxHeight
+                          ? `min(100%, ${Math.floor(trimPreviewMaxHeight * 9 / 16)}px)`
+                          : '100%',
+                        maxHeight: trimPreviewMaxHeight
+                          ? `${trimPreviewMaxHeight}px`
+                          : undefined,
+                      }}
+                    >
+                      영상 미리보기를 준비하는 중입니다...
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div
+                    ref={trimTimelineRef}
+                    className="relative h-20 overflow-hidden rounded-xl border border-white/10 bg-black/40 touch-none select-none"
+                    onPointerDown={handleTrimScrubPointerDown}
+                  >
+                    {trimThumbnails.length > 0 ? (
+                      <div className="flex h-full">
+                        {trimThumbnails.map((thumbnail, index) => (
+                          <img
+                            key={`${thumbnail}-${index}`}
+                            src={thumbnail}
+                            alt=""
+                            aria-hidden
+                            className="min-w-0 flex-1 object-cover"
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-[11px] text-white/55">
+                        타임라인 미리보기 생성 중...
+                      </div>
+                    )}
+                    {trimSliderMax > 0 && (
+                      <>
+                        <div
+                          className="pointer-events-none absolute inset-y-0 left-0 bg-black/60"
+                          style={{ width: `${secondsToTimelineX(trimStartSeconds)}%` }}
+                        />
+                        <div
+                          className="pointer-events-none absolute inset-y-0 right-0 bg-black/60"
+                          style={{ width: `${100 - secondsToTimelineX(trimEndSeconds)}%` }}
+                        />
+                        <div
+                          className={`absolute inset-y-0 z-20 rounded-md border-2 bg-white/10 ${
+                            activeTrimDrag === 'window' ? 'border-[#4DE8FF]' : 'border-white/90'
+                          }`}
+                          style={{
+                            left: `${secondsToTimelineX(trimStartSeconds)}%`,
+                            width: `${Math.max(
+                              0.5,
+                              secondsToTimelineX(trimEndSeconds) - secondsToTimelineX(trimStartSeconds)
+                            )}%`,
+                          }}
+                          onPointerDown={(event) => handleTrimPointerDown(event, 'window')}
+                        />
+                        <div
+                          className="absolute inset-y-0 z-30 w-6 -translate-x-1/2 cursor-ew-resize touch-none"
+                          style={{ left: `${secondsToTimelineX(trimStartSeconds)}%` }}
+                          onPointerDown={(event) => handleTrimPointerDown(event, 'start')}
+                        >
+                          <div
+                            className={`mx-auto h-full w-[3px] rounded-full ${
+                              activeTrimDrag === 'start' ? 'bg-[#4DE8FF]' : 'bg-white'
+                            }`}
+                          />
+                        </div>
+                        <div
+                          className="absolute inset-y-0 z-30 w-6 -translate-x-1/2 cursor-ew-resize touch-none"
+                          style={{ left: `${secondsToTimelineX(trimEndSeconds)}%` }}
+                          onPointerDown={(event) => handleTrimPointerDown(event, 'end')}
+                        >
+                          <div
+                            className={`mx-auto h-full w-[3px] rounded-full ${
+                              activeTrimDrag === 'end' ? 'bg-[#4DE8FF]' : 'bg-white'
+                            }`}
+                          />
+                        </div>
+                        <div
+                          className="absolute inset-y-0 z-40 w-7 -translate-x-1/2 cursor-ew-resize touch-none"
+                          style={{ left: `${secondsToTimelineX(trimScrubSeconds)}%` }}
+                          onPointerDown={(event) => handleTrimPointerDown(event, 'scrub')}
+                        >
+                          <div className="pointer-events-none absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2 rounded-full bg-[#4DE8FF]" />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <p className="text-center text-xs text-white/70">
+                    {trimScrubSeconds.toFixed(1)}s
+                  </p>
+
+                  <p className="text-center text-xs text-white/70">
+                    선택 구간 {trimDurationSeconds.toFixed(1)}초 / 권장 {recommendedTrimSeconds.toFixed(1)}초
+                  </p>
+                </div>
+
+                {trimError && <p className="text-center text-xs text-rose-300">{trimError}</p>}
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={closeTrimModal}
+                    disabled={isGalleryProcessing}
+                    className="flex-1 rounded-xl bg-white/10 py-2 text-sm disabled:opacity-50"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleTrimConfirm}
+                    disabled={isGalleryProcessing || !trimSourceFile || !trimSourceMetadata}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#00C7E6] py-2 text-sm font-semibold disabled:opacity-50"
+                  >
+                    {isGalleryProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    확인
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
