@@ -16,8 +16,9 @@ export default function AccountSettingsClient({ initialUser }: AccountSettingsCl
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const displayUser = user ?? initialUser;
+  const isGuestUser = Boolean(displayUser.guest || displayUser.provider === 'GUEST');
   const displayName = displayUser.nickname || displayUser.socialNickname || '릴스탬프 사용자';
-  const displayEmail = displayUser.email || 'reelstamp@example.com';
+  const displayEmail = displayUser.email || (isGuestUser ? '가입 없이 이용 중' : '이메일 정보 없음');
   const displayBusiness = '릴스탬프 카페';
 
   const handleLogout = async () => {

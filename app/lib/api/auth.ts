@@ -1,8 +1,16 @@
 import { webApiClient } from '@/app/lib/api/client';
 
+export type SocialAuthProvider = 'KAKAO' | 'NAVER' | 'GOOGLE' | 'APPLE';
+export type AuthProvider = SocialAuthProvider | 'GUEST';
+
 export interface LoginRequest {
   accessToken: string;
-  provider: 'KAKAO' | 'NAVER' | 'GOOGLE';
+  provider: SocialAuthProvider;
+  guestAccessToken?: string;
+}
+
+export interface GuestLoginRequest {
+  nickname: string;
 }
 
 // Web API 실제 응답 구조
@@ -22,13 +30,15 @@ export interface TokenInfo {
 
 export interface UserInfo {
   id: number;
-  provider: 'KAKAO' | 'NAVER' | 'GOOGLE';
+  userId?: number;
+  provider: AuthProvider;
   providerUserId: string;
   email: string;
   nickname: string;
   socialNickname: string;
   profileImageUrl: string;
   role: string;
+  guest: boolean;
 }
 
 export interface LoginResponseData {
@@ -99,6 +109,54 @@ export interface LoginResponse {
   };
 }
 
+type UserInfoLike = Partial<Omit<UserInfo, 'id' | 'provider' | 'guest'>> & {
+  id?: number | string;
+  userId?: number | string;
+  provider?: AuthProvider | string;
+  guest?: boolean;
+};
+
+type ApiErrorLike = {
+  message?: string;
+  response?: {
+    status?: number;
+    statusText?: string;
+    data?: unknown;
+  };
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return value !== null && typeof value === 'object';
+};
+
+const toUserInfoLike = (raw: unknown): UserInfoLike => {
+  return isRecord(raw) ? (raw as UserInfoLike) : {};
+};
+
+const toApiErrorLike = (error: unknown): ApiErrorLike => {
+  return isRecord(error) ? (error as ApiErrorLike) : {};
+};
+
+export function normalizeUserInfo(raw: unknown, fallbackProvider?: AuthProvider): UserInfo {
+  const source = toUserInfoLike(raw);
+  const id = Number(source.id ?? source.userId);
+  const provider = (source.provider ?? fallbackProvider ?? 'KAKAO') as AuthProvider;
+
+  return {
+    ...source,
+    id,
+    userId: id,
+    provider,
+    providerUserId: source.providerUserId ?? '',
+    email: source.email ?? '',
+    nickname: source.nickname ?? '',
+    socialNickname: source.socialNickname ?? '',
+    profileImageUrl: source.profileImageUrl ?? '',
+    role: source.role ?? 'USER',
+    guest: Boolean(source.guest || provider === 'GUEST'),
+  };
+}
+
 /**
  * 서버 사이드에서 현재 로그인한 유저 정보를 조회합니다.
  * httpOnly 쿠키의 accessToken을 사용하여 Spring API를 호출합니다.
@@ -112,10 +170,8 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
     const accessToken = cookieStore.get('accessToken')?.value;
     const refreshToken = cookieStore.get('refreshToken')?.value;
     
-    // access token이 없으면 null 반환
-    if (!accessToken) {
-      // refresh token은 있지만 access token이 없는 경우는 토큰 갱신 시도 가능
-      // 하지만 여기서는 일단 null 반환 (getServerApiClient에서 처리)
+    // access token과 refresh token이 모두 없으면 null 반환
+    if (!accessToken && !refreshToken) {
       return null;
     }
 
@@ -123,20 +179,16 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
     const apiClient = await getServerApiClient();
     const response = await apiClient.get<WebApiResponse<UserInfo>>('/api/user/me');
     
-    // 응답 구조 확인
-    let userData: UserInfo | null = null;
-    if (response.data && response.data.success && response.data.data) {
-      userData = response.data.data;
-    } else if (response.data && (response.data as any).data) {
-      userData = (response.data as any).data;
+    if (response.data && response.data.data) {
+      return normalizeUserInfo(response.data.data);
     }
-    
-    
-    return userData;
-  } catch (error: any) {
+
+    return null;
+  } catch (error: unknown) {
+    const apiError = toApiErrorLike(error);
     // 에러 로깅 (개발 환경에서 더 상세하게)
-    const statusCode = error.response?.status;
-    const errorMessage = error.message;
+    const statusCode = apiError.response?.status;
+    const errorMessage = apiError.message;
     
     // refresh token 갱신 실패로 인한 401 에러인 경우
     if (statusCode === 401) {
@@ -150,8 +202,8 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
       console.error('[getCurrentUser] API 호출 실패:', {
         message: errorMessage,
         status: statusCode,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
+        statusText: apiError.response?.statusText,
+        data: apiError.response?.data,
       });
     }
     

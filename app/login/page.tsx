@@ -7,9 +7,9 @@ import { getCurrentUser } from '@/app/lib/api/auth';
 export const dynamic = 'force-dynamic';
 
 interface LoginPageProps {
-  searchParams?: {
+  searchParams?: Promise<{
     returnUrl?: string;
-  };
+  }>;
 }
 
 const getSafeReturnUrl = (value?: string) => {
@@ -22,10 +22,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   // 서버 사이드에서 로그인 여부 확인
   const user = await getCurrentUser();
   
-  // 이미 로그인된 경우 메인으로 리다이렉트 (로그인 페이지 접근 절대 차단)
-  if (user) {
+  // 소셜 로그인 사용자는 로그인 페이지 접근을 차단하고, 게스트는 계정 전환을 위해 허용합니다.
+  if (user && !user.guest && user.provider !== 'GUEST') {
     console.log(`[LoginPage SSR] 이미 로그인된 사용자(${user.nickname}), 리다이렉트 수행`);
-    const returnUrl = getSafeReturnUrl(searchParams?.returnUrl);
+    const resolvedSearchParams = searchParams ? await searchParams : undefined;
+    const returnUrl = getSafeReturnUrl(resolvedSearchParams?.returnUrl);
     redirect(returnUrl ?? '/templates');
   }
 

@@ -114,6 +114,7 @@ export default function Header() {
   const { isAuthenticated, user, subscription } = useAuth();
   
   const isAdmin = user?.role?.toUpperCase() === USER_ROLES.ADMIN;
+  const isGuestUser = Boolean(user?.guest || user?.provider === 'GUEST');
   
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
@@ -157,6 +158,7 @@ export default function Header() {
   }, [handleScroll]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -430,12 +432,27 @@ export default function Header() {
                                 {user?.email && (
                                   <p className="text-sm text-gray-500 truncate">{user.email}</p>
                                 )}
+                                {!user?.email && isGuestUser && (
+                                  <p className="text-sm text-gray-500 truncate">가입 없이 이용 중</p>
+                                )}
                               </div>
                             </div>
                           </div>
 
                           {/* 메뉴 항목 */}
                           <div className="py-2">
+                            {isGuestUser && (
+                              <>
+                                <Link
+                                  href="/login"
+                                  onClick={() => setIsProfileMenuOpen(false)}
+                                  className="mx-3 mb-2 px-4 py-3 flex items-center justify-center rounded-lg bg-[#FF496D] text-white text-sm font-semibold hover:bg-[#E63E62] transition-colors"
+                                >
+                                  회원가입하고 보관하기
+                                </Link>
+                                <div className="border-t border-gray-200 my-1"></div>
+                              </>
+                            )}
                             <button
                               onClick={() => {
                                 setIsProfileMenuOpen(false);
@@ -561,6 +578,9 @@ export default function Header() {
                           {user.email && (
                             <p className="text-sm text-gray-500 truncate">{user.email}</p>
                           )}
+                          {!user.email && isGuestUser && (
+                            <p className="text-sm text-gray-500 truncate">가입 없이 이용 중</p>
+                          )}
                         </div>
                         <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
                       </div>
@@ -568,6 +588,16 @@ export default function Header() {
                   )}
 
                   <div className="flex-1 flex flex-col p-6">
+                    {isGuestUser && (
+                      <Link
+                        href="/login"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="w-full mb-4 px-5 py-3 text-base font-semibold text-white rounded-xl transition-all hover:bg-[#E63E62] text-center"
+                        style={{ backgroundColor: '#FF496D' }}
+                      >
+                        회원가입하고 보관하기
+                      </Link>
+                    )}
                     {!isAuthenticated && (
                       <Link
                         href="/login"

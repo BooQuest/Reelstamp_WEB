@@ -2,7 +2,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { webApiClient } from '@/app/lib/api/client';
-import { WebApiResponse, LoginResponseData } from '@/app/lib/api/auth';
+import { WebApiResponse, LoginResponseData, normalizeUserInfo } from '@/app/lib/api/auth';
+
+type RouteError = {
+  message?: string;
+  response?: {
+    status?: number;
+    data?: {
+      message?: string;
+    };
+  };
+};
+
+const toRouteError = (error: unknown): RouteError => {
+  if (error && typeof error === 'object') {
+    return error as RouteError;
+  }
+  return {};
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,16 +32,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const cookieStore = await cookies();
+    const guestAccessToken =
+      cookieStore.get('accessToken')?.value ?? cookieStore.get('refreshToken')?.value;
+
     const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
       '/api/auth/login',
       {
         accessToken: kakaoAccessToken,
         provider: 'KAKAO',
+        guestAccessToken,
       }
     );
 
     const { tokenInfo, userInfo } = response.data.data;
-    const cookieStore = await cookies();
+    const normalizedUserInfo = normalizeUserInfo(userInfo, 'KAKAO');
 
     cookieStore.set('accessToken', tokenInfo.accessToken, {
       httpOnly: true,
@@ -45,12 +67,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: '로그인 성공',
-      userInfo: userInfo,
+      userInfo: normalizedUserInfo,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const routeError = toRouteError(error);
     const errorMessage =
-      error.response?.data?.message ||
-      error.message ||
+      routeError.response?.data?.message ||
+      routeError.message ||
       '로그인 처리 중 오류가 발생했습니다.';
 
     return NextResponse.json(
@@ -58,7 +81,7 @@ export async function POST(request: NextRequest) {
         success: false,
         message: errorMessage,
       },
-      { status: error.response?.status || 500 }
+      { status: routeError.response?.status || 500 }
     );
   }
 }

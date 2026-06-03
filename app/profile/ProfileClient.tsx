@@ -17,8 +17,9 @@ export default function ProfileClient({ initialUser }: ProfileClientProps) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const displayUser = user ?? initialUser;
+  const isGuestUser = Boolean(displayUser.guest || displayUser.provider === 'GUEST');
   const displayName = displayUser.nickname || displayUser.socialNickname || '릴스탬프 사용자';
-  const displayEmail = displayUser.email || 'reelstamp@example.com';
+  const displayEmail = displayUser.email || (isGuestUser ? '가입 없이 이용 중' : '이메일 정보 없음');
   const displayBusiness = '릴스탬프 카페';
 
   const handleLogout = async () => {
@@ -88,6 +89,16 @@ export default function ProfileClient({ initialUser }: ProfileClientProps) {
 
         {/* Actions */}
         <div className="space-y-3">
+          {isGuestUser && (
+            <button
+              onClick={() => router.push('/login')}
+              className="w-full bg-[#FF496D] rounded-2xl p-4 shadow-sm text-left hover:bg-[#E63E62] transition-all flex items-center gap-3"
+            >
+              <Crown className="w-5 h-5 text-white" />
+              <span className="font-semibold text-white">회원가입하고 안전하게 보관하기</span>
+            </button>
+          )}
+
           <button
             onClick={() => router.push('/account-settings')}
             className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:bg-gray-50 transition-all flex items-center gap-3"

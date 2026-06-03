@@ -3,7 +3,45 @@
 
 import { cookies } from 'next/headers';
 import { webApiClient } from '@/app/lib/api/client';
-import { WebApiResponse, LoginResponseData, SubscriptionStatusResponse } from '@/app/lib/api/auth';
+import {
+  WebApiResponse,
+  LoginResponseData,
+  SubscriptionStatusResponse,
+  SocialAuthProvider,
+  UserInfo,
+  normalizeUserInfo,
+} from '@/app/lib/api/auth';
+
+type AuthActionResult = { success: boolean; message: string; userInfo?: UserInfo };
+
+type ActionError = {
+  message?: string;
+  response?: {
+    status?: number;
+    statusText?: string;
+    data?: {
+      message?: string;
+      error?: string;
+    };
+  };
+};
+
+const toActionError = (error: unknown): ActionError => {
+  if (error && typeof error === 'object') {
+    return error as ActionError;
+  }
+  return {};
+};
+
+const getActionErrorMessage = (error: unknown, fallbackMessage: string) => {
+  const actionError = toActionError(error);
+  return (
+    actionError.response?.data?.message ||
+    actionError.response?.data?.error ||
+    actionError.message ||
+    fallbackMessage
+  );
+};
 
 /**
  * 소셜 액세스 토큰으로 로그인하고 httpOnly 쿠키에 토큰을 저장합니다.
@@ -12,14 +50,19 @@ import { WebApiResponse, LoginResponseData, SubscriptionStatusResponse } from '@
  */
 export async function loginWithSocialAction(
   accessToken: string,
-  provider: 'KAKAO' | 'NAVER' | 'GOOGLE'
-): Promise<{ success: boolean; message: string; userInfo?: any }> {
+  provider: SocialAuthProvider
+): Promise<AuthActionResult> {
   try {
+    const cookieStore = await cookies();
+    const guestAccessToken =
+      cookieStore.get('accessToken')?.value ?? cookieStore.get('refreshToken')?.value;
+
     const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
       '/api/auth/login',
       {
         accessToken: accessToken,
         provider: provider,
+        guestAccessToken,
       }
     );
 
@@ -28,7 +71,7 @@ export async function loginWithSocialAction(
     }
 
     const { tokenInfo, userInfo } = response.data.data;
-    const cookieStore = await cookies();
+    const normalizedUserInfo = normalizeUserInfo(userInfo, provider);
     
     cookieStore.set('accessToken', tokenInfo.accessToken, {
       httpOnly: true,
@@ -49,18 +92,61 @@ export async function loginWithSocialAction(
     return {
       success: true,
       message: '로그인 성공',
-      userInfo: userInfo,
+      userInfo: normalizedUserInfo,
     };
-  } catch (error: any) {
-    const errorMessage =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      error.message ||
-      '로그인 처리 중 오류가 발생했습니다.';
-
+  } catch (error: unknown) {
     return {
       success: false,
-      message: errorMessage,
+      message: getActionErrorMessage(error, '로그인 처리 중 오류가 발생했습니다.'),
+    };
+  }
+}
+
+/**
+ * 닉네임으로 게스트 계정을 만들고 httpOnly 쿠키에 토큰을 저장합니다.
+ */
+export async function loginAsGuestAction(
+  nickname: string
+): Promise<AuthActionResult> {
+  try {
+    const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
+      '/api/auth/guest',
+      { nickname }
+    );
+
+    if (!response.data.success || !response.data.data) {
+      throw new Error(response.data.message || '게스트 로그인 데이터가 올바르지 않습니다.');
+    }
+
+    const { tokenInfo, userInfo } = response.data.data;
+    const normalizedUserInfo = normalizeUserInfo(userInfo, 'GUEST');
+    const cookieStore = await cookies();
+
+    cookieStore.set('accessToken', tokenInfo.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: tokenInfo.expiresIn,
+      path: '/',
+    });
+
+    cookieStore.set('refreshToken', tokenInfo.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/',
+    });
+
+    return {
+      success: true,
+      message: '게스트 로그인 성공',
+      userInfo: normalizedUserInfo,
+    };
+  } catch (error: unknown) {
+    return {
+      success: false,
+      message: getActionErrorMessage(error, '게스트 로그인 처리 중 오류가 발생했습니다.'),
     };
   }
 }
@@ -71,7 +157,7 @@ export async function loginWithSocialAction(
  */
 export async function loginWithKakaoAction(
   kakaoAccessToken: string
-): Promise<{ success: boolean; message: string; userInfo?: any }> {
+): Promise<AuthActionResult> {
   return loginWithSocialAction(kakaoAccessToken, 'KAKAO');
 }
 
@@ -91,7 +177,7 @@ export async function logoutAction(): Promise<{ success: boolean; message: strin
             'X-Refresh-Token': refreshToken,
           },
         });
-      } catch (error) {
+      } catch {
         // API 호출 실패해도 쿠키는 삭제
       }
     }
@@ -101,7 +187,7 @@ export async function logoutAction(): Promise<{ success: boolean; message: strin
     cookieStore.delete('refreshToken');
     
     return { success: true, message: '로그아웃 완료' };
-  } catch (error) {
+  } catch {
     return { success: false, message: '로그아웃 처리 중 오류가 발생했습니다.' };
   }
 }
@@ -129,10 +215,10 @@ export async function deleteAccountAction(): Promise<{
       success: true,
       message: '계정이 삭제되었습니다.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       success: false,
-      message: error.response?.data?.message || '계정 삭제 중 오류가 발생했습니다.',
+      message: getActionErrorMessage(error, '계정 삭제 중 오류가 발생했습니다.'),
     };
   }
 }
@@ -162,16 +248,17 @@ export async function getSubscriptionStatusAction(): Promise<{
       success: false,
       message: '구독 정보를 가져올 수 없습니다.',
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const actionError = toActionError(error);
     console.error('[getSubscriptionStatusAction] 에러 발생:', {
-      message: error.message,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
+      message: actionError.message,
+      status: actionError.response?.status,
+      statusText: actionError.response?.statusText,
+      data: actionError.response?.data,
     });
     return {
       success: false,
-      message: error.response?.data?.message || '구독 정보 조회 중 오류가 발생했습니다.',
+      message: getActionErrorMessage(error, '구독 정보 조회 중 오류가 발생했습니다.'),
     };
   }
 }

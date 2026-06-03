@@ -4,16 +4,31 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script';
-import { loginWithSocialAction } from '@/app/actions/auth';
+import { loginAsGuestAction, loginWithSocialAction } from '@/app/actions/auth';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import LoadingOverlay from '@/app/components/ui/LoadingOverlay';
+import type { SocialAuthProvider } from '@/app/lib/api/auth';
 
 // 카카오 SDK 타입 정의
+interface KakaoSdk {
+  isInitialized: () => boolean;
+  init: (key: string) => void;
+  Auth: {
+    authorize: (options: { redirectUri: string }) => void;
+  };
+}
+
 declare global {
   interface Window {
-    Kakao: any;
+    Kakao?: KakaoSdk;
   }
 }
+
+type OAuthTokenResponse = {
+  access_token?: string;
+  error_description?: string;
+  message?: string;
+};
 
 const getSafeReturnUrl = (value: string | null | undefined) => {
   if (!value) return null;
@@ -21,12 +36,17 @@ const getSafeReturnUrl = (value: string | null | undefined) => {
   return value;
 };
 
+const getErrorMessage = (error: unknown, fallbackMessage: string) => {
+  return error instanceof Error ? error.message : fallbackMessage;
+};
+
 export default function LoginClient() {
   const router = useRouter();
-  const { setUser, isAuthenticated } = useAuth();
+  const { user, setUser, isAuthenticated } = useAuth();
   const [isLoadingKakao, setIsLoadingKakao] = useState(false);
   const [isLoadingNaver, setIsLoadingNaver] = useState(false);
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
+  const [isLoadingGuest, setIsLoadingGuest] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState('로그인 중...');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -34,6 +54,9 @@ export default function LoginClient() {
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [privacyAgreed, setPrivacyAgreed] = useState(false);
   const [allAgreed, setAllAgreed] = useState(false);
+  const [guestNickname, setGuestNickname] = useState('');
+  const isGuestUser = Boolean(user?.guest || user?.provider === 'GUEST');
+  const isSocialAuthenticated = isAuthenticated && !isGuestUser;
 
   // 초기 마운트 시 mounted 상태 설정
   useEffect(() => {
@@ -79,7 +102,7 @@ export default function LoginClient() {
       sessionStorage.removeItem('previousPath');
     }
 
-    if (code && !isProcessing && !isAuthenticated) {
+    if (code && !isProcessing && !isSocialAuthenticated) {
       setIsProcessing(true);
       
       const cleanUrl = window.location.pathname + (returnUrlParam ? `?returnUrl=${encodeURIComponent(returnUrlParam)}` : '');
@@ -127,7 +150,7 @@ export default function LoginClient() {
     }
 
     return () => clearInterval(timer);
-  }, [isProcessing, isAuthenticated]);
+  }, [isProcessing, isSocialAuthenticated]);
 
   // [카카오] 인가 코드를 액세스 토큰으로 교환
   const handleKakaoCode = async (code: string) => {
@@ -150,12 +173,14 @@ export default function LoginClient() {
         }),
       });
 
-      const tokenData = await tokenResponse.json();
-      if (!tokenResponse.ok) throw new Error(tokenData.error_description || '카카오 토큰 교환 실패');
+      const tokenData = (await tokenResponse.json()) as OAuthTokenResponse;
+      if (!tokenResponse.ok || !tokenData.access_token) {
+        throw new Error(tokenData.error_description || '카카오 토큰 교환 실패');
+      }
 
       await processLogin(tokenData.access_token, 'KAKAO', setIsLoadingKakao);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, '카카오 토큰 교환 실패'));
       setIsLoadingKakao(false);
     } finally {
       setIsProcessing(false);
@@ -174,12 +199,14 @@ export default function LoginClient() {
         body: JSON.stringify({ code, state }),
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || '네이버 토큰 교환 실패');
+      const data = (await response.json()) as OAuthTokenResponse;
+      if (!response.ok || !data.access_token) {
+        throw new Error(data.message || '네이버 토큰 교환 실패');
+      }
 
       await processLogin(data.access_token, 'NAVER', setIsLoadingNaver);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, '네이버 토큰 교환 실패'));
       setIsLoadingNaver(false);
     } finally {
       setIsProcessing(false);
@@ -199,12 +226,14 @@ export default function LoginClient() {
         body: JSON.stringify({ code, state, redirectUri }),
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || '구글 토큰 교환 실패');
+      const data = (await response.json()) as OAuthTokenResponse;
+      if (!response.ok || !data.access_token) {
+        throw new Error(data.message || '구글 토큰 교환 실패');
+      }
 
       await processLogin(data.access_token, 'GOOGLE', setIsLoadingGoogle);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, '구글 토큰 교환 실패'));
       setIsLoadingGoogle(false);
     } finally {
       setIsProcessing(false);
@@ -214,7 +243,7 @@ export default function LoginClient() {
   // 공통 로그인 처리 로직: Server Action 사용 (httpOnly 쿠키에 토큰 저장)
   const processLogin = async (
     accessToken: string,
-    provider: 'KAKAO' | 'NAVER' | 'GOOGLE',
+    provider: SocialAuthProvider,
     setLoading: (loading: boolean) => void
   ) => {
     try {
@@ -248,8 +277,8 @@ export default function LoginClient() {
       } catch (pushError) {
         console.error('[processLogin] 리다이렉트 실패:', pushError);
       }
-    } catch (err: any) {
-      setError(err.message || '로그인 처리 중 오류가 발생했습니다.');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, '로그인 처리 중 오류가 발생했습니다.'));
       setLoading(false);
     }
   };
@@ -268,6 +297,45 @@ export default function LoginClient() {
 
   // 약관 동의 여부 확인
   const isAllAgreed = termsAgreed && privacyAgreed;
+  const hasGuestNickname = Boolean(guestNickname.trim());
+  const canSubmitGuest = isAllAgreed && hasGuestNickname && !isLoadingGuest;
+
+  const handleGuestLogin = async () => {
+    if (isGuestUser) return;
+    if (!isAllAgreed) {
+      setError('약관에 동의해주세요.');
+      return;
+    }
+
+    const normalizedNickname = guestNickname.trim();
+    if (!normalizedNickname) {
+      setError('닉네임을 입력해주세요.');
+      return;
+    }
+
+    setIsLoadingGuest(true);
+    setLoadingText('가입 없이 이용 준비 중...');
+    setError(null);
+
+    try {
+      const result = await loginAsGuestAction(normalizedNickname);
+      if (!result.success) {
+        setError(result.message);
+        return;
+      }
+
+      if (result.userInfo) {
+        setUser(result.userInfo);
+      }
+
+      sessionStorage.removeItem('previousPath');
+      router.replace('/templates');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, '가입 없이 이용하기 처리 중 오류가 발생했습니다.'));
+    } finally {
+      setIsLoadingGuest(false);
+    }
+  };
 
   // 카카오 로그인 핸들러
   const handleKakaoLogin = () => {
@@ -358,7 +426,7 @@ export default function LoginClient() {
   }
 
   // 로딩 오버레이 표시 여부 결정
-  const showOverlay = isLoadingKakao || isLoadingNaver || isLoadingGoogle || isProcessing;
+  const showOverlay = isLoadingKakao || isLoadingNaver || isLoadingGoogle || isLoadingGuest || isProcessing;
 
   return (
     <div className="bg-white flex flex-col items-center justify-start px-4 py-20 sm:py-20 md:py-28 lg:py-40 xl:py-48 min-h-[calc(100vh-80px)] relative overflow-x-hidden">
@@ -564,6 +632,65 @@ export default function LoginClient() {
                 />
               </button>
             </div>
+
+            {isGuestUser ? (
+              <div className="mt-6 rounded-xl border border-[#FF496D]/20 bg-[#FFF5F7] px-4 py-4">
+                <p className="text-sm font-semibold text-gray-900">
+                  {user?.nickname || '게스트'}님은 가입 없이 이용 중입니다.
+                </p>
+                <p className="mt-2 text-xs leading-5 text-gray-600">
+                  작업 내용을 안전하게 보관하려면 회원가입 후 이용하는 것을 권장합니다.
+                  같은 브라우저에서 위 소셜 로그인을 진행하면 현재 작업을 계정에 연결합니다.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="h-px flex-1 bg-gray-200" />
+                  <span className="text-xs font-medium text-gray-400">또는</span>
+                  <div className="h-px flex-1 bg-gray-200" />
+                </div>
+
+                <form
+                  className="space-y-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    handleGuestLogin();
+                  }}
+                >
+                  <input
+                    type="text"
+                    value={guestNickname}
+                    onChange={(event) => setGuestNickname(event.target.value)}
+                    maxLength={30}
+                    placeholder="닉네임 입력"
+                    className="w-full max-w-[330px] h-12 mx-auto block rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-900 outline-none focus:border-[#FF496D] focus:ring-2 focus:ring-[#FF496D]/15"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!canSubmitGuest}
+                    className={`w-full max-w-[330px] h-12 mx-auto rounded-xl text-sm font-semibold transition-all active:scale-[0.98] flex items-center justify-center ${
+                      canSubmitGuest
+                        ? 'bg-[#2B2D37] text-white hover:bg-[#1F2128]'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    가입 없이 이용하기
+                  </button>
+                </form>
+
+                {!isAllAgreed && hasGuestNickname && (
+                  <p className="mt-2 max-w-[330px] mx-auto text-xs leading-5 text-[#FF496D]">
+                    서비스 이용약관과 개인정보 처리방침에 동의하면 가입 없이 이용할 수 있습니다.
+                  </p>
+                )}
+
+                <p className="mt-3 max-w-[330px] mx-auto text-xs leading-5 text-gray-500">
+                  작업 내용을 안전하게 보관하려면 회원가입 후 이용하는 것을 권장합니다.
+                  쿠키 삭제, 브라우저 변경, 로그아웃 시 게스트 작업 접근이 어려울 수 있습니다.
+                </p>
+              </div>
+            )}
 
             {error && (
               <p className="text-center text-red-500 text-sm mt-4 font-medium">{error}</p>
