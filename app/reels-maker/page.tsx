@@ -3015,7 +3015,7 @@ function ReelsMakerInner() {
       visualViewport?.removeEventListener('resize', scheduleRecalculate);
       resizeObserver?.disconnect();
     };
-  }, [stage, template?.id, cuts.length, activeCutIndex, allDone]);
+  }, [stage, template?.id, cuts.length, activeCutIndex, allDone, isSessionLoading]);
 
   const handleDownload = () => {
     if (!finalVideoUrl) return;
