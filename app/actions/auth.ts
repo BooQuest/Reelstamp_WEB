@@ -15,6 +15,7 @@ import {
 type AuthActionResult = { success: boolean; message: string; userInfo?: UserInfo };
 
 type ActionError = {
+  code?: string;
   message?: string;
   response?: {
     status?: number;
@@ -28,6 +29,15 @@ type ActionError = {
 };
 
 const TECHNICAL_ERROR_MESSAGES = new Set(['unknown error', 'unknown_error']);
+const TECHNICAL_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+  'ECONNABORTED',
+  'ERR_NETWORK',
+  'ERR_BAD_RESPONSE',
+]);
 
 const toActionError = (error: unknown): ActionError => {
   if (error && typeof error === 'object') {
@@ -37,7 +47,25 @@ const toActionError = (error: unknown): ActionError => {
 };
 
 const isTechnicalErrorMessage = (message?: string) => {
-  return message ? TECHNICAL_ERROR_MESSAGES.has(message.trim().toLowerCase()) : false;
+  const normalizedMessage = message?.trim().toLowerCase();
+
+  return Boolean(
+    normalizedMessage &&
+      (TECHNICAL_ERROR_MESSAGES.has(normalizedMessage) ||
+        normalizedMessage.startsWith('request failed with status code 5') ||
+        normalizedMessage.includes('econnrefused') ||
+        normalizedMessage.includes('econnreset') ||
+        normalizedMessage.includes('enotfound') ||
+        normalizedMessage.includes('etimedout') ||
+        normalizedMessage.includes('network error') ||
+        normalizedMessage.includes('fetch failed') ||
+        normalizedMessage.includes('socket hang up') ||
+        normalizedMessage === 'internal server error')
+  );
+};
+
+const isTechnicalErrorCode = (code?: string) => {
+  return code ? TECHNICAL_ERROR_CODES.has(code.trim().toUpperCase()) : false;
 };
 
 const shouldUseFallbackMessage = (actionError: ActionError) => {
@@ -46,6 +74,7 @@ const shouldUseFallbackMessage = (actionError: ActionError) => {
 
   return (
     (typeof status === 'number' && status >= 500) ||
+    isTechnicalErrorCode(actionError.code) ||
     data?.errorCode === 'UNKNOWN_ERROR' ||
     isTechnicalErrorMessage(data?.message) ||
     isTechnicalErrorMessage(data?.error) ||

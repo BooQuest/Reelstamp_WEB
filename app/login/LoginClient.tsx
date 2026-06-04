@@ -47,6 +47,13 @@ const isTechnicalErrorMessage = (message?: string) => {
     normalizedMessage &&
       (TECHNICAL_ERROR_MESSAGES.has(normalizedMessage) ||
         normalizedMessage.startsWith('request failed with status code 5') ||
+        normalizedMessage.includes('econnrefused') ||
+        normalizedMessage.includes('econnreset') ||
+        normalizedMessage.includes('enotfound') ||
+        normalizedMessage.includes('etimedout') ||
+        normalizedMessage.includes('network error') ||
+        normalizedMessage.includes('fetch failed') ||
+        normalizedMessage.includes('socket hang up') ||
         normalizedMessage === 'internal server error')
   );
 };
