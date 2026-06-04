@@ -22,9 +22,12 @@ type ActionError = {
     data?: {
       message?: string;
       error?: string;
+      errorCode?: string | null;
     };
   };
 };
+
+const TECHNICAL_ERROR_MESSAGES = new Set(['unknown error', 'unknown_error']);
 
 const toActionError = (error: unknown): ActionError => {
   if (error && typeof error === 'object') {
@@ -33,8 +36,30 @@ const toActionError = (error: unknown): ActionError => {
   return {};
 };
 
+const isTechnicalErrorMessage = (message?: string) => {
+  return message ? TECHNICAL_ERROR_MESSAGES.has(message.trim().toLowerCase()) : false;
+};
+
+const shouldUseFallbackMessage = (actionError: ActionError) => {
+  const status = actionError.response?.status;
+  const data = actionError.response?.data;
+
+  return (
+    (typeof status === 'number' && status >= 500) ||
+    data?.errorCode === 'UNKNOWN_ERROR' ||
+    isTechnicalErrorMessage(data?.message) ||
+    isTechnicalErrorMessage(data?.error) ||
+    isTechnicalErrorMessage(actionError.message)
+  );
+};
+
 const getActionErrorMessage = (error: unknown, fallbackMessage: string) => {
   const actionError = toActionError(error);
+
+  if (shouldUseFallbackMessage(actionError)) {
+    return fallbackMessage;
+  }
+
   return (
     actionError.response?.data?.message ||
     actionError.response?.data?.error ||
@@ -146,7 +171,10 @@ export async function loginAsGuestAction(
   } catch (error: unknown) {
     return {
       success: false,
-      message: getActionErrorMessage(error, '게스트 로그인 처리 중 오류가 발생했습니다.'),
+      message: getActionErrorMessage(
+        error,
+        '게스트 로그인을 처리하는 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.'
+      ),
     };
   }
 }

@@ -18,6 +18,7 @@ export interface WebApiResponse<T> {
   success: boolean;
   status: number;
   message: string;
+  errorCode?: string | null;
   data: T;
 }
 
