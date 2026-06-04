@@ -36,8 +36,29 @@ const getSafeReturnUrl = (value: string | null | undefined) => {
   return value;
 };
 
+const TECHNICAL_ERROR_MESSAGES = new Set(['unknown error', 'unknown_error']);
+const GUEST_LOGIN_ERROR_MESSAGE =
+  '게스트 로그인을 처리하는 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.';
+
+const isTechnicalErrorMessage = (message?: string) => {
+  const normalizedMessage = message?.trim().toLowerCase();
+
+  return Boolean(
+    normalizedMessage &&
+      (TECHNICAL_ERROR_MESSAGES.has(normalizedMessage) ||
+        normalizedMessage.startsWith('request failed with status code 5') ||
+        normalizedMessage === 'internal server error')
+  );
+};
+
+const getDisplayErrorMessage = (message: string | undefined, fallbackMessage: string) => {
+  return isTechnicalErrorMessage(message) ? fallbackMessage : message || fallbackMessage;
+};
+
 const getErrorMessage = (error: unknown, fallbackMessage: string) => {
-  return error instanceof Error ? error.message : fallbackMessage;
+  return error instanceof Error
+    ? getDisplayErrorMessage(error.message, fallbackMessage)
+    : fallbackMessage;
 };
 
 export default function LoginClient() {
@@ -251,7 +272,7 @@ export default function LoginClient() {
       const result = await loginWithSocialAction(accessToken, provider);
       
       if (!result.success) {
-        setError(result.message);
+        setError(getDisplayErrorMessage(result.message, '로그인 처리 중 오류가 발생했습니다.'));
         setLoading(false);
         return;
       }
@@ -320,7 +341,7 @@ export default function LoginClient() {
     try {
       const result = await loginAsGuestAction(normalizedNickname);
       if (!result.success) {
-        setError(result.message);
+        setError(getDisplayErrorMessage(result.message, GUEST_LOGIN_ERROR_MESSAGE));
         return;
       }
 
