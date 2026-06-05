@@ -8,18 +8,25 @@ import {
   useRef,
   useState,
   type ChangeEvent as ReactChangeEvent,
+  type ComponentType,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
+  Bookmark,
   Camera,
   ChevronLeft,
   ChevronRight,
   Check,
+  CheckCircle,
   Download,
   Image as ImageIcon,
+  LayoutTemplate,
   Loader2,
+  Menu,
   Music2,
   Pause,
   Play,
@@ -28,10 +35,14 @@ import {
   Share2,
   Sparkles,
   SwitchCamera,
+  TrendingUp,
+  User,
   X,
 } from 'lucide-react';
 import type { WebApiResponse } from '@/app/lib/api/auth';
 import InstagramEmbed from '@/app/components/ui/InstagramEmbed';
+import { useAuth } from '@/app/components/providers/AuthProvider';
+import { USER_ROLES } from '@/app/lib/constants/auth';
 
 const EXAMPLE_ASSETS = {
   point:
@@ -39,6 +50,44 @@ const EXAMPLE_ASSETS = {
   exampleImage:
     'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1200&q=80',
 } as const;
+
+type CaptureMenuItem = {
+  href: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  requiresAuth?: boolean;
+};
+
+const CAPTURE_MENU_ITEMS: CaptureMenuItem[] = [
+  {
+    href: '/templates',
+    label: '맞춤형 릴스 추천',
+    icon: Sparkles,
+  },
+  {
+    href: '/all-templates',
+    label: '릴스 템플릿',
+    icon: LayoutTemplate,
+  },
+  {
+    href: '/trending-reels',
+    label: '오늘의 릴스 트렌드',
+    icon: TrendingUp,
+    requiresAuth: true,
+  },
+  {
+    href: '/saved-reels',
+    label: '저장된 릴스',
+    icon: Bookmark,
+    requiresAuth: true,
+  },
+  {
+    href: '/completed-reels',
+    label: '제작 완료된 릴스',
+    icon: CheckCircle,
+    requiresAuth: true,
+  },
+];
 
 type ClipInfo = {
   blob: Blob;
@@ -220,6 +269,7 @@ const normalizeCaptionStyle = (style: CaptionStyle): CaptionStyle => ({
 function ReelsMakerInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isAuthenticated, user } = useAuth();
   const templateId = searchParams.get('templateId');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraFrameRef = useRef<HTMLDivElement | null>(null);
@@ -312,6 +362,17 @@ function ReelsMakerInner() {
     {}
   );
   const [captureScale, setCaptureScale] = useState(1);
+  const [isCaptureMenuOpen, setIsCaptureMenuOpen] = useState(false);
+
+  const isAdmin = user?.role?.toUpperCase() === USER_ROLES.ADMIN;
+  const isGuestUser = Boolean(user?.guest || user?.provider === 'GUEST');
+  const currentReelsMakerHref = templateId
+    ? `/reels-maker?templateId=${encodeURIComponent(templateId)}`
+    : '/reels-maker';
+  const buildLoginHref = useCallback(
+    (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`,
+    []
+  );
 
   const cuts = useMemo(() => {
     if (!template) return [];
@@ -983,6 +1044,19 @@ function ReelsMakerInner() {
     }
     setExampleReelIndex((prev) => Math.min(prev, exampleReelUrls.length - 1));
   }, [exampleReelUrls.length]);
+
+  useEffect(() => {
+    if (!isCaptureMenuOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isCaptureMenuOpen]);
 
   const stopCamera = useCallback(() => {
     if (videoRef.current) {
@@ -2934,7 +3008,7 @@ function ReelsMakerInner() {
       let viewportHeight = viewport.clientHeight;
       const visualViewportHeight = window.visualViewport?.height;
       if (typeof visualViewportHeight === 'number' && Number.isFinite(visualViewportHeight)) {
-        const visualViewportCaptureHeight = Math.max(0, visualViewportHeight - 72);
+        const visualViewportCaptureHeight = Math.max(0, visualViewportHeight);
         if (visualViewportCaptureHeight > 0) {
           viewportHeight = Math.min(viewportHeight, visualViewportCaptureHeight);
         }
@@ -3110,7 +3184,7 @@ function ReelsMakerInner() {
 
   if (!templateId) {
     return (
-      <div className="min-h-[calc(100vh-80px)] bg-black text-white flex items-center justify-center px-4">
+      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
         <div className="max-w-sm text-center text-sm text-white/70">
           템플릿 선택 화면으로 이동 중입니다...
         </div>
@@ -3120,7 +3194,7 @@ function ReelsMakerInner() {
 
   if (isTemplateLoading) {
     return (
-      <div className="min-h-[calc(100vh-80px)] bg-black text-white flex items-center justify-center px-4">
+      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
         <div className="max-w-sm text-center text-sm text-white/70">
           템플릿 정보를 불러오는 중입니다...
         </div>
@@ -3130,7 +3204,7 @@ function ReelsMakerInner() {
 
   if (templateError || !template || cuts.length === 0) {
     return (
-      <div className="min-h-[calc(100vh-80px)] bg-black text-white flex items-center justify-center px-4">
+      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
         <div className="max-w-sm text-center space-y-4">
           <p className="text-sm text-white/70">
             {templateError || '템플릿 정보를 불러오지 못했습니다.'}
@@ -3149,7 +3223,7 @@ function ReelsMakerInner() {
 
   if (isSessionLoading) {
     return (
-      <div className="min-h-[calc(100vh-80px)] bg-black text-white flex items-center justify-center px-4">
+      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
         <div className="max-w-sm text-center text-sm text-white/70">
           릴스 제작 세션을 준비하는 중입니다...
         </div>
@@ -3159,7 +3233,7 @@ function ReelsMakerInner() {
 
   if (sessionError) {
     return (
-      <div className="min-h-[calc(100vh-80px)] bg-black text-white flex items-center justify-center px-4">
+      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
         <div className="max-w-sm text-center space-y-4">
           <p className="text-sm text-white/70">{sessionError}</p>
           <button
@@ -3176,7 +3250,7 @@ function ReelsMakerInner() {
 
   if (stage === 'processing') {
     return (
-      <div className="min-h-[calc(100vh-80px)] bg-black text-white flex items-center justify-center px-4">
+      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
         <div className="max-w-sm w-full text-center space-y-6">
           <div className="w-24 h-24 rounded-full border-4 border-white/10 border-t-[#FF4D6D] animate-spin mx-auto" />
           <div>
@@ -3215,7 +3289,7 @@ function ReelsMakerInner() {
 
   if (stage === 'preview') {
     return (
-      <div className="min-h-[calc(100vh-80px)] bg-black text-white">
+      <div className="min-h-[100dvh] bg-black text-white">
         <div className="max-w-md mx-auto px-4 pt-6 pb-10 space-y-6">
           <h1 className="text-center text-lg font-semibold">최종 미리보기</h1>
 
@@ -3343,8 +3417,8 @@ function ReelsMakerInner() {
     <div
       className="bg-black text-white overflow-hidden"
       style={{
-        height: 'calc(100dvh - 72px)',
-        minHeight: 'calc(100vh - 72px)',
+        height: '100dvh',
+        minHeight: '100vh',
       }}
     >
       {showRecommendedTimingToast && (
@@ -3352,7 +3426,7 @@ function ReelsMakerInner() {
           role="alert"
           aria-live="assertive"
           className="fixed left-1/2 z-[60] w-full max-w-md -translate-x-1/2 px-4"
-          style={{ top: 'calc(72px + env(safe-area-inset-top, 0px))' }}
+          style={{ top: 'calc(12px + env(safe-area-inset-top, 0px))' }}
         >
           <div className="rounded-xl border border-rose-300/70 bg-rose-600 px-4 py-3 text-sm font-bold text-white shadow-2xl motion-safe:animate-pulse">
             <div className="flex items-center gap-2">
@@ -3369,6 +3443,131 @@ function ReelsMakerInner() {
         className="hidden"
         onChange={handleGalleryFileChange}
       />
+      {isCaptureMenuOpen && (
+        <div className="fixed inset-0 z-[80] bg-white text-gray-900">
+          <nav
+            className="flex h-full flex-col overflow-y-auto"
+            style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+          >
+            <div className="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 px-5">
+              <span className="text-lg font-bold">메뉴</span>
+              <button
+                type="button"
+                onClick={() => setIsCaptureMenuOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-700"
+                aria-label="메뉴 닫기"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {isAuthenticated && user && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCaptureMenuOpen(false);
+                  router.push('/profile');
+                }}
+                className="w-full border-b border-gray-200 bg-gray-50 px-6 py-4 text-left transition hover:bg-gray-100"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-gray-200 bg-gray-100">
+                    {user.profileImageUrl ? (
+                      <Image
+                        src={user.profileImageUrl}
+                        alt="프로필"
+                        width={56}
+                        height={56}
+                        className="h-full w-full object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <User className="h-6 w-6 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-base font-semibold">
+                      {user.nickname || user.socialNickname || '사용자'}
+                    </p>
+                    {user.email && (
+                      <p className="truncate text-sm text-gray-500">{user.email}</p>
+                    )}
+                    {!user.email && isGuestUser && (
+                      <p className="truncate text-sm text-gray-500">가입 없이 이용 중</p>
+                    )}
+                  </div>
+                  <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" />
+                </div>
+              </button>
+            )}
+
+            <div className="flex-1 space-y-2 p-6">
+              {isGuestUser && (
+                <Link
+                  href={buildLoginHref(currentReelsMakerHref)}
+                  onClick={() => setIsCaptureMenuOpen(false)}
+                  className="mb-4 flex w-full items-center justify-center rounded-xl bg-[#FF496D] px-5 py-3 text-base font-semibold text-white"
+                >
+                  회원가입하고 보관하기
+                </Link>
+              )}
+              {!isAuthenticated && (
+                <Link
+                  href={buildLoginHref(currentReelsMakerHref)}
+                  onClick={() => setIsCaptureMenuOpen(false)}
+                  className="mb-4 flex w-full items-center justify-center rounded-xl bg-[#FF496D] px-5 py-3 text-base font-semibold text-white"
+                >
+                  로그인 / 회원가입
+                </Link>
+              )}
+
+              {CAPTURE_MENU_ITEMS.map((item) => {
+                const Icon = item.icon;
+                const targetHref =
+                  !isAuthenticated && item.requiresAuth ? buildLoginHref(item.href) : item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={targetHref}
+                    onClick={() => setIsCaptureMenuOpen(false)}
+                    className="flex w-full items-center gap-3 rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
+                  >
+                    <Icon className="h-5 w-5 text-gray-600" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+
+              <div className="my-2 border-t border-gray-200" />
+
+              <Link
+                href="/contents/script-creation"
+                onClick={() => setIsCaptureMenuOpen(false)}
+                className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
+              >
+                릴스 제작
+              </Link>
+              <Link
+                href="/ranking"
+                onClick={() => setIsCaptureMenuOpen(false)}
+                className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
+              >
+                인기 급상승 릴스
+              </Link>
+
+              {isAuthenticated && isAdmin && (
+                <Link
+                  href="/admin"
+                  onClick={() => setIsCaptureMenuOpen(false)}
+                  className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
+                >
+                  관리자
+                </Link>
+              )}
+            </div>
+          </nav>
+        </div>
+      )}
       <div
         ref={captureViewportRef}
         className="mx-auto h-full w-full max-w-md overflow-hidden"
@@ -3389,23 +3588,40 @@ function ReelsMakerInner() {
               </div>
 
               <div className="relative rounded-[28px] bg-[#1E2A3B] px-4 pt-5 pb-4 shadow-2xl">
-                <div className="mb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-white/80">
-                    {recordingStatus === 'recording' ? (
-                      <div className="flex h-9 min-w-[80px] items-center justify-center gap-2 rounded-full bg-[#FF4D6D] px-3 py-1 text-xs font-semibold">
-                        <span className="h-2 w-2 rounded-full bg-white" />
-                        REC
-                      </div>
-                    ) : (
-                      <span className="text-xs text-white/50">릴스 제작</span>
-                    )}
+                <div className="mb-4 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => router.push('/templates')}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10"
+                    aria-label="뒤로가기"
+                  >
+                    <ChevronLeft className="h-6 w-6" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm font-semibold text-white/80">릴스 제작</span>
+                      {recordingStatus === 'recording' && (
+                        <span className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#FF4D6D] px-2.5 text-[11px] font-semibold">
+                          <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                          REC
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setIsExampleOpen(true)}
-                    className="h-11 min-w-[96px] rounded-full bg-[#FF4D6D] px-4 text-xs font-semibold shadow-lg"
+                    className="h-10 shrink-0 rounded-full bg-[#FF4D6D] px-4 text-xs font-semibold shadow-lg"
                   >
                     예시 보기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsCaptureMenuOpen(true)}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10"
+                    aria-label="메뉴"
+                  >
+                    <Menu className="h-6 w-6" />
                   </button>
                 </div>
 

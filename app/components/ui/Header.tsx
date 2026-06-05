@@ -112,6 +112,7 @@ export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, user, subscription } = useAuth();
+  const isReelsMakerPage = pathname === '/reels-maker';
   
   const isAdmin = user?.role?.toUpperCase() === USER_ROLES.ADMIN;
   const isGuestUser = Boolean(user?.guest || user?.provider === 'GUEST');
@@ -164,7 +165,7 @@ export default function Header() {
 
   // 모바일 메뉴 열림/닫힘 시 body 스크롤 제어
   useEffect(() => {
-    if (isMobileMenuOpen) {
+    if (isMobileMenuOpen && !isReelsMakerPage) {
       // 메뉴가 열렸을 때: body 스크롤 잠금
       document.body.style.overflow = 'hidden';
     } else {
@@ -176,7 +177,7 @@ export default function Header() {
       // 컴포넌트 언마운트 시 스크롤 복원
       document.body.style.overflow = 'unset';
     };
-  }, [isMobileMenuOpen]);
+  }, [isMobileMenuOpen, isReelsMakerPage]);
 
   // 프로필 메뉴 외부 클릭 시 닫기
   useEffect(() => {
@@ -194,6 +195,10 @@ export default function Header() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isProfileMenuOpen]);
+
+  if (isReelsMakerPage) {
+    return null;
+  }
 
   return (
     <header
