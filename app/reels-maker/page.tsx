@@ -3570,25 +3570,25 @@ function ReelsMakerInner() {
       )}
       <div
         ref={captureViewportRef}
-        className="mx-auto h-full w-full max-w-md overflow-hidden"
+        className="mx-auto h-full w-full max-w-[440px] overflow-hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        <div className="flex h-full w-full items-start justify-center overflow-hidden">
+        <div className="flex h-full w-full items-center justify-center overflow-hidden">
           <div
             ref={captureContentRef}
-            className="w-full origin-top self-start shrink-0"
+            className="w-full origin-center self-center shrink-0"
             style={{
               transform: `scale(${captureScale})`,
-              transformOrigin: 'top center',
+              transformOrigin: 'center center',
             }}
           >
-            <div ref={captureMeasureRef} className="max-w-md mx-auto px-4 pt-6 pb-10">
-              <div className="mb-4 hidden lg:block rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+            <div ref={captureMeasureRef} className="mx-auto w-full px-2 pt-2 pb-4 sm:px-4 sm:pt-6 sm:pb-10">
+              <div className="mb-3 hidden lg:block rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
                 모바일 웹앱에서 촬영하면 더 안정적으로 카메라를 사용할 수 있어요.
               </div>
 
-              <div className="relative rounded-[28px] bg-[#1E2A3B] px-4 pt-5 pb-4 shadow-2xl">
-                <div className="mb-4 flex items-center gap-2">
+              <div className="relative rounded-[28px] bg-[#1E2A3B] p-3 shadow-2xl sm:p-4">
+                <div className="mb-3 flex items-center gap-2 px-1">
                   <button
                     type="button"
                     onClick={() => router.push('/templates')}
@@ -3627,7 +3627,7 @@ function ReelsMakerInner() {
 
                 <div
                   ref={cameraFrameRef}
-                  className="relative flex w-full aspect-[9/16] items-center justify-center overflow-hidden rounded-[24px] bg-[#243246]"
+                  className="relative flex w-full aspect-[9/16] items-center justify-center overflow-hidden rounded-[22px] bg-[#243246] sm:rounded-[24px]"
                   onPointerDownCapture={(event) => {
                     if (editingCaptionCutIndex !== activeCutIndex) return;
                     const targetNode = event.target as Node;
@@ -3775,7 +3775,7 @@ function ReelsMakerInner() {
                     </div>
                   )}
 
-                  <div className="pointer-events-none absolute inset-x-3 top-3 z-30 space-y-2">
+                  <div className="pointer-events-none absolute inset-x-0 top-0 z-30 space-y-2 bg-gradient-to-b from-black/35 via-black/10 to-transparent px-3 pb-6 pt-3">
                     <div className="pointer-events-auto">
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -3804,7 +3804,7 @@ function ReelsMakerInner() {
                     )}
                   </div>
 
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-3 pb-4 pt-16">
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/35 via-black/10 to-transparent px-3 pb-4 pt-20">
                     <div className="pointer-events-auto space-y-3">
                       <div className="flex items-end justify-center gap-2">
                         {cuts.map((cut, index) => {
