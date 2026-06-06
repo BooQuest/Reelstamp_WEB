@@ -51,6 +51,18 @@ const EXAMPLE_ASSETS = {
     'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1200&q=80',
 } as const;
 
+const VIDEO_ASSET_EXTENSIONS = ['.mp4', '.webm', '.mov', '.m4v', '.ogg', '.ogv'] as const;
+
+type ExampleMedia = {
+  type: 'image' | 'video';
+  src: string;
+};
+
+const isVideoAssetUrl = (url: string) => {
+  const path = url.trim().split(/[?#]/)[0]?.toLowerCase() ?? '';
+  return VIDEO_ASSET_EXTENSIONS.some((extension) => path.endsWith(extension));
+};
+
 type CaptureMenuItem = {
   href: string;
   label: string;
@@ -355,10 +367,10 @@ function ReelsMakerInner() {
   const [trimThumbnails, setTrimThumbnails] = useState<string[]>([]);
   const [isTrimPreparing, setIsTrimPreparing] = useState(false);
   const [trimError, setTrimError] = useState<string | null>(null);
-  const [exampleImageLoadedByCutKey, setExampleImageLoadedByCutKey] = useState<Record<string, boolean>>(
+  const [exampleMediaLoadedByCutKey, setExampleMediaLoadedByCutKey] = useState<Record<string, boolean>>(
     {}
   );
-  const [exampleImageFailedByCutKey, setExampleImageFailedByCutKey] = useState<Record<string, boolean>>(
+  const [exampleMediaFailedByCutKey, setExampleMediaFailedByCutKey] = useState<Record<string, boolean>>(
     {}
   );
   const [captureScale, setCaptureScale] = useState(1);
@@ -470,25 +482,57 @@ function ReelsMakerInner() {
     if (!template?.id || activeCut?.order == null) return null;
     return `${template.id}:${activeCut.order}`;
   }, [template?.id, activeCut?.order]);
-  const activeCutExampleImageSrc = useMemo(() => {
+  const activeCutExampleMedia = useMemo<ExampleMedia | null>(() => {
     const exampleImageUrl = activeCut?.exampleImageUrl?.trim();
-    if (exampleImageUrl) return exampleImageUrl;
-    const fixedPreviewImageUrl = activeCut?.fixedPreviewImageUrl?.trim();
-    if (fixedPreviewImageUrl) return fixedPreviewImageUrl;
+    if (exampleImageUrl) {
+      return {
+        type: isVideoAssetUrl(exampleImageUrl) ? 'video' : 'image',
+        src: exampleImageUrl,
+      };
+    }
+    const exampleVideoUrl = activeCut?.exampleVideoUrl?.trim();
+    if (exampleVideoUrl) {
+      return {
+        type: 'video',
+        src: exampleVideoUrl,
+      };
+    }
     return null;
-  }, [activeCut?.exampleImageUrl, activeCut?.fixedPreviewImageUrl]);
-  const isActiveExampleImageLoaded = Boolean(
-    activeCutKey && exampleImageLoadedByCutKey[activeCutKey]
+  }, [activeCut?.exampleImageUrl, activeCut?.exampleVideoUrl]);
+  const isActiveExampleMediaLoaded = Boolean(
+    activeCutKey && exampleMediaLoadedByCutKey[activeCutKey]
   );
-  const isActiveExampleImageFailed = Boolean(
-    activeCutKey && exampleImageFailedByCutKey[activeCutKey]
+  const isActiveExampleMediaFailed = Boolean(
+    activeCutKey && exampleMediaFailedByCutKey[activeCutKey]
   );
-  const isActiveExampleImageLoading = Boolean(
+  const isActiveExampleMediaLoading = Boolean(
     isExampleOpen &&
-      activeCutExampleImageSrc &&
-      !isActiveExampleImageLoaded &&
-      !isActiveExampleImageFailed
+      activeCutExampleMedia &&
+      !isActiveExampleMediaLoaded &&
+      !isActiveExampleMediaFailed
   );
+  const handleActiveExampleMediaLoad = useCallback(() => {
+    if (!activeCutKey) return;
+    setExampleMediaLoadedByCutKey((prev) => ({
+      ...prev,
+      [activeCutKey]: true,
+    }));
+    setExampleMediaFailedByCutKey((prev) => ({
+      ...prev,
+      [activeCutKey]: false,
+    }));
+  }, [activeCutKey]);
+  const handleActiveExampleMediaError = useCallback(() => {
+    if (!activeCutKey) return;
+    setExampleMediaFailedByCutKey((prev) => ({
+      ...prev,
+      [activeCutKey]: true,
+    }));
+    setExampleMediaLoadedByCutKey((prev) => ({
+      ...prev,
+      [activeCutKey]: false,
+    }));
+  }, [activeCutKey]);
   const exampleReelUrls = template?.exampleReelUrls ?? [];
   const hasExampleReels = exampleReelUrls.length > 0;
   const currentExampleReelUrl = exampleReelUrls[exampleReelIndex] ?? null;
@@ -1005,8 +1049,8 @@ function ReelsMakerInner() {
     setFinalPosterUrl(null);
     setFinalVideoMimeType('video/mp4');
     setIsPreviewOpen(false);
-    setExampleImageLoadedByCutKey({});
-    setExampleImageFailedByCutKey({});
+    setExampleMediaLoadedByCutKey({});
+    setExampleMediaFailedByCutKey({});
     setGalleryError(null);
     setIsGalleryProcessing(false);
     setIsTrimOpen(false);
@@ -3978,50 +4022,46 @@ function ReelsMakerInner() {
               <X className="w-4 h-4" />
             </button>
             <div className="bg-black p-4 pb-3">
-              {activeCutExampleImageSrc && !isActiveExampleImageFailed ? (
+              {activeCutExampleMedia && !isActiveExampleMediaFailed ? (
                 <div className="relative mx-auto w-full max-w-[300px] aspect-[9/16] overflow-hidden rounded-[20px] bg-black">
-                  {isActiveExampleImageLoading && (
+                  {isActiveExampleMediaLoading && (
                     <div className="absolute inset-0 z-20 animate-pulse bg-white/10" />
                   )}
-                  <img
-                    src={activeCutExampleImageSrc}
-                    alt=""
-                    aria-hidden
-                    className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-xl"
-                  />
-                  <img
-                    src={activeCutExampleImageSrc}
-                    alt="예시 이미지"
-                    className={`pointer-events-none absolute inset-0 z-10 h-full w-full object-contain transition-opacity duration-200 ${
-                      isActiveExampleImageLoaded ? 'opacity-100' : 'opacity-0'
-                    }`}
-                    onLoad={() => {
-                      if (!activeCutKey) return;
-                      setExampleImageLoadedByCutKey((prev) => ({
-                        ...prev,
-                        [activeCutKey]: true,
-                      }));
-                      setExampleImageFailedByCutKey((prev) => ({
-                        ...prev,
-                        [activeCutKey]: false,
-                      }));
-                    }}
-                    onError={() => {
-                      if (!activeCutKey) return;
-                      setExampleImageFailedByCutKey((prev) => ({
-                        ...prev,
-                        [activeCutKey]: true,
-                      }));
-                      setExampleImageLoadedByCutKey((prev) => ({
-                        ...prev,
-                        [activeCutKey]: false,
-                      }));
-                    }}
-                  />
+                  {activeCutExampleMedia.type === 'image' ? (
+                    <>
+                      <img
+                        src={activeCutExampleMedia.src}
+                        alt=""
+                        aria-hidden
+                        className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-xl"
+                      />
+                      <img
+                        src={activeCutExampleMedia.src}
+                        alt="예시 이미지"
+                        className={`pointer-events-none absolute inset-0 z-10 h-full w-full object-contain transition-opacity duration-200 ${
+                          isActiveExampleMediaLoaded ? 'opacity-100' : 'opacity-0'
+                        }`}
+                        onLoad={handleActiveExampleMediaLoad}
+                        onError={handleActiveExampleMediaError}
+                      />
+                    </>
+                  ) : (
+                    <video
+                      src={activeCutExampleMedia.src}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className={`absolute inset-0 z-10 h-full w-full object-contain transition-opacity duration-200 ${
+                        isActiveExampleMediaLoaded ? 'opacity-100' : 'opacity-0'
+                      }`}
+                      onLoadedMetadata={handleActiveExampleMediaLoad}
+                      onError={handleActiveExampleMediaError}
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="mx-auto w-full max-w-[300px] aspect-[9/16] rounded-[20px] bg-black flex items-center justify-center text-sm text-white/60 text-center px-5">
-                  해당 컷 예시 이미지가 없습니다.
+                  해당 컷 예시가 없습니다.
                 </div>
               )}
             </div>
