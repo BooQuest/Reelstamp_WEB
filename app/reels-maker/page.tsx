@@ -45,22 +45,115 @@ import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
 
 const EXAMPLE_ASSETS = {
-  point:
-    '카메라를 천천히 좌에서 우로 이동하며 매장 전체 분위기를 담아주세요. 조명이 잘 보이도록 촬영하면 더 좋아요!',
   exampleImage:
     'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1200&q=80',
 } as const;
 
 const VIDEO_ASSET_EXTENSIONS = ['.mp4', '.webm', '.mov', '.m4v', '.ogg', '.ogv'] as const;
+const TEMPLATE_ASSET_BASE_URL = process.env.NEXT_PUBLIC_OCI_TEMPLATE_BASE_URL ?? '';
 
 type ExampleMedia = {
   type: 'image' | 'video';
   src: string;
 };
 
+type GuideImageEntry = {
+  url: string;
+  startSecond: number | null;
+};
+
 const isVideoAssetUrl = (url: string) => {
   const path = url.trim().split(/[?#]/)[0]?.toLowerCase() ?? '';
   return VIDEO_ASSET_EXTENSIONS.some((extension) => path.endsWith(extension));
+};
+
+const isAbsoluteAssetUrl = (url: string) =>
+  /^(https?:|blob:|data:)/i.test(url) || url.startsWith('/');
+
+const joinTemplateAssetUrl = (key: string) => {
+  const trimmed = key.trim();
+  if (!trimmed || isAbsoluteAssetUrl(trimmed) || !TEMPLATE_ASSET_BASE_URL) {
+    return trimmed;
+  }
+  const base = TEMPLATE_ASSET_BASE_URL.endsWith('/')
+    ? TEMPLATE_ASSET_BASE_URL.slice(0, -1)
+    : TEMPLATE_ASSET_BASE_URL;
+  const normalizedKey = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+  return `${base}/${normalizedKey}`;
+};
+
+const extractGuideImageJson = (value: string) => {
+  const trimmed = value.trim();
+  const jsonStartIndex = trimmed.indexOf('[');
+  if (jsonStartIndex === 0) return trimmed;
+  if (jsonStartIndex > 0) return trimmed.slice(jsonStartIndex).trim();
+
+  const base = TEMPLATE_ASSET_BASE_URL.endsWith('/')
+    ? TEMPLATE_ASSET_BASE_URL.slice(0, -1)
+    : TEMPLATE_ASSET_BASE_URL;
+  if (!trimmed.startsWith(`${base}/`)) return null;
+
+  const rest = trimmed.slice(base.length + 1).trim();
+  return rest.startsWith('[') ? rest : null;
+};
+
+const readGuideStartSecond = (entry: Record<string, unknown>) => {
+  const rawValue = entry.startSecond ?? entry.start_second ?? entry.start;
+  if (rawValue == null || rawValue === '') return null;
+  const value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.floor(value);
+};
+
+const normalizeGuideImageEntry = (value: unknown, order: number) => {
+  if (typeof value === 'string') {
+    const url = value.trim();
+    return url ? { url: joinTemplateAssetUrl(url), startSecond: null, order } : null;
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const entry = value as Record<string, unknown>;
+  const url = typeof entry.url === 'string' ? entry.url.trim() : '';
+  if (!url) return null;
+  return {
+    url: joinTemplateAssetUrl(url),
+    startSecond: readGuideStartSecond(entry),
+    order,
+  };
+};
+
+const parseGuideImageEntries = (rawValue?: string | null): GuideImageEntry[] => {
+  const value = rawValue?.trim();
+  if (!value) return [];
+
+  const jsonValue = extractGuideImageJson(value);
+  if (jsonValue) {
+    try {
+      const parsed = JSON.parse(jsonValue);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((entry, index) => normalizeGuideImageEntry(entry, index))
+          .filter((entry): entry is GuideImageEntry & { order: number } => Boolean(entry))
+          .sort((a, b) => {
+            const aStart = a.startSecond ?? Number.POSITIVE_INFINITY;
+            const bStart = b.startSecond ?? Number.POSITIVE_INFINITY;
+            if (aStart !== bStart) return aStart - bStart;
+            return a.order - b.order;
+          })
+          .map((entry) => ({
+            url: entry.url,
+            startSecond: entry.startSecond,
+          }));
+      }
+    } catch {
+      return [{ url: joinTemplateAssetUrl(value), startSecond: null }];
+    }
+  }
+
+  return [{ url: joinTemplateAssetUrl(value), startSecond: null }];
 };
 
 type CaptureMenuItem = {
@@ -119,7 +212,9 @@ type TemplateCut = {
   durationMode?: string | null;
   title?: string | null;
   guideText?: string | null;
+  'guide_text'?: string | null;
   guideImageUrl?: string | null;
+  'guide_image_url'?: string | null;
   exampleImageUrl?: string | null;
   exampleVideoUrl?: string | null;
   defaultCaption?: string | null;
@@ -338,6 +433,7 @@ function ReelsMakerInner() {
   const [clips, setClips] = useState<Array<ClipInfo | null>>([]);
   const [cutCaptions, setCutCaptions] = useState<CutCaptionState[]>([]);
   const [cutGuideVisibility, setCutGuideVisibility] = useState<Record<number, boolean>>({});
+  const [guideImageIndexByCut, setGuideImageIndexByCut] = useState<Record<number, number>>({});
   const [editingCaptionCutIndex, setEditingCaptionCutIndex] = useState<number | null>(null);
   const [isExampleOpen, setIsExampleOpen] = useState(false);
   const [isReelOpen, setIsReelOpen] = useState(false);
@@ -417,8 +513,8 @@ function ReelsMakerInner() {
         label: isFixed
           ? `${duration}초`
           : `${duration}초 [${durationMode === DURATION_MODE_FORCED ? '강제' : '권장'}]`,
-        guideText: cut.guideText ?? '',
-        guideImageUrl: cut.guideImageUrl ?? null,
+        guideText: cut.guideText ?? cut['guide_text'] ?? '',
+        guideImageUrl: cut.guideImageUrl ?? cut['guide_image_url'] ?? null,
         exampleImageUrl: cut.exampleImageUrl ?? null,
         exampleVideoUrl: cut.exampleVideoUrl ?? null,
         defaultCaption: cut.defaultCaption ?? cut.title ?? '',
@@ -450,6 +546,7 @@ function ReelsMakerInner() {
   const activeCaptionText = activeCaptionState?.text ?? '';
   const activeCaptionStyle = activeCaptionState?.style ?? DEFAULT_CAPTION_STYLE;
   const hasCaptionText = Boolean(activeCaptionText.trim());
+  const activeCutGuideText = activeCut?.guideText?.trim() || '등록된 컷 가이드가 없습니다.';
   const showCaptionOverlay =
     !activeUploadError &&
     !cameraError &&
@@ -472,10 +569,40 @@ function ReelsMakerInner() {
     isGalleryProcessing ||
     isTrimPreparing ||
     isTrimOpen;
-  const guideImageSrc = useMemo(() => {
-    if (!activeCut?.guideImageUrl) return null;
-    return activeCut.guideImageUrl;
-  }, [activeCut?.guideImageUrl]);
+  const guideImageEntries = useMemo(
+    () => parseGuideImageEntries(activeCut?.guideImageUrl),
+    [activeCut?.guideImageUrl]
+  );
+  const guideImageCount = guideImageEntries.length;
+  const hasTimedGuideImages = guideImageEntries.some((entry) => entry.startSecond !== null);
+  const manualGuideImageIndex = Math.min(
+    guideImageIndexByCut[activeCutIndex] ?? 0,
+    Math.max(0, guideImageCount - 1)
+  );
+  const activeGuideImageIndex = useMemo(() => {
+    if (guideImageCount === 0) return -1;
+    if (recordingElapsedSeconds !== null && hasTimedGuideImages) {
+      const currentElapsedSeconds = Math.max(0, recordingElapsedSeconds);
+      let timedIndex = 0;
+      guideImageEntries.forEach((entry, index) => {
+        if (entry.startSecond !== null && currentElapsedSeconds >= entry.startSecond) {
+          timedIndex = index;
+        }
+      });
+      return timedIndex;
+    }
+    return manualGuideImageIndex;
+  }, [
+    guideImageCount,
+    guideImageEntries,
+    hasTimedGuideImages,
+    manualGuideImageIndex,
+    recordingElapsedSeconds,
+  ]);
+  const guideImageSrc =
+    activeGuideImageIndex >= 0 ? guideImageEntries[activeGuideImageIndex]?.url ?? null : null;
+  const hasMultipleGuideImages = guideImageCount > 1;
+  const isGuideImageNavigationDisabled = recordingStatus === 'recording' && hasTimedGuideImages;
   const isGuideImageVisible =
     Boolean(guideImageSrc) && (cutGuideVisibility[activeCutIndex] ?? true);
   const activeCutKey = useMemo(() => {
@@ -652,6 +779,28 @@ function ReelsMakerInner() {
       [activeCutIndex]: !(prev[activeCutIndex] ?? true),
     }));
   }, [activeCutIndex, guideImageSrc]);
+
+  const handlePrevGuideImage = useCallback(() => {
+    if (guideImageCount <= 1 || isGuideImageNavigationDisabled) return;
+    setGuideImageIndexByCut((prev) => {
+      const current = Math.min(prev[activeCutIndex] ?? activeGuideImageIndex, guideImageCount - 1);
+      return {
+        ...prev,
+        [activeCutIndex]: Math.max(0, current - 1),
+      };
+    });
+  }, [activeCutIndex, activeGuideImageIndex, guideImageCount, isGuideImageNavigationDisabled]);
+
+  const handleNextGuideImage = useCallback(() => {
+    if (guideImageCount <= 1 || isGuideImageNavigationDisabled) return;
+    setGuideImageIndexByCut((prev) => {
+      const current = Math.min(prev[activeCutIndex] ?? activeGuideImageIndex, guideImageCount - 1);
+      return {
+        ...prev,
+        [activeCutIndex]: Math.min(guideImageCount - 1, current + 1),
+      };
+    });
+  }, [activeCutIndex, activeGuideImageIndex, guideImageCount, isGuideImageNavigationDisabled]);
 
   const handlePrevExampleReel = useCallback(() => {
     setExampleReelIndex((prev) => Math.max(0, prev - 1));
@@ -1030,10 +1179,11 @@ function ReelsMakerInner() {
     setCutGuideVisibility(() => {
       const next: Record<number, boolean> = {};
       cuts.forEach((cut, index) => {
-        next[index] = Boolean(cut.guideImageUrl);
+        next[index] = parseGuideImageEntries(cut.guideImageUrl).length > 0;
       });
       return next;
     });
+    setGuideImageIndexByCut({});
     setEditingCaptionCutIndex(null);
     resetCaptionGesture();
     setClips((prev) => {
@@ -3175,10 +3325,11 @@ function ReelsMakerInner() {
     setCutGuideVisibility(() => {
       const next: Record<number, boolean> = {};
       cuts.forEach((cut, index) => {
-        next[index] = Boolean(cut.guideImageUrl);
+        next[index] = parseGuideImageEntries(cut.guideImageUrl).length > 0;
       });
       return next;
     });
+    setGuideImageIndexByCut({});
     setEditingCaptionCutIndex(null);
     resetCaptionGesture();
     setClips((prev) => {
@@ -3728,11 +3879,42 @@ function ReelsMakerInner() {
                         className="absolute inset-0 h-full w-full object-cover"
                       />
                       {guideImageSrc && isGuideImageVisible && (
-                        <img
-                          src={guideImageSrc}
-                          alt="가이드 이미지"
-                          className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-70"
-                        />
+                        <>
+                          <img
+                            key={guideImageSrc}
+                            src={guideImageSrc}
+                            alt="가이드 이미지"
+                            className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-70"
+                          />
+                          {hasMultipleGuideImages && (
+                            <div className="absolute inset-x-0 bottom-4 z-30 flex items-center justify-center gap-3">
+                              <button
+                                type="button"
+                                onClick={handlePrevGuideImage}
+                                disabled={isGuideImageNavigationDisabled || activeGuideImageIndex <= 0}
+                                className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-35"
+                                aria-label="이전 가이드 이미지"
+                              >
+                                <ChevronLeft className="h-5 w-5" />
+                              </button>
+                              <span className="min-w-[52px] rounded-full bg-black/55 px-3 py-2 text-center text-xs font-semibold text-white shadow-lg">
+                                {activeGuideImageIndex + 1} / {guideImageCount}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={handleNextGuideImage}
+                                disabled={
+                                  isGuideImageNavigationDisabled ||
+                                  activeGuideImageIndex >= guideImageCount - 1
+                                }
+                                className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-35"
+                                aria-label="다음 가이드 이미지"
+                              >
+                                <ChevronRight className="h-5 w-5" />
+                              </button>
+                            </div>
+                          )}
+                        </>
                       )}
                       <div className="relative text-center text-white/40">
                         <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-white/20">
@@ -4084,7 +4266,7 @@ function ReelsMakerInner() {
               )}
               <div>
                 <p className="text-sm font-semibold text-white/80 mb-2">이 컷의 포인트</p>
-                <p className="text-xs text-white/60 leading-relaxed">{EXAMPLE_ASSETS.point}</p>
+                <p className="text-xs text-white/60 leading-relaxed">{activeCutGuideText}</p>
               </div>
             </div>
           </div>
