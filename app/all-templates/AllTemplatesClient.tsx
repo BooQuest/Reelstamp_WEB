@@ -1,19 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { WebApiResponse } from '@/app/lib/api/auth';
-import InstagramEmbed from '@/app/components/ui/InstagramEmbed';
 import { Bookmark, ChevronLeft, ChevronRight, Play, X } from 'lucide-react';
 import { useSavedTemplates } from '@/app/hooks/useSavedTemplates';
+import TemplateMediaPreview from '@/app/components/ui/TemplateMediaPreview';
 
 type TemplateItem = {
   id: string;
   title: string;
   subtitle: string;
-  thumbnailUrl: string;
+  thumbnailUrl?: string | null;
   embedUrl?: string | null;
   tags: string[];
 };
@@ -21,6 +20,9 @@ type TemplateItem = {
 type TemplateListResponse = {
   templates: TemplateItem[];
 };
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
 
 export default function AllTemplatesClient() {
   const router = useRouter();
@@ -61,6 +63,7 @@ export default function AllTemplatesClient() {
         const normalized = (payload.data?.templates ?? []).map((template) => ({
           ...template,
           subtitle: template.subtitle ?? '',
+          thumbnailUrl: template.thumbnailUrl?.trim() || null,
           embedUrl: template.embedUrl ?? null,
           tags: Array.isArray(template.tags) ? template.tags : [],
         }));
@@ -68,9 +71,9 @@ export default function AllTemplatesClient() {
         if (isMounted) {
           setTemplates(normalized);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (isMounted) {
-          setLoadError(error?.message || '템플릿 목록을 불러오지 못했습니다.');
+          setLoadError(getErrorMessage(error, '템플릿 목록을 불러오지 못했습니다.'));
         }
       } finally {
         if (isMounted) {
@@ -239,11 +242,12 @@ export default function AllTemplatesClient() {
                 className="group text-left"
               >
                 <div className="relative w-full aspect-[3/4] rounded-2xl sm:rounded-[28px] overflow-hidden bg-white shadow-sm ring-1 ring-black/5">
-                  <Image
-                    src={template.thumbnailUrl}
-                    alt={template.title}
-                    fill
-                    className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                  <TemplateMediaPreview
+                    title={template.title}
+                    thumbnailUrl={template.thumbnailUrl}
+                    embedUrl={template.embedUrl}
+                    disableEmbedInteraction
+                    imageClassName="transition-transform duration-300 group-hover:scale-[1.03]"
                   />
                 </div>
                 <div className="mt-3 text-center">
@@ -289,20 +293,11 @@ export default function AllTemplatesClient() {
                       style={getCardStyle(index)}
                       aria-hidden={!isActive}
                     >
-                      {template.embedUrl ? (
-                        <div className="absolute inset-0">
-                          <InstagramEmbed url={template.embedUrl} className="h-full w-full rounded-none" />
-                        </div>
-                      ) : (
-                        <div className="absolute inset-0">
-                          <Image
-                            src={template.thumbnailUrl}
-                            alt={template.title}
-                            fill
-                            className="object-cover"
-                          />
-                        </div>
-                      )}
+                      <TemplateMediaPreview
+                        title={template.title}
+                        thumbnailUrl={template.thumbnailUrl}
+                        embedUrl={template.embedUrl}
+                      />
                       <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/25 to-black/80" />
 
                       {!template.embedUrl && (

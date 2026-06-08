@@ -1,9 +1,9 @@
 'use client';
 
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Bookmark, Play } from 'lucide-react';
 import { useSavedTemplates } from '@/app/hooks/useSavedTemplates';
+import TemplateMediaPreview from '@/app/components/ui/TemplateMediaPreview';
 
 export default function SavedReelsClient() {
   const router = useRouter();
@@ -52,11 +52,12 @@ export default function SavedReelsClient() {
             onClick={() => handleOpen(template.id)}
             className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden bg-white shadow-sm ring-1 ring-black/5"
           >
-            <Image
-              src={template.thumbnailUrl}
-              alt={template.title}
-              fill
-              className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+            <TemplateMediaPreview
+              title={template.title}
+              thumbnailUrl={template.thumbnailUrl}
+              embedUrl={template.embedUrl}
+              disableEmbedInteraction
+              imageClassName="transition-transform duration-300 group-hover:scale-[1.03]"
             />
             <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/70 opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">

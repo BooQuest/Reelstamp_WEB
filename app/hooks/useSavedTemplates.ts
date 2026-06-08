@@ -9,7 +9,7 @@ export type TemplateSummary = {
   id: string;
   title: string;
   subtitle: string;
-  thumbnailUrl: string;
+  thumbnailUrl?: string | null;
   embedUrl?: string | null;
   tags: string[];
 };
@@ -27,6 +27,9 @@ type UseSavedTemplatesOptions = {
   returnUrl?: string;
 };
 
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
 export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
@@ -42,6 +45,7 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
     templates.map((template) => ({
       ...template,
       subtitle: template.subtitle ?? '',
+      thumbnailUrl: template.thumbnailUrl?.trim() || null,
       embedUrl: template.embedUrl ?? null,
       tags: Array.isArray(template.tags) ? template.tags : [],
     }));
@@ -71,8 +75,8 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
       const templates = normalizeTemplates(payload.data?.templates ?? []);
       setSavedTemplates(templates);
       setSavedIds(templates.map((template) => template.id));
-    } catch (err: any) {
-      setError(err?.message || '저장된 템플릿을 불러오지 못했습니다.');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, '저장된 템플릿을 불러오지 못했습니다.'));
     } finally {
       setIsLoading(false);
     }
@@ -110,6 +114,7 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
               return [
                 {
                   ...template,
+                  thumbnailUrl: template.thumbnailUrl?.trim() || null,
                   embedUrl: template.embedUrl ?? null,
                   tags: Array.isArray(template.tags) ? template.tags : [],
                 } as TemplateSummary,
@@ -124,8 +129,8 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
           setSavedTemplates((prev) => prev.filter((item) => item.id !== templateId));
           setSavedIds((prev) => prev.filter((id) => id !== templateId));
         }
-      } catch (err: any) {
-        setError(err?.message || '저장 처리에 실패했습니다.');
+      } catch (err: unknown) {
+        setError(getErrorMessage(err, '저장 처리에 실패했습니다.'));
       }
     },
     [isAuthenticated, refresh, returnUrl, router]

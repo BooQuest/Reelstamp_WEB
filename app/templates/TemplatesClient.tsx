@@ -7,10 +7,14 @@ import { Bookmark, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import { useSavedTemplates, type TemplateSummary } from '@/app/hooks/useSavedTemplates';
 import type { WebApiResponse } from '@/app/lib/api/auth';
+import TemplateMediaPreview from '@/app/components/ui/TemplateMediaPreview';
 
 type TemplateListResponse = {
   templates: TemplateSummary[];
 };
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
 
 export default function TemplatesClient() {
   const router = useRouter();
@@ -93,6 +97,7 @@ export default function TemplatesClient() {
         const normalized = (payload.data?.templates ?? []).map((template) => ({
           ...template,
           subtitle: template.subtitle ?? '',
+          thumbnailUrl: template.thumbnailUrl?.trim() || null,
           embedUrl: template.embedUrl ?? null,
           tags: Array.isArray(template.tags) ? template.tags : [],
         }));
@@ -101,9 +106,9 @@ export default function TemplatesClient() {
           setTemplates(normalized);
           setActiveIndex(0);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (isMounted) {
-          setLoadError(error?.message || '템플릿 목록을 불러오지 못했습니다.');
+          setLoadError(getErrorMessage(error, '템플릿 목록을 불러오지 못했습니다.'));
         }
       } finally {
         if (isMounted) {
@@ -162,9 +167,11 @@ export default function TemplatesClient() {
                 style={getCardStyle(index)}
                 aria-hidden={!isActive}
               >
-                <div
-                  className="absolute inset-0 bg-center bg-cover"
-                  style={{ backgroundImage: `url(${card.thumbnailUrl})` }}
+                <TemplateMediaPreview
+                  title={card.title}
+                  thumbnailUrl={card.thumbnailUrl}
+                  embedUrl={card.embedUrl}
+                  disableEmbedInteraction
                 />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/80" />
 
