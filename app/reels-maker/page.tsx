@@ -517,7 +517,7 @@ function ReelsMakerInner() {
         guideImageUrl: cut.guideImageUrl ?? cut['guide_image_url'] ?? null,
         exampleImageUrl: cut.exampleImageUrl ?? null,
         exampleVideoUrl: cut.exampleVideoUrl ?? null,
-        defaultCaption: cut.defaultCaption ?? cut.title ?? '',
+        defaultCaption: cut.defaultCaption ?? '',
         captureType,
         fixedVideoUrl: cut.fixedVideoUrl ?? null,
         fixedPreviewImageUrl: cut.fixedPreviewImageUrl ?? null,
