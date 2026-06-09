@@ -247,31 +247,6 @@ export default function TemplatesClient() {
                   />
                 </button>
 
-                {isActive && (
-                  <>
-                    {activeIndex > 0 && (
-                      <button
-                        type="button"
-                        onClick={handlePrev}
-                        aria-label="이전 추천"
-                        className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
-                      >
-                        <ChevronLeft className="w-5 h-5 text-white" />
-                      </button>
-                    )}
-                    {activeIndex < recommendations.length - 1 && (
-                      <button
-                        type="button"
-                        onClick={handleNext}
-                        aria-label="다음 추천"
-                        className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
-                      >
-                        <ChevronRight className="w-5 h-5 text-white" />
-                      </button>
-                    )}
-                  </>
-                )}
-
                 <div className="absolute bottom-0 left-0 right-0 px-5 pb-6 pt-12">
                   <h3 className="text-xl sm:text-2xl font-bold mb-2 drop-shadow-lg">
                     {card.title}
@@ -293,6 +268,30 @@ export default function TemplatesClient() {
               </div>
             );
           })}
+          {!isLoading && !loadError && recommendations.length > 1 && activeIndex > 0 && (
+            <button
+              type="button"
+              onClick={handlePrev}
+              onPointerDown={(event) => event.stopPropagation()}
+              onPointerUp={(event) => event.stopPropagation()}
+              aria-label="이전 추천"
+              className="absolute left-4 top-1/2 z-50 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform sm:left-8"
+            >
+              <ChevronLeft className="w-5 h-5 text-white" />
+            </button>
+          )}
+          {!isLoading && !loadError && recommendations.length > 1 && activeIndex < recommendations.length - 1 && (
+            <button
+              type="button"
+              onClick={handleNext}
+              onPointerDown={(event) => event.stopPropagation()}
+              onPointerUp={(event) => event.stopPropagation()}
+              aria-label="다음 추천"
+              className="absolute right-4 top-1/2 z-50 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform sm:right-8"
+            >
+              <ChevronRight className="w-5 h-5 text-white" />
+            </button>
+          )}
         </div>
 
         <div className="mt-2 sm:mt-4 flex flex-col items-center gap-4">
