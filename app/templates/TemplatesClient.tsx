@@ -1,6 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bookmark, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -23,6 +29,7 @@ export default function TemplatesClient() {
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const { savedSet, toggleSave } = useSavedTemplates({ returnUrl: '/templates' });
 
   const handlePrev = () => {
@@ -35,6 +42,50 @@ export default function TemplatesClient() {
       return;
     }
     setActiveIndex((prev) => Math.min(limit - 1, prev + 1));
+  };
+
+  const handleCarouselPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    swipeStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
+  const handleCarouselPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+
+    if (!start) {
+      return;
+    }
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    const isHorizontalSwipe = Math.abs(deltaX) > 44 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
+
+    if (!isHorizontalSwipe) {
+      return;
+    }
+
+    if (deltaX < 0) {
+      handleNext();
+      return;
+    }
+
+    handlePrev();
+  };
+
+  const handleCarouselPointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    swipeStartRef.current = null;
   };
 
   const handleStart = () => {
@@ -137,8 +188,8 @@ export default function TemplatesClient() {
   }, [activeIndex, recommendations.length]);
 
   return (
-    <div className="min-h-[calc(100vh-80px)] bg-black text-white">
-      <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-8 pb-10 sm:pt-12 sm:pb-14">
+    <div className="min-h-[calc(100vh-80px)] max-w-full overflow-x-hidden bg-black text-white">
+      <div className="mx-auto max-w-6xl px-4 sm:px-8 pt-8 pb-10 sm:pt-12 sm:pb-14">
         <div className="flex flex-col items-center text-center gap-2 mb-8 sm:mb-10">
           <p className="text-sm text-white/60 tracking-[0.3em] uppercase">맞춤형 릴스 추천</p>
           <h2 className="text-2xl sm:text-3xl font-bold">오늘의 트렌드 릴스 3가지</h2>
@@ -147,7 +198,12 @@ export default function TemplatesClient() {
           </p>
         </div>
 
-        <div className="relative w-full flex items-center justify-center h-[520px] sm:h-[560px] md:h-[600px] pb-6 sm:pb-8">
+        <div
+          className="relative left-1/2 flex h-[520px] w-screen max-w-none -translate-x-1/2 touch-pan-y select-none items-center justify-center overflow-hidden overscroll-x-none pb-6 sm:h-[560px] sm:pb-8 md:h-[600px]"
+          onPointerDown={handleCarouselPointerDown}
+          onPointerUp={handleCarouselPointerUp}
+          onPointerCancel={handleCarouselPointerCancel}
+        >
           {isLoading && (
             <div className="text-sm sm:text-base text-white/70">템플릿을 불러오는 중입니다...</div>
           )}
