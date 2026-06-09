@@ -32,7 +32,6 @@ import {
   Play,
   Plus,
   RotateCcw,
-  Share2,
   Sparkles,
   SwitchCamera,
   TrendingUp,
@@ -43,6 +42,7 @@ import type { WebApiResponse } from '@/app/lib/api/auth';
 import InstagramEmbed from '@/app/components/ui/InstagramEmbed';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
+import InstagramShareButton from '@/app/reels-maker/InstagramShareButton';
 
 const EXAMPLE_ASSETS = {
   exampleImage:
@@ -3551,13 +3551,12 @@ function ReelsMakerInner() {
           </div>
 
           <div className="space-y-3">
-            <button
-              type="button"
-              className="w-full rounded-full bg-[#FF4D6D] py-4 text-base font-semibold shadow-lg flex items-center justify-center gap-2"
-            >
-              <Share2 className="w-5 h-5" />
-              인스타그램에 공유
-            </button>
+            <InstagramShareButton
+              finalVideoUrl={finalVideoUrl}
+              finalVideoMimeType={finalVideoMimeType}
+              templateTitle={template.title}
+              onShared={setDownloadToastMessage}
+            />
             <button
               type="button"
               onClick={handleDownload}
