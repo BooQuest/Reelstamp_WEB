@@ -43,6 +43,7 @@ import InstagramEmbed from '@/app/components/ui/InstagramEmbed';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
 import InstagramShareButton from '@/app/reels-maker/InstagramShareButton';
+import CapturedClipPreview from '@/app/reels-maker/components/CapturedClipPreview';
 
 const EXAMPLE_ASSETS = {
   exampleImage:
@@ -542,6 +543,8 @@ function ReelsMakerInner() {
   const activeUploadError = clipUploadErrors[activeCutIndex];
   const isUploadingActiveCut = uploadingCuts[activeCutIndex];
   const activeClip = clips[activeCutIndex] ?? null;
+  const shouldShowActiveClipPreview =
+    !isActiveCutFixed && Boolean(activeClip) && recordingStatus !== 'recording';
   const activeCaptionState = cutCaptions[activeCutIndex] ?? null;
   const activeCaptionText = activeCaptionState?.text ?? '';
   const activeCaptionStyle = activeCaptionState?.style ?? DEFAULT_CAPTION_STYLE;
@@ -549,8 +552,8 @@ function ReelsMakerInner() {
   const activeCutGuideText = activeCut?.guideText?.trim() || '등록된 컷 가이드가 없습니다.';
   const showCaptionOverlay =
     !activeUploadError &&
-    !cameraError &&
     !activeFixedError &&
+    (!cameraError || Boolean(activeClip)) &&
     (!isActiveCutFixed || Boolean(activeClip));
   const isRecordDisabled =
     isActiveCutFixed || isUploadingActiveCut || isSessionLoading || !sessionId;
@@ -1456,7 +1459,7 @@ function ReelsMakerInner() {
         });
       }
     }
-  }, [isSessionLoading, stage, stream]);
+  }, [activeCutIndex, isSessionLoading, shouldShowActiveClipPreview, stage, stream]);
 
   useEffect(() => {
     latestClipsRef.current = clips;
@@ -3866,6 +3869,12 @@ function ReelsMakerInner() {
                         다시 촬영하기
                       </button>
                     </div>
+                  ) : shouldShowActiveClipPreview && activeClip ? (
+                    <CapturedClipPreview
+                      key={activeClip.url}
+                      clipUrl={activeClip.url}
+                      posterUrl={clipPosters[activeCutIndex] || undefined}
+                    />
                   ) : cameraError ? (
                     <div className="px-6 text-center text-sm text-white/70">{cameraError}</div>
                   ) : (
