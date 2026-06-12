@@ -285,6 +285,20 @@ type CaptionStyle = {
   styleVersion?: CaptionStyleVersion;
   maxWidthRatio?: number;
   maxLines?: number | null;
+  renderWidth?: number;
+  renderHeight?: number;
+  layoutWidth?: number;
+  layoutHeight?: number;
+  baseFontSizePx?: number;
+  lineHeight?: number;
+  fontFamily?: string;
+  fontWeight?: number;
+  textColor?: string;
+  boxBackgroundColor?: string;
+  boxBackgroundOpacity?: number;
+  boxPaddingXPx?: number;
+  boxPaddingYPx?: number;
+  boxBorderRadiusPx?: number;
 };
 
 type CutCaptionState = {
@@ -330,6 +344,19 @@ const DURATION_MODE_FORCED: CutDurationMode = 'FORCED';
 const RECOMMENDED_AUTO_STOP_SECONDS = 60;
 const CAPTION_STYLE_VERSION_WEB_BOX_V2: CaptionStyleVersion = 'WEB_BOX_V2';
 const DEFAULT_CAPTION_MAX_WIDTH_RATIO = 0.85;
+const CAPTION_RENDER_WIDTH = 1080;
+const CAPTION_RENDER_HEIGHT = 1920;
+const CAPTION_LAYOUT_FALLBACK_WIDTH = 408;
+const CAPTION_BASE_FONT_SIZE_PX = 28;
+const CAPTION_LINE_HEIGHT = 1.25;
+const CAPTION_FONT_FAMILY = 'Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif';
+const CAPTION_FONT_WEIGHT = 600;
+const CAPTION_TEXT_COLOR = '#FFFFFF';
+const CAPTION_BOX_BACKGROUND_COLOR = '#000000';
+const CAPTION_BOX_BACKGROUND_OPACITY = 0.5;
+const CAPTION_BOX_PADDING_X_PX = 16;
+const CAPTION_BOX_PADDING_Y_PX = 8;
+const CAPTION_BOX_BORDER_RADIUS_PX = 18;
 const PROCESSING_STATUS_TIMEOUT_MS = 5 * 60 * 1000;
 const COMPLETE_START_FAILED_ERROR_CODE = 'RS-VID-001';
 const PROCESSING_FAILED_ERROR_CODE = 'RS-VID-002';
@@ -373,6 +400,44 @@ const normalizeCaptionStyle = (style: CaptionStyle): CaptionStyle => ({
       ? Math.max(1, Math.round(style.maxLines))
       : null,
 });
+
+const resolveCaptionLayoutSize = (frameRect?: DOMRect | null) => {
+  const rawWidth = frameRect?.width ?? CAPTION_LAYOUT_FALLBACK_WIDTH;
+  const width =
+    typeof rawWidth === 'number' && Number.isFinite(rawWidth) && rawWidth > 0
+      ? rawWidth
+      : CAPTION_LAYOUT_FALLBACK_WIDTH;
+  return {
+    layoutWidth: Math.round(width),
+    layoutHeight: Math.round((width * 16) / 9),
+  };
+};
+
+const buildCaptionExportStyle = (
+  style: CaptionStyle,
+  frameRect?: DOMRect | null
+): CaptionStyle => {
+  const normalized = normalizeCaptionStyle(style);
+  const { layoutWidth, layoutHeight } = resolveCaptionLayoutSize(frameRect);
+
+  return {
+    ...normalized,
+    renderWidth: CAPTION_RENDER_WIDTH,
+    renderHeight: CAPTION_RENDER_HEIGHT,
+    layoutWidth,
+    layoutHeight,
+    baseFontSizePx: CAPTION_BASE_FONT_SIZE_PX,
+    lineHeight: CAPTION_LINE_HEIGHT,
+    fontFamily: CAPTION_FONT_FAMILY,
+    fontWeight: CAPTION_FONT_WEIGHT,
+    textColor: CAPTION_TEXT_COLOR,
+    boxBackgroundColor: CAPTION_BOX_BACKGROUND_COLOR,
+    boxBackgroundOpacity: CAPTION_BOX_BACKGROUND_OPACITY,
+    boxPaddingXPx: CAPTION_BOX_PADDING_X_PX,
+    boxPaddingYPx: CAPTION_BOX_PADDING_Y_PX,
+    boxBorderRadiusPx: CAPTION_BOX_BORDER_RADIUS_PX,
+  };
+};
 
 function ReelsMakerInner() {
   const router = useRouter();
@@ -2742,14 +2807,16 @@ function ReelsMakerInner() {
     if (!sessionId) return;
     if (!allDone) return;
 
+    const captionFrameRect = cameraFrameRef.current?.getBoundingClientRect();
     const captions = cuts
       .map((cut, index) => {
         const order = cut.order ?? index + 1;
         const clipId = sessionClipMap[order];
         if (!clipId) return null;
         const captionState = cutCaptions[index];
-        const captionStyle = normalizeCaptionStyle(
-          captionState?.style ?? DEFAULT_CAPTION_STYLE
+        const captionStyle = buildCaptionExportStyle(
+          captionState?.style ?? DEFAULT_CAPTION_STYLE,
+          captionFrameRect
         );
         return {
           clipId,
@@ -3952,16 +4019,22 @@ function ReelsMakerInner() {
                         touchAction: 'none',
                         cursor:
                           editingCaptionCutIndex === activeCutIndex ? 'text' : 'move',
-                        fontSize: `${Math.round(28 * activeCaptionStyle.scale)}px`,
-                        lineHeight: 1.25,
+                        fontSize: `${Math.round(
+                          CAPTION_BASE_FONT_SIZE_PX * activeCaptionStyle.scale
+                        )}px`,
+                        lineHeight: CAPTION_LINE_HEIGHT,
                         padding: activeCaptionStyle.boxed
-                          ? `${Math.round(8 * activeCaptionStyle.scale)}px ${Math.round(
-                              16 * activeCaptionStyle.scale
+                          ? `${Math.round(
+                              CAPTION_BOX_PADDING_Y_PX * activeCaptionStyle.scale
+                            )}px ${Math.round(
+                              CAPTION_BOX_PADDING_X_PX * activeCaptionStyle.scale
                             )}px`
                           : '0px',
-                        borderRadius: `${Math.round(18 * activeCaptionStyle.scale)}px`,
+                        borderRadius: `${Math.round(
+                          CAPTION_BOX_BORDER_RADIUS_PX * activeCaptionStyle.scale
+                        )}px`,
                         backgroundColor: activeCaptionStyle.boxed
-                          ? 'rgba(0, 0, 0, 0.5)'
+                          ? `rgba(0, 0, 0, ${CAPTION_BOX_BACKGROUND_OPACITY})`
                           : 'transparent',
                         boxShadow: activeCaptionStyle.boxed
                           ? '0 8px 20px rgba(0,0,0,0.28)'

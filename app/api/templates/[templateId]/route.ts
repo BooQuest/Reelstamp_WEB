@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { templateId?: string } | Promise<{ templateId?: string }> }
+  { params }: { params: Promise<{ templateId?: string }> }
 ) {
   try {
     const { getServerApiClient } = await import('@/app/lib/api/server-client');

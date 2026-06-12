@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { sessionId?: string } | Promise<{ sessionId?: string }> }
+  { params }: { params: Promise<{ sessionId?: string }> }
 ) {
   try {
     const body = await request.json();
