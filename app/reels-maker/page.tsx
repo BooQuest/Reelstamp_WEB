@@ -401,24 +401,30 @@ const normalizeCaptionStyle = (style: CaptionStyle): CaptionStyle => ({
       : null,
 });
 
-const resolveCaptionLayoutSize = (frameRect?: DOMRect | null) => {
-  const rawWidth = frameRect?.width ?? CAPTION_LAYOUT_FALLBACK_WIDTH;
+const resolveCaptionLayoutSize = (frameElement?: HTMLElement | null) => {
+  const rawWidth = frameElement?.offsetWidth ?? CAPTION_LAYOUT_FALLBACK_WIDTH;
+  const rawHeight =
+    frameElement?.offsetHeight ?? Math.round((CAPTION_LAYOUT_FALLBACK_WIDTH * 16) / 9);
   const width =
     typeof rawWidth === 'number' && Number.isFinite(rawWidth) && rawWidth > 0
       ? rawWidth
       : CAPTION_LAYOUT_FALLBACK_WIDTH;
+  const height =
+    typeof rawHeight === 'number' && Number.isFinite(rawHeight) && rawHeight > 0
+      ? rawHeight
+      : Math.round((width * 16) / 9);
   return {
     layoutWidth: Math.round(width),
-    layoutHeight: Math.round((width * 16) / 9),
+    layoutHeight: Math.round(height),
   };
 };
 
 const buildCaptionExportStyle = (
   style: CaptionStyle,
-  frameRect?: DOMRect | null
+  frameElement?: HTMLElement | null
 ): CaptionStyle => {
   const normalized = normalizeCaptionStyle(style);
-  const { layoutWidth, layoutHeight } = resolveCaptionLayoutSize(frameRect);
+  const { layoutWidth, layoutHeight } = resolveCaptionLayoutSize(frameElement);
 
   return {
     ...normalized,
@@ -2807,7 +2813,6 @@ function ReelsMakerInner() {
     if (!sessionId) return;
     if (!allDone) return;
 
-    const captionFrameRect = cameraFrameRef.current?.getBoundingClientRect();
     const captions = cuts
       .map((cut, index) => {
         const order = cut.order ?? index + 1;
@@ -2816,7 +2821,7 @@ function ReelsMakerInner() {
         const captionState = cutCaptions[index];
         const captionStyle = buildCaptionExportStyle(
           captionState?.style ?? DEFAULT_CAPTION_STYLE,
-          captionFrameRect
+          cameraFrameRef.current
         );
         return {
           clipId,
