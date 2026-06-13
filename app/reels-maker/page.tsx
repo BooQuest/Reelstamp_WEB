@@ -299,6 +299,14 @@ type CaptionStyle = {
   boxPaddingXPx?: number;
   boxPaddingYPx?: number;
   boxBorderRadiusPx?: number;
+  renderedBoxWidthPx?: number;
+  renderedBoxHeightPx?: number;
+  renderedFontSizePx?: number;
+  renderedLineHeightPx?: number;
+  renderedPaddingXPx?: number;
+  renderedPaddingYPx?: number;
+  renderedBorderRadiusPx?: number;
+  renderedLines?: string[];
 };
 
 type CutCaptionState = {
@@ -419,12 +427,191 @@ const resolveCaptionLayoutSize = (frameElement?: HTMLElement | null) => {
   };
 };
 
+const roundLayoutPx = (value: number) => Math.round(value * 1000) / 1000;
+
+const parseCssPixelValue = (value: string, fallback = 0) => {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const extractRenderedTextLines = (
+  textElement: HTMLElement,
+  fallbackText: string
+) => {
+  const textNode = Array.from(textElement.childNodes).find(
+    (node) => node.nodeType === Node.TEXT_NODE
+  );
+  if (!textNode || !textNode.textContent) {
+    return fallbackText.replace(/\r\n/g, '\n').split('\n').filter(Boolean);
+  }
+
+  const text = textNode.textContent;
+  const range = document.createRange();
+  const lines: Array<{ top: number | null; text: string }> = [];
+  let current: { top: number | null; text: string } | null = null;
+
+  const pushCurrent = () => {
+    if (current && current.text.length > 0) {
+      lines.push(current);
+    }
+    current = null;
+  };
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '\r') continue;
+    if (character === '\n') {
+      pushCurrent();
+      continue;
+    }
+
+    range.setStart(textNode, index);
+    range.setEnd(textNode, index + 1);
+    const rect = Array.from(range.getClientRects()).find(
+      (item) => item.width > 0 || item.height > 0
+    );
+    const top = rect ? rect.top : null;
+
+    if (!current) {
+      current = { top, text: '' };
+    } else if (top !== null && current.top !== null && Math.abs(top - current.top) > 2) {
+      pushCurrent();
+      current = { top, text: '' };
+    } else if (top !== null && current.top === null) {
+      current.top = top;
+    }
+
+    current.text += character;
+  }
+
+  pushCurrent();
+
+  const renderedLines = lines.map((line) => line.text).filter(Boolean);
+  if (renderedLines.length > 0) {
+    return renderedLines;
+  }
+  return fallbackText.replace(/\r\n/g, '\n').split('\n').filter(Boolean);
+};
+
+const measureCaptionRenderSnapshot = (
+  style: CaptionStyle,
+  captionText: string,
+  layoutWidth: number,
+  layoutHeight: number
+): Partial<CaptionStyle> => {
+  const text = captionText.trim();
+  if (
+    !text ||
+    typeof document === 'undefined' ||
+    typeof window === 'undefined' ||
+    !document.body
+  ) {
+    return {};
+  }
+
+  const normalized = normalizeCaptionStyle(style);
+  const frame = document.createElement('div');
+  frame.style.position = 'fixed';
+  frame.style.left = '-10000px';
+  frame.style.top = '-10000px';
+  frame.style.width = `${layoutWidth}px`;
+  frame.style.height = `${layoutHeight}px`;
+  frame.style.overflow = 'hidden';
+  frame.style.pointerEvents = 'none';
+  frame.style.opacity = '0';
+  frame.style.contain = 'layout style paint';
+
+  const overlay = document.createElement('div');
+  overlay.style.position = 'absolute';
+  overlay.style.left = `${normalized.xRatio * 100}%`;
+  overlay.style.top = `${normalized.yRatio * 100}%`;
+  overlay.style.transform = 'translate(-50%, -50%)';
+  overlay.style.maxWidth = `${
+    (normalized.maxWidthRatio ?? DEFAULT_CAPTION_MAX_WIDTH_RATIO) * 100
+  }%`;
+  overlay.style.padding = normalized.boxed
+    ? `${Math.round(CAPTION_BOX_PADDING_Y_PX * normalized.scale)}px ${Math.round(
+        CAPTION_BOX_PADDING_X_PX * normalized.scale
+      )}px`
+    : '0px';
+  overlay.style.borderRadius = `${Math.round(
+    CAPTION_BOX_BORDER_RADIUS_PX * normalized.scale
+  )}px`;
+  overlay.style.backgroundColor = normalized.boxed
+    ? `rgba(0, 0, 0, ${CAPTION_BOX_BACKGROUND_OPACITY})`
+    : 'transparent';
+  overlay.style.boxShadow = normalized.boxed
+    ? '0 8px 20px rgba(0,0,0,0.28)'
+    : 'none';
+  overlay.style.color = CAPTION_TEXT_COLOR;
+  overlay.style.fontFamily = CAPTION_FONT_FAMILY;
+  overlay.style.fontSize = `${Math.round(
+    CAPTION_BASE_FONT_SIZE_PX * normalized.scale
+  )}px`;
+  overlay.style.fontWeight = String(CAPTION_FONT_WEIGHT);
+  overlay.style.lineHeight = String(CAPTION_LINE_HEIGHT);
+  overlay.style.textAlign = 'center';
+  overlay.style.userSelect = 'none';
+
+  const textElement = document.createElement('span');
+  textElement.style.display = 'block';
+  textElement.style.textAlign = 'center';
+  textElement.style.fontWeight = String(CAPTION_FONT_WEIGHT);
+  textElement.style.whiteSpace = 'pre-wrap';
+  textElement.style.overflowWrap = 'break-word';
+  textElement.style.wordBreak = 'normal';
+  textElement.textContent = text;
+
+  overlay.appendChild(textElement);
+  frame.appendChild(overlay);
+  document.body.appendChild(frame);
+
+  try {
+    const computed = window.getComputedStyle(overlay);
+    const renderedLines = extractRenderedTextLines(textElement, text);
+    return {
+      renderedBoxWidthPx: roundLayoutPx(overlay.offsetWidth),
+      renderedBoxHeightPx: roundLayoutPx(overlay.offsetHeight),
+      renderedFontSizePx: roundLayoutPx(
+        parseCssPixelValue(computed.fontSize, CAPTION_BASE_FONT_SIZE_PX)
+      ),
+      renderedLineHeightPx: roundLayoutPx(
+        parseCssPixelValue(
+          computed.lineHeight,
+          CAPTION_BASE_FONT_SIZE_PX * CAPTION_LINE_HEIGHT
+        )
+      ),
+      renderedPaddingXPx: normalized.boxed
+        ? roundLayoutPx(parseCssPixelValue(computed.paddingLeft, CAPTION_BOX_PADDING_X_PX))
+        : 0,
+      renderedPaddingYPx: normalized.boxed
+        ? roundLayoutPx(parseCssPixelValue(computed.paddingTop, CAPTION_BOX_PADDING_Y_PX))
+        : 0,
+      renderedBorderRadiusPx: normalized.boxed
+        ? roundLayoutPx(
+            parseCssPixelValue(computed.borderTopLeftRadius, CAPTION_BOX_BORDER_RADIUS_PX)
+          )
+        : 0,
+      renderedLines,
+    };
+  } finally {
+    frame.remove();
+  }
+};
+
 const buildCaptionExportStyle = (
   style: CaptionStyle,
-  frameElement?: HTMLElement | null
+  frameElement?: HTMLElement | null,
+  captionText = ''
 ): CaptionStyle => {
   const normalized = normalizeCaptionStyle(style);
   const { layoutWidth, layoutHeight } = resolveCaptionLayoutSize(frameElement);
+  const renderSnapshot = measureCaptionRenderSnapshot(
+    normalized,
+    captionText,
+    layoutWidth,
+    layoutHeight
+  );
 
   return {
     ...normalized,
@@ -442,6 +629,7 @@ const buildCaptionExportStyle = (
     boxPaddingXPx: CAPTION_BOX_PADDING_X_PX,
     boxPaddingYPx: CAPTION_BOX_PADDING_Y_PX,
     boxBorderRadiusPx: CAPTION_BOX_BORDER_RADIUS_PX,
+    ...renderSnapshot,
   };
 };
 
@@ -2821,7 +3009,8 @@ function ReelsMakerInner() {
         const captionState = cutCaptions[index];
         const captionStyle = buildCaptionExportStyle(
           captionState?.style ?? DEFAULT_CAPTION_STYLE,
-          cameraFrameRef.current
+          cameraFrameRef.current,
+          captionState?.text ?? ''
         );
         return {
           clipId,
@@ -4021,12 +4210,19 @@ function ReelsMakerInner() {
                         left: `${activeCaptionStyle.xRatio * 100}%`,
                         top: `${activeCaptionStyle.yRatio * 100}%`,
                         transform: 'translate(-50%, -50%)',
+                        maxWidth: `${
+                          (activeCaptionStyle.maxWidthRatio ?? DEFAULT_CAPTION_MAX_WIDTH_RATIO) *
+                          100
+                        }%`,
                         touchAction: 'none',
                         cursor:
                           editingCaptionCutIndex === activeCutIndex ? 'text' : 'move',
+                        color: CAPTION_TEXT_COLOR,
+                        fontFamily: CAPTION_FONT_FAMILY,
                         fontSize: `${Math.round(
                           CAPTION_BASE_FONT_SIZE_PX * activeCaptionStyle.scale
                         )}px`,
+                        fontWeight: CAPTION_FONT_WEIGHT,
                         lineHeight: CAPTION_LINE_HEIGHT,
                         padding: activeCaptionStyle.boxed
                           ? `${Math.round(
