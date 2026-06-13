@@ -347,8 +347,9 @@ export default function LoginClient() {
         setUser(result.userInfo);
       }
 
+      const redirectPath = getSafeReturnUrl(sessionStorage.getItem('previousPath')) ?? '/templates';
       sessionStorage.removeItem('previousPath');
-      router.replace('/templates');
+      window.location.replace(redirectPath);
     } catch (err: unknown) {
       setError(getErrorMessage(err, '가입 없이 이용하기 처리 중 오류가 발생했습니다.'));
     } finally {
@@ -496,7 +497,7 @@ export default function LoginClient() {
           <>
             <div className="text-center">
               <p className="text-gray-700 text-lg mb-1 md:mb-1">
-                100만뷰 릴스 제작 파트너
+                3분만에 만드는 트렌드 마케팅 릴스
               </p>
               
               <div className="mb-12 md:mb-12">
@@ -541,11 +542,22 @@ export default function LoginClient() {
                     id="guest-nickname"
                     type="text"
                     value={guestNickname}
-                    onChange={(event) => setGuestNickname(event.target.value)}
+                    onChange={(event) => {
+                      setGuestNickname(event.target.value);
+                      if (error) {
+                        setError(null);
+                      }
+                    }}
                     maxLength={30}
                     placeholder="닉네임 입력"
                     className="block h-12 w-full rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-900 outline-none focus:border-[#FF496D] focus:ring-2 focus:ring-[#FF496D]/15"
                   />
+
+                  {error && (
+                    <p className="text-center text-sm font-medium text-red-500" role="alert">
+                      {error}
+                    </p>
+                  )}
 
                   <button
                     type="submit"
@@ -653,7 +665,7 @@ export default function LoginClient() {
               </>
             )}
 
-            {error && (
+            {error && !isGuestStep && (
               <p className="text-center text-red-500 text-sm mt-4 font-medium">{error}</p>
             )}
           </>

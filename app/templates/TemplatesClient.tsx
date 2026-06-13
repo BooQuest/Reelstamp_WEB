@@ -192,10 +192,7 @@ export default function TemplatesClient() {
       <div className="mx-auto max-w-6xl px-4 sm:px-8 pt-8 pb-10 sm:pt-12 sm:pb-14">
         <div className="flex flex-col items-center text-center gap-2 mb-8 sm:mb-10">
           <p className="text-sm text-white/60 tracking-[0.3em] uppercase">맞춤형 릴스 추천</p>
-          <h2 className="text-2xl sm:text-3xl font-bold">오늘의 트렌드 릴스 3가지</h2>
-          <p className="text-sm sm:text-base text-white/70">
-            당신의 비즈니스와 트렌드를 기반으로 바이럴 가능성이 높은 릴스를 추천합니다
-          </p>
+          <h2 className="text-2xl sm:text-3xl font-bold">오늘의 릴스 트렌드</h2>
         </div>
 
         <div
