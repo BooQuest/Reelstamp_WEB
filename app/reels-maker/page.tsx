@@ -3294,12 +3294,17 @@ function ReelsMakerInner() {
         return;
       }
 
+      const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
+      if (!isDesktop) {
+        setCaptureScale((prev) => (Math.abs(prev - 1) < 0.001 ? prev : 1));
+        return;
+      }
+
       const fitScale = Math.min(
         1,
         viewportWidth / contentWidth,
         viewportHeight / contentHeight
       );
-      const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
       const targetScale = isDesktop ? Math.min(0.85, fitScale) : fitScale;
       const safeScale = Math.max(0.35, Math.min(1, targetScale));
 
@@ -3684,7 +3689,7 @@ function ReelsMakerInner() {
 
   return (
     <div
-      className="bg-black text-white overflow-hidden"
+      className="overflow-hidden bg-[#1E2A3B] text-white lg:bg-black"
       style={{
         height: '100dvh',
         minHeight: '100vh',
@@ -3839,25 +3844,28 @@ function ReelsMakerInner() {
       )}
       <div
         ref={captureViewportRef}
-        className="mx-auto h-full w-full max-w-[440px] overflow-hidden"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        className="h-full w-full overflow-hidden lg:mx-auto lg:max-w-[440px]"
+        style={{
+          boxSizing: 'border-box',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        }}
       >
-        <div className="flex h-full w-full items-center justify-center overflow-hidden">
+        <div className="flex h-full w-full items-stretch justify-stretch overflow-hidden lg:items-center lg:justify-center">
           <div
             ref={captureContentRef}
-            className="w-full origin-center self-center shrink-0"
+            className="h-full w-full shrink-0 origin-center self-stretch lg:h-auto lg:self-center"
             style={{
               transform: `scale(${captureScale})`,
               transformOrigin: 'center center',
             }}
           >
-            <div ref={captureMeasureRef} className="mx-auto w-full px-2 pt-2 pb-4 sm:px-4 sm:pt-6 sm:pb-10">
+            <div ref={captureMeasureRef} className="mx-auto flex h-full w-full flex-col p-0 lg:block lg:h-auto lg:px-4 lg:pt-6 lg:pb-10">
               <div className="mb-3 hidden lg:block rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
                 모바일 웹앱에서 촬영하면 더 안정적으로 카메라를 사용할 수 있어요.
               </div>
 
-              <div className="relative rounded-[28px] bg-[#1E2A3B] p-3 shadow-2xl sm:p-4">
-                <div className="mb-3 flex items-center gap-2 px-1">
+              <div className="relative flex h-full w-full flex-col overflow-hidden rounded-none bg-[#1E2A3B] p-0 shadow-none lg:h-auto lg:rounded-[28px] lg:p-4 lg:shadow-2xl">
+                <div className="mb-0 flex h-16 shrink-0 items-center gap-2 px-3 lg:mb-3 lg:h-auto lg:px-1">
                   <button
                     type="button"
                     onClick={() => router.push('/templates')}
@@ -3896,7 +3904,7 @@ function ReelsMakerInner() {
 
                 <div
                   ref={cameraFrameRef}
-                  className="relative flex w-full aspect-[9/16] items-center justify-center overflow-hidden rounded-[22px] bg-[#243246] sm:rounded-[24px]"
+                  className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-none bg-[#243246] lg:aspect-[9/16] lg:flex-none lg:rounded-[24px]"
                   onPointerDownCapture={(event) => {
                     if (editingCaptionCutIndex !== activeCutIndex) return;
                     const targetNode = event.target as Node;
