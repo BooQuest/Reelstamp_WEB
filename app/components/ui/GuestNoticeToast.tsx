@@ -68,33 +68,32 @@ export default function GuestNoticeToast() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-5 left-4 right-4 z-[10000] mx-auto max-w-[440px] md:left-auto md:right-6 md:mx-0"
+      className="fixed left-1/2 top-1/2 z-[10000] w-[calc(100vw-2rem)] max-w-[440px] -translate-x-1/2 -translate-y-1/2"
     >
-      <div className="rounded-xl border border-[#FF496D]/25 bg-white px-4 py-4 shadow-2xl shadow-[#FF496D]/10">
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-gray-900">
-              {nickname}님은 가입 없이 이용 중입니다.
-            </p>
-            <p className="mt-1.5 text-xs leading-5 text-gray-600">
-              작업 내용을 안전하게 보관하려면 회원가입 후 이용하는 것을 권장합니다.
-              쿠키 삭제, 브라우저 변경, 로그아웃 시 게스트 작업 접근이 어려울 수 있습니다.
-            </p>
-            <button
-              type="button"
-              onClick={handleUpgradeClick}
-              className="mt-3 rounded-lg bg-[#FF496D] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#E63E60]"
-            >
-              회원가입하고 보관하기
-            </button>
-          </div>
+      <div className="relative rounded-xl border border-[#FF496D]/25 bg-white p-6 shadow-2xl shadow-[#FF496D]/10 sm:p-7">
+        <button
+          type="button"
+          onClick={handleClose}
+          className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+          aria-label="게스트 안내 닫기"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        <div className="mx-auto flex max-w-[360px] flex-col items-center text-center">
+          <p className="px-6 text-sm font-semibold text-gray-900">
+            {nickname}님은 가입 없이 이용 중입니다.
+          </p>
+          <p className="mt-2 text-xs leading-5 text-gray-600">
+            작업 내용을 안전하게 보관하려면 회원가입 후 이용하는 것을 권장합니다.
+            쿠키 삭제, 브라우저 변경, 로그아웃 시 게스트 작업 접근이 어려울 수 있습니다.
+          </p>
           <button
             type="button"
-            onClick={handleClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
-            aria-label="게스트 안내 닫기"
+            onClick={handleUpgradeClick}
+            className="mt-4 rounded-lg bg-[#FF496D] px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#E63E60]"
           >
-            <X className="h-4 w-4" />
+            회원가입하고 보관하기
           </button>
         </div>
       </div>
