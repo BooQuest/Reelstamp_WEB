@@ -550,7 +550,7 @@ export default function LoginClient() {
                     }}
                     maxLength={30}
                     placeholder="닉네임 입력"
-                    className="block h-12 w-full rounded-xl border border-gray-300 bg-white px-4 text-sm text-gray-900 outline-none focus:border-[#FF496D] focus:ring-2 focus:ring-[#FF496D]/15"
+                    className="block h-12 w-full rounded-xl border border-gray-300 bg-white px-4 text-base text-gray-900 outline-none focus:border-[#FF496D] focus:ring-2 focus:ring-[#FF496D]/15 sm:text-sm"
                   />
 
                   {error && (
