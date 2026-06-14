@@ -1,8 +1,8 @@
 // 플랜 기능 리스트 상수
 export const freePlanFeatures = [
-  '제한적 릴스 시나리오 생성',
-  '제한적 대화형 수정 기능',
-  '제한적 메모리 및 텍스트 저장',
+  '제한적 편집 기능',
+  '제한적 영상 생성',
+  '제한적 메모리',
 ];
 
 export const basicPlanFeatures = [
@@ -41,11 +41,7 @@ export const masterPlanFeatures = [
 // 오픈 이벤트 혜택 데이터
 export const freePlanEventBenefit = {
   title: '오픈 이벤트 혜택',
-  mainItem: '영상 분석 5회 제공',
-  subItems: [
-    '내 영상을 초 단위로 분석',
-    '영상 흐름에 맞춰 시나리오 자동 최적화',
-  ],
+  mainItem: '베타 버전 무료 이용'
 };
 
 export const basicPlanEventBenefit = {
@@ -56,4 +52,3 @@ export const basicPlanEventBenefit = {
     '영상 흐름에 맞춰 시나리오 자동 최적화',
   ],
 };
-

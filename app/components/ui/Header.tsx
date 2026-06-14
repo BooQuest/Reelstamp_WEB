@@ -126,6 +126,7 @@ export default function Header() {
   const simpleHeader = SIMPLE_HEADER_CONFIG[pathname];
   const isDarkHeader = pathname === '/reels-maker';
   const buildLoginHref = (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`;
+  const videoCreditLabel = 'free';
 
   // 현재 경로가 메뉴와 일치하는지 확인하는 함수 (메모이제이션)
   const isActive = useCallback((item: MenuItem) => {
@@ -322,11 +323,9 @@ export default function Header() {
                     <path d="M2 1L6 4L2 7V1Z" fill="white" />
                   </svg>
                 </div>
-                {/* 숫자 */}
-                  <span className="text-base font-medium text-[#FF496D]">
-                    {subscription.videoSessionUsage?.unlimited 
-                      ? '∞' 
-                      : subscription.videoSessionUsage?.remaining ?? 0}
+                {/* 크레딧 라벨 */}
+                  <span className="text-sm font-semibold text-[#FF496D]">
+                    {videoCreditLabel}
                   </span>
               </div>
               )}
@@ -369,11 +368,9 @@ export default function Header() {
                       <path d="M2 1L6 4L2 7V1Z" fill="white" />
                     </svg>
                   </div>
-                  {/* 숫자 */}
-                    <span className="text-base font-medium text-[#FF496D]">
-                      {subscription.videoSessionUsage?.unlimited 
-                        ? '∞' 
-                        : subscription.videoSessionUsage?.remaining ?? 0}
+                  {/* 크레딧 라벨 */}
+                    <span className="text-sm font-semibold text-[#FF496D]">
+                      {videoCreditLabel}
                     </span>
                 </div>
                 )}

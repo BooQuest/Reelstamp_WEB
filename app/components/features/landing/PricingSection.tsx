@@ -42,6 +42,7 @@ export default function PricingSection() {
             buttonDisabled={true}
             isCurrentPlan={isAuthenticated && !isLoadingSubscription && currentPlanCode === 'basic' && isActive}
             buttonClassName="bg-gray-400 text-white cursor-not-allowed"
+            blurDetails={true}
           />
           <PlanCard
             planName="Pro" price="₩9,900" features={proPlanFeatures}
@@ -51,6 +52,7 @@ export default function PricingSection() {
             buttonDisabled={true}
             isCurrentPlan={isAuthenticated && !isLoadingSubscription && currentPlanCode === 'pro' && isActive}
             buttonClassName="bg-gray-400 text-white cursor-not-allowed"
+            blurDetails={true}
           />
           <PlanCard
             planName="Master" price="₩49,900" features={masterPlanFeatures}
@@ -60,6 +62,7 @@ export default function PricingSection() {
             buttonDisabled={true}
             isCurrentPlan={isAuthenticated && !isLoadingSubscription && currentPlanCode === 'master' && isActive}
             buttonClassName="bg-gray-400 text-white cursor-not-allowed"
+            blurDetails={true}
           />
         </div>
       </div>

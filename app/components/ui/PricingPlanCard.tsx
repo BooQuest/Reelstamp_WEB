@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import PlanCard from './PlanCard';
+import PlanCard, { type EventBenefit, type PlanFeature } from './PlanCard';
 
 interface PricingPlanCardProps {
   planId: string;
@@ -14,13 +14,15 @@ interface PricingPlanCardProps {
     percentage: string;
     originalPrice: string;
   };
-  features: any[];
-  eventBenefit?: any;
+  features: (string | PlanFeature)[];
+  eventBenefit?: EventBenefit;
   isPopular?: boolean;
   isAuthenticated: boolean;
   isCurrentPlan: boolean;
   buttonText: string;
   isDisabled?: boolean;
+  blurDetails?: boolean;
+  earlybirdHref?: string;
 }
 
 export default function PricingPlanCard({
@@ -36,6 +38,8 @@ export default function PricingPlanCard({
   isCurrentPlan,
   buttonText,
   isDisabled = false,
+  blurDetails = false,
+  earlybirdHref,
 }: PricingPlanCardProps) {
   const router = useRouter();
   const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
@@ -95,6 +99,8 @@ export default function PricingPlanCard({
       isCurrentPlan={isCurrentPlan}
       buttonDisabled={isDisabled || isPaymentProcessing || isCurrentPlan}
       buttonClassName={isDisabled ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-[#FF496D] text-white hover:bg-[#E63E62]'}
+      blurDetails={blurDetails}
+      earlybirdHref={earlybirdHref}
     />
   );
 }
