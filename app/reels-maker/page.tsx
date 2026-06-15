@@ -706,6 +706,9 @@ function ReelsMakerInner() {
   const isActiveExampleMediaFailed = Boolean(
     activeCutKey && exampleMediaFailedByCutKey[activeCutKey]
   );
+  const shouldShowActiveCutExampleMedia = Boolean(
+    activeCutExampleMedia && !isActiveExampleMediaFailed
+  );
   const isActiveExampleMediaLoading = Boolean(
     isExampleOpen &&
       activeCutExampleMedia &&
@@ -4297,8 +4300,8 @@ function ReelsMakerInner() {
             >
               <X className="w-4 h-4" />
             </button>
-            <div className="bg-black p-4 pb-3">
-              {activeCutExampleMedia && !isActiveExampleMediaFailed ? (
+            {shouldShowActiveCutExampleMedia && (
+              <div className="bg-black p-4 pb-3">
                 <div className="relative mx-auto w-full max-w-[300px] aspect-[9/16] overflow-hidden rounded-[20px] bg-black">
                   {isActiveExampleMediaLoading && (
                     <div className="absolute inset-0 z-20 animate-pulse bg-white/10" />
@@ -4335,13 +4338,9 @@ function ReelsMakerInner() {
                     />
                   )}
                 </div>
-              ) : (
-                <div className="mx-auto w-full max-w-[300px] aspect-[9/16] rounded-[20px] bg-black flex items-center justify-center text-sm text-white/60 text-center px-5">
-                  해당 컷 예시가 없습니다.
-                </div>
-              )}
-            </div>
-            <div className="p-5 space-y-4">
+              </div>
+            )}
+            <div className={`p-5 space-y-4 ${shouldShowActiveCutExampleMedia ? '' : 'pt-16'}`}>
               <button
                 type="button"
                 onClick={() => {
