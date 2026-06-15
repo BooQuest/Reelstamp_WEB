@@ -27,7 +27,6 @@ import {
   LayoutTemplate,
   Loader2,
   Menu,
-  Music2,
   Pause,
   Play,
   Plus,
@@ -511,7 +510,6 @@ function ReelsMakerInner() {
   const [isReelOpen, setIsReelOpen] = useState(false);
   const [exampleReelIndex, setExampleReelIndex] = useState(0);
   const [isResetOpen, setIsResetOpen] = useState(false);
-  const [processingStep, setProcessingStep] = useState(0);
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
   const [finalVideoMimeType, setFinalVideoMimeType] = useState<string>('video/mp4');
   const [finalPosterUrl, setFinalPosterUrl] = useState<string | null>(null);
@@ -2842,12 +2840,7 @@ function ReelsMakerInner() {
         } => item !== null
       );
 
-    setProcessingStep(0);
     setStage('processing');
-    const timers = [
-      window.setTimeout(() => setProcessingStep(1), 1200),
-      window.setTimeout(() => setProcessingStep(2), 2600),
-    ];
 
     try {
       const response = await fetch(`/api/reels-maker/sessions/${sessionId}/complete`, {
@@ -2892,8 +2885,6 @@ function ReelsMakerInner() {
       setFinalPosterUrl(null);
       setStage('capture');
       alert(COMPLETE_START_FAILED_USER_MESSAGE);
-    } finally {
-      timers.forEach((timer) => window.clearTimeout(timer));
     }
   };
 
@@ -3383,7 +3374,6 @@ function ReelsMakerInner() {
 
   const handleResetAll = () => {
     setStage('capture');
-    setProcessingStep(0);
     setActiveCutIndex(0);
     setRecordingStatus('idle');
     setRecordingElapsedSeconds(null);
@@ -3534,31 +3524,8 @@ function ReelsMakerInner() {
           <div>
             <h1 className="text-2xl font-bold mb-2">릴스를 만들고 있어요</h1>
             <p className="text-sm text-white/60">
-              BGM 삽입, 컷 전환 효과, 보정 적용 중...
+              곧 완성됩니다. 잠시만 기다려주세요!
             </p>
-          </div>
-          <div className="space-y-3 text-left">
-            {[
-              { label: '영상 편집 완료', done: processingStep >= 1 },
-              { label: '자막 배치 완료', done: processingStep >= 2 },
-              { label: 'BGM 삽입 중...', done: false },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="flex items-center gap-3 text-sm font-medium"
-              >
-                <div
-                  className={`w-5 h-5 rounded-full flex items-center justify-center border ${
-                    item.done ? 'border-emerald-400 text-emerald-400' : 'border-white/30'
-                  }`}
-                >
-                  {item.done ? <Check className="w-3 h-3" /> : null}
-                </div>
-                <span className={item.done ? 'text-emerald-300' : 'text-white/70'}>
-                  {item.label}
-                </span>
-              </div>
-            ))}
           </div>
         </div>
       </div>
@@ -3608,29 +3575,6 @@ function ReelsMakerInner() {
                 </div>
               )}
             </div>
-
-            <div className="flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-xs font-semibold text-white/80">
-              <Music2 className="w-4 h-4" />
-              Trending BGM - Summer Vibes
-            </div>
-          </div>
-
-          <div className="rounded-[24px] bg-[#121A2A] p-5 space-y-4 shadow-xl">
-            <div className="flex items-center gap-2 text-white font-semibold">
-              <Sparkles className="w-5 h-5 text-[#FF4D6D]" />
-              자동 적용된 효과
-            </div>
-            {[
-              '트렌디 BGM',
-              '컷 전환 효과',
-              '자동 색보정',
-              '자막 애니메이션',
-            ].map((label) => (
-              <div key={label} className="flex items-center justify-between text-sm text-white/80">
-                <span>{label}</span>
-                <span className="text-[#FF4D6D] font-semibold">적용됨</span>
-              </div>
-            ))}
           </div>
 
           <div className="space-y-3">
