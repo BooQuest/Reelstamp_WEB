@@ -704,14 +704,13 @@ function ReelsMakerInner() {
   const isActiveExampleMediaFailed = Boolean(
     activeCutKey && exampleMediaFailedByCutKey[activeCutKey]
   );
-  const shouldShowActiveCutExampleMedia = Boolean(
-    activeCutExampleMedia && !isActiveExampleMediaFailed
-  );
+  const visibleActiveCutExampleMedia =
+    activeCutExampleMedia && !isActiveExampleMediaFailed ? activeCutExampleMedia : null;
+  const shouldShowActiveCutExampleMedia = visibleActiveCutExampleMedia !== null;
   const isActiveExampleMediaLoading = Boolean(
     isExampleOpen &&
-      activeCutExampleMedia &&
-      !isActiveExampleMediaLoaded &&
-      !isActiveExampleMediaFailed
+      visibleActiveCutExampleMedia &&
+      !isActiveExampleMediaLoaded
   );
   const handleActiveExampleMediaLoad = useCallback(() => {
     if (!activeCutKey) return;
@@ -4244,22 +4243,22 @@ function ReelsMakerInner() {
             >
               <X className="w-4 h-4" />
             </button>
-            {shouldShowActiveCutExampleMedia && (
+            {visibleActiveCutExampleMedia && (
               <div className="bg-black p-4 pb-3">
                 <div className="relative mx-auto w-full max-w-[300px] aspect-[9/16] overflow-hidden rounded-[20px] bg-black">
                   {isActiveExampleMediaLoading && (
                     <div className="absolute inset-0 z-20 animate-pulse bg-white/10" />
                   )}
-                  {activeCutExampleMedia.type === 'image' ? (
+                  {visibleActiveCutExampleMedia.type === 'image' ? (
                     <>
                       <img
-                        src={activeCutExampleMedia.src}
+                        src={visibleActiveCutExampleMedia.src}
                         alt=""
                         aria-hidden
                         className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-xl"
                       />
                       <img
-                        src={activeCutExampleMedia.src}
+                        src={visibleActiveCutExampleMedia.src}
                         alt="예시 이미지"
                         className={`pointer-events-none absolute inset-0 z-10 h-full w-full object-contain transition-opacity duration-200 ${
                           isActiveExampleMediaLoaded ? 'opacity-100' : 'opacity-0'
@@ -4270,7 +4269,7 @@ function ReelsMakerInner() {
                     </>
                   ) : (
                     <video
-                      src={activeCutExampleMedia.src}
+                      src={visibleActiveCutExampleMedia.src}
                       controls
                       playsInline
                       preload="metadata"
