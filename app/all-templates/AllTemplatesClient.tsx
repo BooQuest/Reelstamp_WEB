@@ -297,11 +297,13 @@ export default function AllTemplatesClient() {
                         title={template.title}
                         thumbnailUrl={template.thumbnailUrl}
                         embedUrl={template.embedUrl}
+                        disableEmbedInteraction={!isActive}
+                        preferEmbed
                       />
-                      <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/25 to-black/80" />
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/10 via-black/25 to-black/80" />
 
                       {!template.embedUrl && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
+                        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-white">
                           <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
                             <Play className="w-5 h-5" />
                           </div>
@@ -313,7 +315,7 @@ export default function AllTemplatesClient() {
                         type="button"
                         onClick={() => toggleSave(template)}
                         aria-pressed={savedSet.has(template.id)}
-                        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 backdrop-blur flex items-center justify-center hover:bg-white/25 transition-colors"
+                        className="absolute top-4 right-4 z-40 w-10 h-10 rounded-full bg-white/15 backdrop-blur flex items-center justify-center hover:bg-white/25 transition-colors"
                       >
                         <Bookmark
                           className={savedSet.has(template.id) ? 'text-[#FF4D6D]' : 'text-white/80'}
@@ -328,7 +330,7 @@ export default function AllTemplatesClient() {
                               type="button"
                               onClick={handlePrev}
                               aria-label="이전 템플릿"
-                              className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
+                              className="absolute left-4 top-1/2 z-40 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
                             >
                               <ChevronLeft className="w-5 h-5 text-white" />
                             </button>
@@ -338,7 +340,7 @@ export default function AllTemplatesClient() {
                               type="button"
                               onClick={handleNext}
                               aria-label="다음 템플릿"
-                              className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
+                              className="absolute right-4 top-1/2 z-40 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
                             >
                               <ChevronRight className="w-5 h-5 text-white" />
                             </button>
@@ -346,7 +348,7 @@ export default function AllTemplatesClient() {
                         </>
                       )}
 
-                      <div className="absolute bottom-0 left-0 right-0 px-5 pb-6 pt-10">
+                      <div className="pointer-events-none absolute bottom-0 left-0 right-0 px-5 pb-6 pt-10">
                         <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 drop-shadow-lg">
                           {template.title}
                         </h3>

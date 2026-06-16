@@ -12,6 +12,7 @@ type TemplateMediaPreviewProps = {
   embedClassName?: string;
   fallbackClassName?: string;
   disableEmbedInteraction?: boolean;
+  preferEmbed?: boolean;
 };
 
 export default function TemplateMediaPreview({
@@ -22,23 +23,12 @@ export default function TemplateMediaPreview({
   embedClassName = '',
   fallbackClassName = '',
   disableEmbedInteraction = false,
+  preferEmbed = false,
 }: TemplateMediaPreviewProps) {
   const thumbnailSrc = thumbnailUrl?.trim();
   const embedSrc = embedUrl?.trim();
 
-  if (thumbnailSrc) {
-    return (
-      <Image
-        src={thumbnailSrc}
-        alt={title}
-        fill
-        sizes="(min-width: 1024px) 360px, (min-width: 640px) 320px, 78vw"
-        className={`object-cover ${imageClassName}`}
-      />
-    );
-  }
-
-  if (embedSrc) {
+  if (embedSrc && (preferEmbed || !thumbnailSrc)) {
     return (
       <div
         className={`absolute inset-0 ${
@@ -50,6 +40,18 @@ export default function TemplateMediaPreview({
           className={`h-full w-full rounded-none ${embedClassName}`}
         />
       </div>
+    );
+  }
+
+  if (thumbnailSrc) {
+    return (
+      <Image
+        src={thumbnailSrc}
+        alt={title}
+        fill
+        sizes="(min-width: 1024px) 360px, (min-width: 640px) 320px, 78vw"
+        className={`object-cover ${imageClassName}`}
+      />
     );
   }
 

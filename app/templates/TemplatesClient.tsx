@@ -224,11 +224,12 @@ export default function TemplatesClient() {
                   title={card.title}
                   thumbnailUrl={card.thumbnailUrl}
                   embedUrl={card.embedUrl}
-                  disableEmbedInteraction
+                  disableEmbedInteraction={!isActive}
+                  preferEmbed
                 />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/80" />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/80" />
 
-                <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-[#FF4D6D] text-xs font-semibold shadow-lg">
+                <div className="pointer-events-none absolute top-4 left-4 px-3 py-1 rounded-full bg-[#FF4D6D] text-xs font-semibold shadow-lg">
                   추천 {index + 1}
                 </div>
 
@@ -236,7 +237,7 @@ export default function TemplatesClient() {
                   type="button"
                   onClick={() => toggleSave(card)}
                   aria-pressed={isSaved}
-                  className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center hover:bg-white/30 transition-colors"
+                  className="absolute top-4 right-4 z-40 w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center hover:bg-white/30 transition-colors"
                 >
                   <Bookmark
                     className={isSaved ? 'text-[#FF4D6D]' : 'text-white'}
@@ -244,7 +245,7 @@ export default function TemplatesClient() {
                   />
                 </button>
 
-                <div className="absolute bottom-0 left-0 right-0 px-5 pb-6 pt-12">
+                <div className="pointer-events-none absolute bottom-0 left-0 right-0 px-5 pb-6 pt-12">
                   <h3 className="text-xl sm:text-2xl font-bold mb-2 drop-shadow-lg">
                     {card.title}
                   </h3>
