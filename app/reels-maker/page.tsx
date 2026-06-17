@@ -274,7 +274,7 @@ type ReelsMakerErrorResponse = {
   data?: unknown;
 };
 
-type CaptionStyleVersion = 'WEB_BOX_V2';
+type CaptionStyleVersion = 'WEB_BOX_V2' | 'CAPTION_RENDER_V1';
 
 type CaptionStyle = {
   xRatio: number;
@@ -292,12 +292,25 @@ type CaptionStyle = {
   lineHeight?: number;
   fontFamily?: string;
   fontWeight?: number;
+  fontSizePx?: number;
+  lineHeightPx?: number;
   textColor?: string;
+  maxWidthPx?: number;
   boxBackgroundColor?: string;
   boxBackgroundOpacity?: number;
   boxPaddingXPx?: number;
   boxPaddingYPx?: number;
   boxBorderRadiusPx?: number;
+  paddingXPx?: number;
+  paddingYPx?: number;
+  borderRadiusPx?: number;
+  shadowOffsetYPx?: number;
+  shadowBlurPx?: number;
+  shadowColor?: string;
+  whiteSpace?: 'pre-wrap';
+  overflowWrap?: 'break-word';
+  wordBreak?: 'normal';
+  lineBreak?: 'auto';
 };
 
 type CutCaptionState = {
@@ -341,21 +354,37 @@ const TIMELINE_THUMBNAIL_COUNT = 10;
 const DURATION_MODE_RECOMMENDED: CutDurationMode = 'RECOMMENDED';
 const DURATION_MODE_FORCED: CutDurationMode = 'FORCED';
 const RECOMMENDED_AUTO_STOP_SECONDS = 60;
-const CAPTION_STYLE_VERSION_WEB_BOX_V2: CaptionStyleVersion = 'WEB_BOX_V2';
+const CAPTION_STYLE_VERSION_RENDER_V1: CaptionStyleVersion = 'CAPTION_RENDER_V1';
 const DEFAULT_CAPTION_MAX_WIDTH_RATIO = 0.85;
 const CAPTION_RENDER_WIDTH = 1080;
 const CAPTION_RENDER_HEIGHT = 1920;
-const CAPTION_LAYOUT_FALLBACK_WIDTH = 408;
-const CAPTION_BASE_FONT_SIZE_PX = 28;
+const CAPTION_LAYOUT_REFERENCE_WIDTH = 408;
+const CAPTION_REFERENCE_TO_RENDER_SCALE = CAPTION_RENDER_WIDTH / CAPTION_LAYOUT_REFERENCE_WIDTH;
+const toCaptionRenderPx = (value: number) =>
+  Math.round(value * CAPTION_REFERENCE_TO_RENDER_SCALE * 1000) / 1000;
+const CAPTION_BASE_FONT_SIZE_PX = toCaptionRenderPx(28);
 const CAPTION_LINE_HEIGHT = 1.25;
-const CAPTION_FONT_FAMILY = 'Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif';
+const CAPTION_LINE_HEIGHT_PX = Math.round(CAPTION_BASE_FONT_SIZE_PX * CAPTION_LINE_HEIGHT * 1000) / 1000;
+const CAPTION_FONT_FAMILY = 'ReelstampCaptionPretendard';
 const CAPTION_FONT_WEIGHT = 600;
 const CAPTION_TEXT_COLOR = '#FFFFFF';
 const CAPTION_BOX_BACKGROUND_COLOR = '#000000';
 const CAPTION_BOX_BACKGROUND_OPACITY = 0.5;
-const CAPTION_BOX_PADDING_X_PX = 16;
-const CAPTION_BOX_PADDING_Y_PX = 8;
-const CAPTION_BOX_BORDER_RADIUS_PX = 18;
+const CAPTION_BOX_PADDING_X_PX = toCaptionRenderPx(16);
+const CAPTION_BOX_PADDING_Y_PX = toCaptionRenderPx(8);
+const CAPTION_BOX_BORDER_RADIUS_PX = toCaptionRenderPx(18);
+const CAPTION_MAX_WIDTH_PX = Math.round(CAPTION_RENDER_WIDTH * DEFAULT_CAPTION_MAX_WIDTH_RATIO);
+const CAPTION_SHADOW_OFFSET_Y_PX = toCaptionRenderPx(8);
+const CAPTION_SHADOW_BLUR_PX = toCaptionRenderPx(20);
+const CAPTION_SHADOW_COLOR = 'rgba(0,0,0,0.28)';
+const CAPTION_WHITE_SPACE = 'pre-wrap';
+const CAPTION_OVERFLOW_WRAP = 'break-word';
+const CAPTION_WORD_BREAK = 'normal';
+const CAPTION_LINE_BREAK = 'auto';
+const CAPTION_RESIZE_HANDLE_SIZE_PX = toCaptionRenderPx(28);
+const CAPTION_RESIZE_HANDLE_OFFSET_PX = toCaptionRenderPx(12);
+const CAPTION_RESIZE_HANDLE_FONT_SIZE_PX = toCaptionRenderPx(10);
+const CAPTION_INPUT_MIN_WIDTH_PX = toCaptionRenderPx(140);
 const PROCESSING_STATUS_TIMEOUT_MS = 5 * 60 * 1000;
 const COMPLETE_START_FAILED_ERROR_CODE = 'RS-VID-001';
 const PROCESSING_FAILED_ERROR_CODE = 'RS-VID-002';
@@ -368,7 +397,7 @@ const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   yRatio: 0.12,
   scale: 1,
   boxed: true,
-  styleVersion: CAPTION_STYLE_VERSION_WEB_BOX_V2,
+  styleVersion: CAPTION_STYLE_VERSION_RENDER_V1,
   maxWidthRatio: DEFAULT_CAPTION_MAX_WIDTH_RATIO,
   maxLines: null,
 };
@@ -388,7 +417,7 @@ const normalizeCaptionStyle = (style: CaptionStyle): CaptionStyle => ({
   yRatio: clampValue(style.yRatio, 0, 1),
   scale: clampValue(style.scale, MIN_CAPTION_SCALE, MAX_CAPTION_SCALE),
   boxed: style.boxed !== false,
-  styleVersion: CAPTION_STYLE_VERSION_WEB_BOX_V2,
+  styleVersion: CAPTION_STYLE_VERSION_RENDER_V1,
   maxWidthRatio: clampValue(
     typeof style.maxWidthRatio === 'number' ? style.maxWidthRatio : DEFAULT_CAPTION_MAX_WIDTH_RATIO,
     MIN_CAPTION_MAX_WIDTH_RATIO,
@@ -400,47 +429,34 @@ const normalizeCaptionStyle = (style: CaptionStyle): CaptionStyle => ({
       : null,
 });
 
-const resolveCaptionLayoutSize = (frameElement?: HTMLElement | null) => {
-  const rawWidth = frameElement?.offsetWidth ?? CAPTION_LAYOUT_FALLBACK_WIDTH;
-  const rawHeight =
-    frameElement?.offsetHeight ?? Math.round((CAPTION_LAYOUT_FALLBACK_WIDTH * 16) / 9);
-  const width =
-    typeof rawWidth === 'number' && Number.isFinite(rawWidth) && rawWidth > 0
-      ? rawWidth
-      : CAPTION_LAYOUT_FALLBACK_WIDTH;
-  const height =
-    typeof rawHeight === 'number' && Number.isFinite(rawHeight) && rawHeight > 0
-      ? rawHeight
-      : Math.round((width * 16) / 9);
-  return {
-    layoutWidth: Math.round(width),
-    layoutHeight: Math.round(height),
-  };
-};
-
-const buildCaptionExportStyle = (
-  style: CaptionStyle,
-  frameElement?: HTMLElement | null
-): CaptionStyle => {
+const buildCaptionExportStyle = (style: CaptionStyle): CaptionStyle => {
   const normalized = normalizeCaptionStyle(style);
-  const { layoutWidth, layoutHeight } = resolveCaptionLayoutSize(frameElement);
 
   return {
     ...normalized,
     renderWidth: CAPTION_RENDER_WIDTH,
     renderHeight: CAPTION_RENDER_HEIGHT,
-    layoutWidth,
-    layoutHeight,
-    baseFontSizePx: CAPTION_BASE_FONT_SIZE_PX,
-    lineHeight: CAPTION_LINE_HEIGHT,
     fontFamily: CAPTION_FONT_FAMILY,
     fontWeight: CAPTION_FONT_WEIGHT,
+    fontSizePx: CAPTION_BASE_FONT_SIZE_PX,
+    lineHeightPx: CAPTION_LINE_HEIGHT_PX,
     textColor: CAPTION_TEXT_COLOR,
+    maxWidthPx: CAPTION_MAX_WIDTH_PX,
     boxBackgroundColor: CAPTION_BOX_BACKGROUND_COLOR,
     boxBackgroundOpacity: CAPTION_BOX_BACKGROUND_OPACITY,
     boxPaddingXPx: CAPTION_BOX_PADDING_X_PX,
     boxPaddingYPx: CAPTION_BOX_PADDING_Y_PX,
     boxBorderRadiusPx: CAPTION_BOX_BORDER_RADIUS_PX,
+    paddingXPx: CAPTION_BOX_PADDING_X_PX,
+    paddingYPx: CAPTION_BOX_PADDING_Y_PX,
+    borderRadiusPx: CAPTION_BOX_BORDER_RADIUS_PX,
+    shadowOffsetYPx: CAPTION_SHADOW_OFFSET_Y_PX,
+    shadowBlurPx: CAPTION_SHADOW_BLUR_PX,
+    shadowColor: CAPTION_SHADOW_COLOR,
+    whiteSpace: CAPTION_WHITE_SPACE,
+    overflowWrap: CAPTION_OVERFLOW_WRAP,
+    wordBreak: CAPTION_WORD_BREAK,
+    lineBreak: CAPTION_LINE_BREAK,
   };
 };
 
@@ -451,6 +467,7 @@ function ReelsMakerInner() {
   const templateId = searchParams.get('templateId');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraFrameRef = useRef<HTMLDivElement | null>(null);
+  const captionStageRef = useRef<HTMLDivElement | null>(null);
   const captionOverlayRef = useRef<HTMLDivElement | null>(null);
   const captionInputRef = useRef<HTMLInputElement | null>(null);
   const galleryFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -503,6 +520,8 @@ function ReelsMakerInner() {
   const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState<number | null>(null);
   const [clips, setClips] = useState<Array<ClipInfo | null>>([]);
   const [cutCaptions, setCutCaptions] = useState<CutCaptionState[]>([]);
+  const [cameraFrameElement, setCameraFrameElement] = useState<HTMLDivElement | null>(null);
+  const [captionPreviewScale, setCaptionPreviewScale] = useState(1);
   const [cutGuideVisibility, setCutGuideVisibility] = useState<Record<number, boolean>>({});
   const [guideImageIndexByCut, setGuideImageIndexByCut] = useState<Record<number, number>>({});
   const [editingCaptionCutIndex, setEditingCaptionCutIndex] = useState<number | null>(null);
@@ -773,6 +792,19 @@ function ReelsMakerInner() {
     gesture.startScale = 1;
   }, []);
 
+  const handleCameraFrameRef = useCallback((element: HTMLDivElement | null) => {
+    cameraFrameRef.current = element;
+    setCameraFrameElement(element);
+  }, []);
+
+  const getCaptionInteractionRect = useCallback(() => {
+    return (
+      captionStageRef.current?.getBoundingClientRect() ??
+      cameraFrameRef.current?.getBoundingClientRect() ??
+      null
+    );
+  }, []);
+
   const updateCutCaptionAtIndex = useCallback(
     (index: number, updater: (current: CutCaptionState) => CutCaptionState) => {
       setCutCaptions((prev) => {
@@ -786,33 +818,36 @@ function ReelsMakerInner() {
     []
   );
 
-  const clampCaptionPosition = useCallback((rawXRatio: number, rawYRatio: number) => {
-    const normalizedX = clampValue(rawXRatio, 0, 1);
-    const normalizedY = clampValue(rawYRatio, 0, 1);
+  const clampCaptionPosition = useCallback(
+    (rawXRatio: number, rawYRatio: number) => {
+      const normalizedX = clampValue(rawXRatio, 0, 1);
+      const normalizedY = clampValue(rawYRatio, 0, 1);
 
-    const frameRect = cameraFrameRef.current?.getBoundingClientRect();
-    if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) {
-      return { xRatio: normalizedX, yRatio: normalizedY };
-    }
+      const interactionRect = getCaptionInteractionRect();
+      if (!interactionRect || interactionRect.width <= 0 || interactionRect.height <= 0) {
+        return { xRatio: normalizedX, yRatio: normalizedY };
+      }
 
-    const overlayRect = captionOverlayRef.current?.getBoundingClientRect();
-    const halfWidth = overlayRect
-      ? Math.min(overlayRect.width / 2, frameRect.width / 2)
-      : 0;
-    const halfHeight = overlayRect
-      ? Math.min(overlayRect.height / 2, frameRect.height / 2)
-      : 0;
+      const overlayRect = captionOverlayRef.current?.getBoundingClientRect();
+      const halfWidth = overlayRect
+        ? Math.min(overlayRect.width / 2, interactionRect.width / 2)
+        : 0;
+      const halfHeight = overlayRect
+        ? Math.min(overlayRect.height / 2, interactionRect.height / 2)
+        : 0;
 
-    const minX = halfWidth / frameRect.width;
-    const maxX = 1 - minX;
-    const minY = halfHeight / frameRect.height;
-    const maxY = 1 - minY;
+      const minX = halfWidth / interactionRect.width;
+      const maxX = 1 - minX;
+      const minY = halfHeight / interactionRect.height;
+      const maxY = 1 - minY;
 
-    return {
-      xRatio: minX > maxX ? 0.5 : clampValue(normalizedX, minX, maxX),
-      yRatio: minY > maxY ? 0.5 : clampValue(normalizedY, minY, maxY),
-    };
-  }, []);
+      return {
+        xRatio: minX > maxX ? 0.5 : clampValue(normalizedX, minX, maxX),
+        yRatio: minY > maxY ? 0.5 : clampValue(normalizedY, minY, maxY),
+      };
+    },
+    [getCaptionInteractionRect]
+  );
 
   const applyClampedCaptionStyle = useCallback(
     (style: CaptionStyle) => {
@@ -2820,8 +2855,7 @@ function ReelsMakerInner() {
         if (!clipId) return null;
         const captionState = cutCaptions[index];
         const captionStyle = buildCaptionExportStyle(
-          captionState?.style ?? DEFAULT_CAPTION_STYLE,
-          cameraFrameRef.current
+          captionState?.style ?? DEFAULT_CAPTION_STYLE
         );
         return {
           clipId,
@@ -2991,20 +3025,20 @@ function ReelsMakerInner() {
         gesture.startPointer &&
         gesture.startStyle
       ) {
-        const frameRect = cameraFrameRef.current?.getBoundingClientRect();
-        if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) return;
+        const interactionRect = getCaptionInteractionRect();
+        if (!interactionRect || interactionRect.width <= 0 || interactionRect.height <= 0) return;
 
         const deltaX = event.clientX - gesture.startPointer.x;
         const deltaY = event.clientY - gesture.startPointer.y;
 
         updateActiveCaptionStyle(() => ({
           ...gesture.startStyle!,
-          xRatio: gesture.startStyle!.xRatio + deltaX / frameRect.width,
-          yRatio: gesture.startStyle!.yRatio + deltaY / frameRect.height,
+          xRatio: gesture.startStyle!.xRatio + deltaX / interactionRect.width,
+          yRatio: gesture.startStyle!.yRatio + deltaY / interactionRect.height,
         }));
       }
     },
-    [distanceBetweenPoints, updateActiveCaptionStyle]
+    [distanceBetweenPoints, getCaptionInteractionRect, updateActiveCaptionStyle]
   );
 
   const handleCaptionPointerEnd = useCallback(
@@ -3091,12 +3125,12 @@ function ReelsMakerInner() {
       if (gesture.mode !== 'resize' || gesture.dragPointerId !== event.pointerId) return;
       if (!gesture.startStyle || !gesture.startPointer || gesture.startDistance <= 0) return;
 
-      const frameRect = cameraFrameRef.current?.getBoundingClientRect();
-      if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) return;
+      const interactionRect = getCaptionInteractionRect();
+      if (!interactionRect || interactionRect.width <= 0 || interactionRect.height <= 0) return;
 
       const center = {
-        x: frameRect.left + gesture.startStyle.xRatio * frameRect.width,
-        y: frameRect.top + gesture.startStyle.yRatio * frameRect.height,
+        x: interactionRect.left + gesture.startStyle.xRatio * interactionRect.width,
+        y: interactionRect.top + gesture.startStyle.yRatio * interactionRect.height,
       };
 
       const currentDistance = distanceBetweenPoints(center, {
@@ -3116,7 +3150,7 @@ function ReelsMakerInner() {
         scale: nextScale,
       }));
     },
-    [distanceBetweenPoints, updateActiveCaptionStyle]
+    [distanceBetweenPoints, getCaptionInteractionRect, updateActiveCaptionStyle]
   );
 
   const handleResizeHandlePointerEnd = useCallback(
@@ -3141,12 +3175,12 @@ function ReelsMakerInner() {
       event.stopPropagation();
       setEditingCaptionCutIndex(null);
 
-      const frameRect = cameraFrameRef.current?.getBoundingClientRect();
-      if (!frameRect || frameRect.width <= 0 || frameRect.height <= 0) return;
+      const interactionRect = getCaptionInteractionRect();
+      if (!interactionRect || interactionRect.width <= 0 || interactionRect.height <= 0) return;
 
       const center = {
-        x: frameRect.left + activeCaptionStyle.xRatio * frameRect.width,
-        y: frameRect.top + activeCaptionStyle.yRatio * frameRect.height,
+        x: interactionRect.left + activeCaptionStyle.xRatio * interactionRect.width,
+        y: interactionRect.top + activeCaptionStyle.yRatio * interactionRect.height,
       };
       const startPoint = { x: event.clientX, y: event.clientY };
 
@@ -3165,7 +3199,7 @@ function ReelsMakerInner() {
 
       event.currentTarget.setPointerCapture(event.pointerId);
     },
-    [activeCaptionStyle, distanceBetweenPoints, showCaptionOverlay]
+    [activeCaptionStyle, distanceBetweenPoints, getCaptionInteractionRect, showCaptionOverlay]
   );
 
   const handleCaptionTextChange = useCallback(
@@ -3206,6 +3240,37 @@ function ReelsMakerInner() {
     cutCaptions,
     updateCutCaptionAtIndex,
   ]);
+
+  useEffect(() => {
+    const frameElement = cameraFrameElement;
+    if (!frameElement) return;
+
+    const updateCaptionPreviewScale = () => {
+      const rect = frameElement.getBoundingClientRect();
+      const nextScale = Math.min(
+        rect.width / CAPTION_RENDER_WIDTH,
+        rect.height / CAPTION_RENDER_HEIGHT
+      );
+      if (Number.isFinite(nextScale) && nextScale > 0) {
+        setCaptionPreviewScale(nextScale);
+      }
+    };
+
+    const rafId = window.requestAnimationFrame(updateCaptionPreviewScale);
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(updateCaptionPreviewScale)
+        : null;
+    resizeObserver?.observe(frameElement);
+    window.addEventListener('resize', updateCaptionPreviewScale);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateCaptionPreviewScale);
+    };
+  }, [cameraFrameElement, stage]);
 
   useEffect(() => {
     if (!showCaptionOverlay) return;
@@ -3849,7 +3914,7 @@ function ReelsMakerInner() {
                 </div>
 
                 <div
-                  ref={cameraFrameRef}
+                  ref={handleCameraFrameRef}
                   className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-none bg-[#243246] lg:aspect-[9/16] lg:flex-none lg:rounded-[24px]"
                   onPointerDownCapture={(event) => {
                     if (editingCaptionCutIndex !== activeCutIndex) return;
@@ -3959,87 +4024,114 @@ function ReelsMakerInner() {
                     </>
                   )}
 
-                  {showCaptionOverlay && (
-                    <div
-                      ref={captionOverlayRef}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setEditingCaptionCutIndex(activeCutIndex);
-                      }}
-                      onPointerDown={handleCaptionPointerDown}
-                      onPointerMove={handleCaptionPointerMove}
-                      onPointerUp={handleCaptionPointerEnd}
-                      onPointerCancel={handleCaptionPointerEnd}
-                      className="absolute z-20 max-w-[85%] select-none"
-                      style={{
-                        left: `${activeCaptionStyle.xRatio * 100}%`,
-                        top: `${activeCaptionStyle.yRatio * 100}%`,
-                        transform: 'translate(-50%, -50%)',
-                        touchAction: 'none',
-                        cursor:
-                          editingCaptionCutIndex === activeCutIndex ? 'text' : 'move',
-                        fontSize: `${Math.round(
-                          CAPTION_BASE_FONT_SIZE_PX * activeCaptionStyle.scale
-                        )}px`,
-                        lineHeight: CAPTION_LINE_HEIGHT,
-                        padding: activeCaptionStyle.boxed
-                          ? `${Math.round(
-                              CAPTION_BOX_PADDING_Y_PX * activeCaptionStyle.scale
-                            )}px ${Math.round(
-                              CAPTION_BOX_PADDING_X_PX * activeCaptionStyle.scale
-                            )}px`
-                          : '0px',
-                        borderRadius: `${Math.round(
-                          CAPTION_BOX_BORDER_RADIUS_PX * activeCaptionStyle.scale
-                        )}px`,
-                        backgroundColor: activeCaptionStyle.boxed
-                          ? `rgba(0, 0, 0, ${CAPTION_BOX_BACKGROUND_OPACITY})`
-                          : 'transparent',
-                        boxShadow: activeCaptionStyle.boxed
-                          ? '0 8px 20px rgba(0,0,0,0.28)'
-                          : 'none',
-                      }}
-                    >
-                      {editingCaptionCutIndex === activeCutIndex ? (
-                        <input
-                          ref={captionInputRef}
-                          value={activeCaptionText}
-                          onChange={(event) => handleCaptionTextChange(event.target.value)}
-                          onBlur={() => setEditingCaptionCutIndex(null)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              setEditingCaptionCutIndex(null);
-                            }
-                          }}
-                          onPointerDown={(event) => event.stopPropagation()}
-                          placeholder="Text"
-                          className="w-full min-w-[140px] max-w-[75vw] bg-transparent text-center font-semibold text-white placeholder:text-white/60 focus:outline-none"
-                        />
-                      ) : (
-                        <span
-                          className={`block text-center font-semibold whitespace-pre-wrap break-words ${
-                            hasCaptionText ? 'text-white' : 'text-white/55'
-                          }`}
-                        >
-                          {hasCaptionText ? activeCaptionText : 'Text'}
-                        </span>
-                      )}
-                      {editingCaptionCutIndex !== activeCutIndex && (
-                        <button
-                          type="button"
-                          onPointerDown={handleResizeHandlePointerDown}
-                          onPointerMove={handleResizeHandlePointerMove}
-                          onPointerUp={handleResizeHandlePointerEnd}
-                          onPointerCancel={handleResizeHandlePointerEnd}
-                          onClick={(event) => event.stopPropagation()}
-                          className="absolute -right-3 -bottom-3 flex h-7 w-7 items-center justify-center rounded-full border border-white/40 bg-[#FF4D6D] text-[10px] font-bold text-white shadow-lg"
-                          aria-label="텍스트 크기 조절"
-                        >
-                          ↔
-                        </button>
-                      )}
-                    </div>
-                  )}
+	                  {showCaptionOverlay && (
+	                    <div
+	                      ref={captionStageRef}
+	                      className="pointer-events-none absolute left-1/2 top-1/2 z-20"
+	                      style={{
+	                        width: `${CAPTION_RENDER_WIDTH}px`,
+	                        height: `${CAPTION_RENDER_HEIGHT}px`,
+	                        transform: `translate(-50%, -50%) scale(${captionPreviewScale})`,
+	                        transformOrigin: 'center center',
+	                      }}
+	                    >
+	                      <div
+	                        ref={captionOverlayRef}
+	                        onClick={(event) => {
+	                          event.stopPropagation();
+	                          setEditingCaptionCutIndex(activeCutIndex);
+	                        }}
+	                        onPointerDown={handleCaptionPointerDown}
+	                        onPointerMove={handleCaptionPointerMove}
+	                        onPointerUp={handleCaptionPointerEnd}
+	                        onPointerCancel={handleCaptionPointerEnd}
+	                        className="pointer-events-auto absolute select-none"
+	                        style={{
+	                          left: `${activeCaptionStyle.xRatio * CAPTION_RENDER_WIDTH}px`,
+	                          top: `${activeCaptionStyle.yRatio * CAPTION_RENDER_HEIGHT}px`,
+	                          transform: 'translate(-50%, -50%)',
+	                          maxWidth: `${CAPTION_MAX_WIDTH_PX}px`,
+	                          touchAction: 'none',
+	                          cursor:
+	                            editingCaptionCutIndex === activeCutIndex ? 'text' : 'move',
+	                          color: CAPTION_TEXT_COLOR,
+	                          fontFamily: CAPTION_FONT_FAMILY,
+	                          fontSize: `${CAPTION_BASE_FONT_SIZE_PX * activeCaptionStyle.scale}px`,
+	                          fontWeight: CAPTION_FONT_WEIGHT,
+	                          lineHeight: `${CAPTION_LINE_HEIGHT_PX * activeCaptionStyle.scale}px`,
+	                          whiteSpace: CAPTION_WHITE_SPACE,
+	                          overflowWrap: CAPTION_OVERFLOW_WRAP,
+	                          wordBreak: CAPTION_WORD_BREAK,
+	                          lineBreak: CAPTION_LINE_BREAK,
+	                          padding: activeCaptionStyle.boxed
+	                            ? `${CAPTION_BOX_PADDING_Y_PX * activeCaptionStyle.scale}px ${
+	                                CAPTION_BOX_PADDING_X_PX * activeCaptionStyle.scale
+	                              }px`
+	                            : '0px',
+	                          borderRadius: `${CAPTION_BOX_BORDER_RADIUS_PX * activeCaptionStyle.scale}px`,
+	                          backgroundColor: activeCaptionStyle.boxed
+	                            ? `rgba(0, 0, 0, ${CAPTION_BOX_BACKGROUND_OPACITY})`
+	                            : 'transparent',
+	                          boxShadow: activeCaptionStyle.boxed
+	                            ? `0 ${CAPTION_SHADOW_OFFSET_Y_PX * activeCaptionStyle.scale}px ${
+	                                CAPTION_SHADOW_BLUR_PX * activeCaptionStyle.scale
+	                              }px ${CAPTION_SHADOW_COLOR}`
+	                            : 'none',
+	                        }}
+	                      >
+	                        {editingCaptionCutIndex === activeCutIndex ? (
+	                          <input
+	                            ref={captionInputRef}
+	                            value={activeCaptionText}
+	                            onChange={(event) => handleCaptionTextChange(event.target.value)}
+	                            onBlur={() => setEditingCaptionCutIndex(null)}
+	                            onKeyDown={(event) => {
+	                              if (event.key === 'Enter') {
+	                                setEditingCaptionCutIndex(null);
+	                              }
+	                            }}
+	                            onPointerDown={(event) => event.stopPropagation()}
+	                            placeholder="Text"
+	                            className="w-full bg-transparent text-center text-white placeholder:text-white/60 focus:outline-none"
+	                            style={{
+	                              minWidth: `${CAPTION_INPUT_MIN_WIDTH_PX}px`,
+	                              fontFamily: CAPTION_FONT_FAMILY,
+	                              fontWeight: CAPTION_FONT_WEIGHT,
+	                            }}
+	                          />
+	                        ) : (
+	                          <span
+	                            className={`block text-center ${
+	                              hasCaptionText ? 'text-white' : 'text-white/55'
+	                            }`}
+	                          >
+	                            {hasCaptionText ? activeCaptionText : 'Text'}
+	                          </span>
+	                        )}
+	                        {editingCaptionCutIndex !== activeCutIndex && (
+	                          <button
+	                            type="button"
+	                            onPointerDown={handleResizeHandlePointerDown}
+	                            onPointerMove={handleResizeHandlePointerMove}
+	                            onPointerUp={handleResizeHandlePointerEnd}
+	                            onPointerCancel={handleResizeHandlePointerEnd}
+	                            onClick={(event) => event.stopPropagation()}
+	                            className="absolute flex items-center justify-center rounded-full border border-white/40 bg-[#FF4D6D] font-bold text-white shadow-lg"
+	                            style={{
+	                              right: `-${CAPTION_RESIZE_HANDLE_OFFSET_PX}px`,
+	                              bottom: `-${CAPTION_RESIZE_HANDLE_OFFSET_PX}px`,
+	                              width: `${CAPTION_RESIZE_HANDLE_SIZE_PX}px`,
+	                              height: `${CAPTION_RESIZE_HANDLE_SIZE_PX}px`,
+	                              fontSize: `${CAPTION_RESIZE_HANDLE_FONT_SIZE_PX}px`,
+	                            }}
+	                            aria-label="텍스트 크기 조절"
+	                          >
+	                            ↔
+	                          </button>
+	                        )}
+	                      </div>
+	                    </div>
+	                  )}
 
                   <div className="pointer-events-none absolute inset-x-0 top-0 z-30 space-y-2 bg-gradient-to-b from-black/35 via-black/10 to-transparent px-3 pb-6 pt-3">
                     <div className="pointer-events-auto">
