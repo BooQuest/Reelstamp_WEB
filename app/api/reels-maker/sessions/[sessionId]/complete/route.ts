@@ -1,6 +1,22 @@
 // 릴스 제작 완료 API Route: Spring API의 /api/reels-maker/sessions/{id}/complete를 프록시
 import { NextRequest, NextResponse } from 'next/server';
 
+const toRecord = (value: unknown): Record<string, unknown> | null =>
+  value != null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+const parseApiError = (error: unknown) => {
+  const parsed = toRecord(error);
+  const response = toRecord(parsed?.response);
+  const data = toRecord(response?.data);
+  return {
+    message: typeof parsed?.message === 'string' ? parsed.message : undefined,
+    status: typeof response?.status === 'number' ? response.status : undefined,
+    data,
+  };
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ sessionId?: string }> }
@@ -25,17 +41,33 @@ export async function POST(
       );
     }
 
-    const body = await request.json().catch(() => null);
+    const body = toRecord(await request.json().catch(() => null));
     const captions = Array.isArray(body?.captions) ? body.captions : [];
+    const captionItems = Array.isArray(body?.captionItems) ? body.captionItems : [];
     console.info(
       `[CAPTION_TRACE][WEB_PROXY_IN] ${JSON.stringify({
         sessionId: rawSessionId,
         captionCount: captions.length,
-        captions: captions.map((item: any) => ({
-          clipId: item?.clipId ?? null,
-          captionLength: typeof item?.caption === 'string' ? item.caption.length : null,
-          captionStyle: item?.captionStyle ?? null,
-        })),
+        captionItemCount: captionItems.length,
+        captionItems: captionItems.map((item) => {
+          const record = toRecord(item);
+          const placement = toRecord(record?.placement);
+          return {
+            id: record?.id ?? null,
+            clipId: placement?.clipId ?? null,
+            textLength: typeof record?.text === 'string' ? record.text.length : null,
+            zIndex: record?.zIndex ?? null,
+          };
+        }),
+        captions: captions.map((item) => {
+          const record = toRecord(item);
+          return {
+            clipId: record?.clipId ?? null,
+            captionLength:
+              typeof record?.caption === 'string' ? record.caption.length : null,
+            captionStyle: record?.captionStyle ?? null,
+          };
+        }),
       })}`
     );
 
@@ -47,23 +79,28 @@ export async function POST(
     return NextResponse.json(response.data, {
       status: response.status,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const apiError = parseApiError(error);
     console.error('[ReelsMakerComplete API Error]', {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data,
+      message: apiError.message,
+      status: apiError.status,
+      data: apiError.data,
     });
 
-    const status = error.response?.status || 500;
+    const status = apiError.status || 500;
     const message =
-      error.response?.data?.message || '릴스 합성을 시작하는 중 오류가 발생했습니다.';
+      (typeof apiError.data?.message === 'string' ? apiError.data.message : undefined) ||
+      '릴스 합성을 시작하는 중 오류가 발생했습니다.';
 
     return NextResponse.json(
       {
         success: false,
         status,
         message,
-        errorCode: error.response?.data?.errorCode || 'REELS_MAKER_COMPLETE_ERROR',
+        errorCode:
+          (typeof apiError.data?.errorCode === 'string'
+            ? apiError.data.errorCode
+            : undefined) || 'REELS_MAKER_COMPLETE_ERROR',
         data: null,
       },
       { status }
