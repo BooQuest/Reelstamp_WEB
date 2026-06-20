@@ -8,520 +8,102 @@ import {
   useRef,
   useState,
   type ChangeEvent as ReactChangeEvent,
-  type ComponentType,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
-  Bookmark,
   Camera,
   ChevronLeft,
   ChevronRight,
   Check,
-  CheckCircle,
-  Download,
-  FolderOpen,
   Image as ImageIcon,
-  LayoutTemplate,
   Loader2,
   Menu,
-  Pause,
-  Play,
   Plus,
   RotateCcw,
-  Sparkles,
   SwitchCamera,
   Trash2,
-  TrendingUp,
-  User,
-  X,
 } from 'lucide-react';
 import type { WebApiResponse } from '@/app/lib/api/auth';
-import InstagramEmbed from '@/app/components/ui/InstagramEmbed';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
-import InstagramShareButton from '@/app/reels-maker/InstagramShareButton';
+import CaptureMenu from '@/app/reels-maker/components/CaptureMenu';
 import CapturedClipPreview from '@/app/reels-maker/components/CapturedClipPreview';
-
-const EXAMPLE_ASSETS = {
-  exampleImage:
-    'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1200&q=80',
-} as const;
-
-const VIDEO_ASSET_EXTENSIONS = ['.mp4', '.webm', '.mov', '.m4v', '.ogg', '.ogv'] as const;
-const TEMPLATE_ASSET_BASE_URL = process.env.NEXT_PUBLIC_OCI_TEMPLATE_BASE_URL ?? '';
-
-type ExampleMedia = {
-  type: 'image' | 'video';
-  src: string;
-};
-
-type GuideImageEntry = {
-  url: string;
-  startSecond: number | null;
-};
-
-const isVideoAssetUrl = (url: string) => {
-  const path = url.trim().split(/[?#]/)[0]?.toLowerCase() ?? '';
-  return VIDEO_ASSET_EXTENSIONS.some((extension) => path.endsWith(extension));
-};
-
-const isAbsoluteAssetUrl = (url: string) =>
-  /^(https?:|blob:|data:)/i.test(url) || url.startsWith('/');
-
-const joinTemplateAssetUrl = (key: string) => {
-  const trimmed = key.trim();
-  if (!trimmed || isAbsoluteAssetUrl(trimmed) || !TEMPLATE_ASSET_BASE_URL) {
-    return trimmed;
-  }
-  const base = TEMPLATE_ASSET_BASE_URL.endsWith('/')
-    ? TEMPLATE_ASSET_BASE_URL.slice(0, -1)
-    : TEMPLATE_ASSET_BASE_URL;
-  const normalizedKey = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
-  return `${base}/${normalizedKey}`;
-};
-
-const extractGuideImageJson = (value: string) => {
-  const trimmed = value.trim();
-  const jsonStartIndex = trimmed.indexOf('[');
-  if (jsonStartIndex === 0) return trimmed;
-  if (jsonStartIndex > 0) return trimmed.slice(jsonStartIndex).trim();
-
-  const base = TEMPLATE_ASSET_BASE_URL.endsWith('/')
-    ? TEMPLATE_ASSET_BASE_URL.slice(0, -1)
-    : TEMPLATE_ASSET_BASE_URL;
-  if (!trimmed.startsWith(`${base}/`)) return null;
-
-  const rest = trimmed.slice(base.length + 1).trim();
-  return rest.startsWith('[') ? rest : null;
-};
-
-const readGuideStartSecond = (entry: Record<string, unknown>) => {
-  const rawValue = entry.startSecond ?? entry.start_second ?? entry.start;
-  if (rawValue == null || rawValue === '') return null;
-  const value = typeof rawValue === 'number' ? rawValue : Number(rawValue);
-  if (!Number.isFinite(value) || value < 0) return null;
-  return Math.floor(value);
-};
-
-const normalizeGuideImageEntry = (value: unknown, order: number) => {
-  if (typeof value === 'string') {
-    const url = value.trim();
-    return url ? { url: joinTemplateAssetUrl(url), startSecond: null, order } : null;
-  }
-
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-
-  const entry = value as Record<string, unknown>;
-  const url = typeof entry.url === 'string' ? entry.url.trim() : '';
-  if (!url) return null;
-  return {
-    url: joinTemplateAssetUrl(url),
-    startSecond: readGuideStartSecond(entry),
-    order,
-  };
-};
-
-const parseGuideImageEntries = (rawValue?: string | null): GuideImageEntry[] => {
-  const value = rawValue?.trim();
-  if (!value) return [];
-
-  const jsonValue = extractGuideImageJson(value);
-  if (jsonValue) {
-    try {
-      const parsed = JSON.parse(jsonValue);
-      if (Array.isArray(parsed)) {
-        return parsed
-          .map((entry, index) => normalizeGuideImageEntry(entry, index))
-          .filter((entry): entry is GuideImageEntry & { order: number } => Boolean(entry))
-          .sort((a, b) => {
-            const aStart = a.startSecond ?? Number.POSITIVE_INFINITY;
-            const bStart = b.startSecond ?? Number.POSITIVE_INFINITY;
-            if (aStart !== bStart) return aStart - bStart;
-            return a.order - b.order;
-          })
-          .map((entry) => ({
-            url: entry.url,
-            startSecond: entry.startSecond,
-          }));
-      }
-    } catch {
-      return [{ url: joinTemplateAssetUrl(value), startSecond: null }];
-    }
-  }
-
-  return [{ url: joinTemplateAssetUrl(value), startSecond: null }];
-};
-
-type CaptureMenuItem = {
-  href: string;
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-  requiresAuth?: boolean;
-};
-
-const CAPTURE_MENU_ITEMS: CaptureMenuItem[] = [
-  {
-    href: '/templates',
-    label: '맞춤형 릴스 추천',
-    icon: Sparkles,
-  },
-  {
-    href: '/all-templates',
-    label: '릴스 템플릿',
-    icon: LayoutTemplate,
-  },
-  {
-    href: '/trending-reels',
-    label: '오늘의 릴스 트렌드',
-    icon: TrendingUp,
-    requiresAuth: true,
-  },
-  {
-    href: '/saved-reels',
-    label: '저장된 릴스',
-    icon: Bookmark,
-    requiresAuth: true,
-  },
-  {
-    href: '/my-projects',
-    label: '제작 중인 프로젝트',
-    icon: FolderOpen,
-    requiresAuth: true,
-  },
-  {
-    href: '/completed-reels',
-    label: '제작 완료된 릴스',
-    icon: CheckCircle,
-    requiresAuth: true,
-  },
-];
-
-type ClipInfo = {
-  blob: Blob;
-  url: string;
-  duration: number;
-  mimeType: string;
-};
-
-type RecorderStatus = 'idle' | 'recording' | 'done';
-type Stage = 'capture' | 'processing' | 'preview';
-type CutDurationMode = 'RECOMMENDED' | 'FORCED';
-type CameraFacingMode = 'environment' | 'user';
-
-type TemplateCut = {
-  order: number;
-  durationSeconds: number;
-  durationMode?: string | null;
-  title?: string | null;
-  guideText?: string | null;
-  'guide_text'?: string | null;
-  guideImageUrl?: string | null;
-  'guide_image_url'?: string | null;
-  exampleImageUrl?: string | null;
-  exampleVideoUrl?: string | null;
-  defaultCaption?: string | null;
-  captureType?: string | null;
-  fixedVideoUrl?: string | null;
-  fixedPreviewImageUrl?: string | null;
-};
-
-type TemplateDetailResponse = {
-  id: string;
-  title: string;
-  subtitle?: string | null;
-  thumbnailUrl?: string | null;
-  embedUrl?: string | null;
-  exampleReelUrls?: string[];
-  tags?: string[];
-  cuts: TemplateCut[];
-};
-
-type ReelsMakerSessionClip = {
-  clipId: number;
-  order: number;
-  durationSeconds: number;
-  defaultCaption?: string | null;
-  status?: string | null;
-  objectKey?: string | null;
-  downloadUrl?: string | null;
-  contentType?: string | null;
-  actualDurationSeconds?: number | null;
-};
-
-type ReelsMakerSessionResponse = {
-  sessionId: number;
-  templateId: string;
-  status: string;
-  finalVideoUrl?: string | null;
-  processingJobId?: string | null;
-  projectName?: string | null;
-  lastActiveClipOrder?: number | null;
-  draftVersion?: number | null;
-  lastEditedAt?: string | null;
-  expiresAt?: string | null;
-  draftSavingEnabled?: boolean;
-  clips: ReelsMakerSessionClip[];
-  captionItems?: CaptionItem[];
-};
-
-type ReelsMakerClipPresignResponse = {
-  clipId: number;
-  objectKey: string;
-  uploadUrl: string;
-  downloadUrl?: string | null;
-  expiresAt?: string | null;
-};
-
-type DraftSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
-
-type ReelsMakerStatusResponse = {
-  sessionId: number;
-  status: string;
-  finalVideoUrl?: string | null;
-  processingJobId?: string | null;
-  errorMessage?: string | null;
-};
-type ReelsMakerErrorResponse = {
-  success?: boolean;
-  status?: number;
-  message?: string;
-  errorCode?: string;
-  data?: unknown;
-};
-
-type CaptionStyleVersion = 'WEB_BOX_V2' | 'CAPTION_RENDER_V1';
-
-type CaptionStyle = {
-  xRatio: number;
-  yRatio: number;
-  scale: number;
-  boxed: boolean;
-  styleVersion?: CaptionStyleVersion;
-  maxWidthRatio?: number;
-  maxLines?: number | null;
-  renderWidth?: number;
-  renderHeight?: number;
-  layoutWidth?: number;
-  layoutHeight?: number;
-  baseFontSizePx?: number;
-  lineHeight?: number;
-  fontFamily?: string;
-  fontWeight?: number;
-  fontSizePx?: number;
-  lineHeightPx?: number;
-  textColor?: string;
-  maxWidthPx?: number;
-  boxBackgroundColor?: string;
-  boxBackgroundOpacity?: number;
-  boxPaddingXPx?: number;
-  boxPaddingYPx?: number;
-  boxBorderRadiusPx?: number;
-  paddingXPx?: number;
-  paddingYPx?: number;
-  borderRadiusPx?: number;
-  shadowOffsetYPx?: number;
-  shadowBlurPx?: number;
-  shadowColor?: string;
-  whiteSpace?: 'pre-wrap';
-  overflowWrap?: 'break-word';
-  wordBreak?: 'normal';
-  lineBreak?: 'auto';
-};
-
-type CaptionPlacement =
-  | {
-      type: 'CLIP';
-      clipId: number;
-    }
-  | {
-      type: 'TIMELINE';
-      startMs: number;
-      endMs: number;
-    };
-
-type CaptionItem = {
-  id: string;
-  text: string;
-  source: 'TEMPLATE' | 'USER';
-  placement: CaptionPlacement;
-  zIndex: number;
-  style: CaptionStyle;
-};
-
-type CaptionGestureMode = 'none' | 'drag' | 'pinch' | 'resize';
-
-type CaptionGestureState = {
-  mode: CaptionGestureMode;
-  captionId: string | null;
-  pointerMap: Map<number, { x: number; y: number }>;
-  dragPointerId: number | null;
-  startPointer: { x: number; y: number } | null;
-  startStyle: CaptionStyle | null;
-  startDistance: number;
-  startScale: number;
-};
-
-type VideoMetadata = {
-  duration: number;
-  width: number;
-  height: number;
-};
-
-type TrimDragMode = 'none' | 'start' | 'end' | 'window' | 'scrub';
-type TrimDragStartState = {
-  pointerX: number;
-  startSeconds: number;
-  endSeconds: number;
-  scrubSeconds: number;
-};
-
-const MIN_CAPTION_SCALE = 0.6;
-const MAX_CAPTION_SCALE = 2.2;
-const MIN_CAPTION_MAX_WIDTH_RATIO = 0.5;
-const MAX_CAPTION_MAX_WIDTH_RATIO = 0.95;
-const MAX_CAPTIONS_PER_CLIP = 5;
-const MIN_TRIM_DURATION_SECONDS = 0.3;
-const DEFAULT_GALLERY_CLIP_DURATION_SECONDS = 3;
-const TIMELINE_THUMBNAIL_COUNT = 10;
-const DURATION_MODE_RECOMMENDED: CutDurationMode = 'RECOMMENDED';
-const DURATION_MODE_FORCED: CutDurationMode = 'FORCED';
-const RECOMMENDED_AUTO_STOP_SECONDS = 60;
-const CAPTION_STYLE_VERSION_RENDER_V1: CaptionStyleVersion = 'CAPTION_RENDER_V1';
-const DEFAULT_CAPTION_MAX_WIDTH_RATIO = 0.85;
-const CAPTION_RENDER_WIDTH = 1080;
-const CAPTION_RENDER_HEIGHT = 1920;
-const CAPTION_LAYOUT_REFERENCE_WIDTH = 408;
-const CAPTION_REFERENCE_TO_RENDER_SCALE = CAPTION_RENDER_WIDTH / CAPTION_LAYOUT_REFERENCE_WIDTH;
-const toCaptionRenderPx = (value: number) =>
-  Math.round(value * CAPTION_REFERENCE_TO_RENDER_SCALE * 1000) / 1000;
-const CAPTION_BASE_FONT_SIZE_PX = toCaptionRenderPx(28);
-const CAPTION_LINE_HEIGHT = 1.25;
-const CAPTION_LINE_HEIGHT_PX = Math.round(CAPTION_BASE_FONT_SIZE_PX * CAPTION_LINE_HEIGHT * 1000) / 1000;
-const CAPTION_FONT_FAMILY = 'ReelstampCaptionPretendard';
-const CAPTION_FONT_WEIGHT = 600;
-const CAPTION_TEXT_COLOR = '#FFFFFF';
-const CAPTION_BOX_BACKGROUND_COLOR = '#000000';
-const CAPTION_BOX_BACKGROUND_OPACITY = 0.5;
-const CAPTION_BOX_PADDING_X_PX = toCaptionRenderPx(16);
-const CAPTION_BOX_PADDING_Y_PX = toCaptionRenderPx(8);
-const CAPTION_BOX_BORDER_RADIUS_PX = toCaptionRenderPx(18);
-const CAPTION_MAX_WIDTH_PX = Math.round(CAPTION_RENDER_WIDTH * DEFAULT_CAPTION_MAX_WIDTH_RATIO);
-const CAPTION_SHADOW_OFFSET_Y_PX = toCaptionRenderPx(8);
-const CAPTION_SHADOW_BLUR_PX = toCaptionRenderPx(20);
-const CAPTION_SHADOW_COLOR = 'rgba(0,0,0,0.28)';
-const CAPTION_WHITE_SPACE = 'pre-wrap';
-const CAPTION_OVERFLOW_WRAP = 'break-word';
-const CAPTION_WORD_BREAK = 'normal';
-const CAPTION_LINE_BREAK = 'auto';
-const CAPTION_RESIZE_HANDLE_SIZE_PX = toCaptionRenderPx(28);
-const CAPTION_RESIZE_HANDLE_OFFSET_PX = toCaptionRenderPx(12);
-const CAPTION_RESIZE_HANDLE_FONT_SIZE_PX = toCaptionRenderPx(10);
-const CAPTION_INPUT_MIN_WIDTH_PX = toCaptionRenderPx(140);
-const PROCESSING_STATUS_TIMEOUT_MS = 5 * 60 * 1000;
-const COMPLETE_START_FAILED_ERROR_CODE = 'RS-VID-001';
-const PROCESSING_FAILED_ERROR_CODE = 'RS-VID-002';
-const PROCESSING_TIMEOUT_ERROR_CODE = 'RS-VID-003';
-const COMPLETE_START_FAILED_USER_MESSAGE = `영상 생성을 시작하지 못했어요. 잠시 후 다시 시도해 주세요. 문제가 계속되면 고객센터로 문의해 주세요. (코드: ${COMPLETE_START_FAILED_ERROR_CODE})`;
-const PROCESSING_FAILED_USER_MESSAGE = `영상 생성 중 문제가 발생했어요. 잠시 후 다시 시도해 주세요. 문제가 계속되면 고객센터로 문의해 주세요. (코드: ${PROCESSING_FAILED_ERROR_CODE})`;
-const PROCESSING_TIMEOUT_USER_MESSAGE = `영상 생성이 예상보다 오래 걸리고 있어요. 잠시 후 다시 확인해 주세요. 문제가 계속되면 고객센터로 문의해 주세요. (코드: ${PROCESSING_TIMEOUT_ERROR_CODE})`;
-const DEFAULT_CAPTION_STYLE: CaptionStyle = {
-  xRatio: 0.5,
-  yRatio: 0.12,
-  scale: 1,
-  boxed: true,
-  styleVersion: CAPTION_STYLE_VERSION_RENDER_V1,
-  maxWidthRatio: DEFAULT_CAPTION_MAX_WIDTH_RATIO,
-  maxLines: null,
-};
-
-const createCaptionId = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `caption-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-const clampValue = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
-
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return fallback;
-};
-
-const normalizeCaptionStyle = (style: CaptionStyle): CaptionStyle => ({
-  xRatio: clampValue(style.xRatio, 0, 1),
-  yRatio: clampValue(style.yRatio, 0, 1),
-  scale: clampValue(style.scale, MIN_CAPTION_SCALE, MAX_CAPTION_SCALE),
-  boxed: style.boxed !== false,
-  styleVersion: CAPTION_STYLE_VERSION_RENDER_V1,
-  maxWidthRatio: clampValue(
-    typeof style.maxWidthRatio === 'number' ? style.maxWidthRatio : DEFAULT_CAPTION_MAX_WIDTH_RATIO,
-    MIN_CAPTION_MAX_WIDTH_RATIO,
-    MAX_CAPTION_MAX_WIDTH_RATIO
-  ),
-  maxLines:
-    typeof style.maxLines === 'number' && Number.isFinite(style.maxLines)
-      ? Math.max(1, Math.round(style.maxLines))
-      : null,
-});
-
-const buildCaptionExportStyle = (style: CaptionStyle): CaptionStyle => {
-  const normalized = normalizeCaptionStyle(style);
-
-  return {
-    ...normalized,
-    renderWidth: CAPTION_RENDER_WIDTH,
-    renderHeight: CAPTION_RENDER_HEIGHT,
-    fontFamily: CAPTION_FONT_FAMILY,
-    fontWeight: CAPTION_FONT_WEIGHT,
-    fontSizePx: CAPTION_BASE_FONT_SIZE_PX,
-    lineHeightPx: CAPTION_LINE_HEIGHT_PX,
-    textColor: CAPTION_TEXT_COLOR,
-    maxWidthPx: CAPTION_MAX_WIDTH_PX,
-    boxBackgroundColor: CAPTION_BOX_BACKGROUND_COLOR,
-    boxBackgroundOpacity: CAPTION_BOX_BACKGROUND_OPACITY,
-    boxPaddingXPx: CAPTION_BOX_PADDING_X_PX,
-    boxPaddingYPx: CAPTION_BOX_PADDING_Y_PX,
-    boxBorderRadiusPx: CAPTION_BOX_BORDER_RADIUS_PX,
-    paddingXPx: CAPTION_BOX_PADDING_X_PX,
-    paddingYPx: CAPTION_BOX_PADDING_Y_PX,
-    borderRadiusPx: CAPTION_BOX_BORDER_RADIUS_PX,
-    shadowOffsetYPx: CAPTION_SHADOW_OFFSET_Y_PX,
-    shadowBlurPx: CAPTION_SHADOW_BLUR_PX,
-    shadowColor: CAPTION_SHADOW_COLOR,
-    whiteSpace: CAPTION_WHITE_SPACE,
-    overflowWrap: CAPTION_OVERFLOW_WRAP,
-    wordBreak: CAPTION_WORD_BREAK,
-    lineBreak: CAPTION_LINE_BREAK,
-  };
-};
-
-const buildDraftSignature = (
-  projectName: string,
-  activeClipOrder: number | null,
-  captions: CaptionItem[]
-) =>
-  JSON.stringify({
-    projectName: projectName.trim(),
-    activeClipOrder,
-    captionItems: captions
-      .filter((caption) => caption.text.trim().length > 0)
-      .map((caption) => ({
-        id: caption.id,
-        text: caption.text,
-        source: caption.source,
-        placement: caption.placement,
-        zIndex: caption.zIndex,
-        style: buildCaptionExportStyle(caption.style),
-      })),
-  });
+import CutExampleModal from '@/app/reels-maker/components/CutExampleModal';
+import ExampleReelsModal from '@/app/reels-maker/components/ExampleReelsModal';
+import ExitConfirmModal from '@/app/reels-maker/components/ExitConfirmModal';
+import FinalPreview from '@/app/reels-maker/components/FinalPreview';
+import FullScreenState from '@/app/reels-maker/components/FullScreenState';
+import GuestDraftNotice from '@/app/reels-maker/components/GuestDraftNotice';
+import ProcessingView from '@/app/reels-maker/components/ProcessingView';
+import ResetCutModal from '@/app/reels-maker/components/ResetCutModal';
+import TrimModal from '@/app/reels-maker/components/TrimModal';
+import useCaptionEditor from '@/app/reels-maker/hooks/useCaptionEditor';
+import useDraftAutosave from '@/app/reels-maker/hooks/useDraftAutosave';
+import {
+  CAPTION_BASE_FONT_SIZE_PX,
+  CAPTION_BOX_BACKGROUND_OPACITY,
+  CAPTION_BOX_BORDER_RADIUS_PX,
+  CAPTION_BOX_PADDING_X_PX,
+  CAPTION_BOX_PADDING_Y_PX,
+  CAPTION_FONT_FAMILY,
+  CAPTION_FONT_WEIGHT,
+  CAPTION_INPUT_MIN_WIDTH_PX,
+  CAPTION_LINE_BREAK,
+  CAPTION_LINE_HEIGHT_PX,
+  CAPTION_MAX_WIDTH_PX,
+  CAPTION_OVERFLOW_WRAP,
+  CAPTION_RENDER_HEIGHT,
+  CAPTION_RENDER_WIDTH,
+  CAPTION_RESIZE_HANDLE_FONT_SIZE_PX,
+  CAPTION_RESIZE_HANDLE_OFFSET_PX,
+  CAPTION_RESIZE_HANDLE_SIZE_PX,
+  CAPTION_SHADOW_BLUR_PX,
+  CAPTION_SHADOW_COLOR,
+  CAPTION_SHADOW_OFFSET_Y_PX,
+  CAPTION_TEXT_COLOR,
+  CAPTION_WHITE_SPACE,
+  CAPTION_WORD_BREAK,
+  COMPLETE_START_FAILED_USER_MESSAGE,
+  DEFAULT_CAPTION_STYLE,
+  DEFAULT_GALLERY_CLIP_DURATION_SECONDS,
+  DURATION_MODE_FORCED,
+  DURATION_MODE_RECOMMENDED,
+  MAX_CAPTIONS_PER_CLIP,
+  MIN_TRIM_DURATION_SECONDS,
+  PROCESSING_FAILED_USER_MESSAGE,
+  PROCESSING_STATUS_TIMEOUT_MS,
+  PROCESSING_TIMEOUT_USER_MESSAGE,
+  RECOMMENDED_AUTO_STOP_SECONDS,
+  TIMELINE_THUMBNAIL_COUNT,
+} from '@/app/reels-maker/constants';
+import type {
+  CameraFacingMode,
+  CaptionItem,
+  ClipInfo,
+  ExampleMedia,
+  RecorderStatus,
+  ReelsMakerClipPresignResponse,
+  ReelsMakerErrorResponse,
+  ReelsMakerSessionResponse,
+  ReelsMakerStatusResponse,
+  Stage,
+  TemplateDetailResponse,
+  TrimDragMode,
+  TrimDragStartState,
+  VideoMetadata,
+} from '@/app/reels-maker/types';
+import {
+  isVideoAssetUrl,
+  parseGuideImageEntries,
+} from '@/app/reels-maker/utils/assets';
+import {
+  buildCaptionExportStyle,
+  clampValue,
+  normalizeCaptionStyle,
+} from '@/app/reels-maker/utils/captions';
+import { getErrorMessage } from '@/app/reels-maker/utils/errors';
 
 function ReelsMakerInner() {
   const router = useRouter();
@@ -531,9 +113,6 @@ function ReelsMakerInner() {
   const requestedSessionId = searchParams.get('sessionId');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraFrameRef = useRef<HTMLDivElement | null>(null);
-  const captionStageRef = useRef<HTMLDivElement | null>(null);
-  const captionOverlayRef = useRef<HTMLDivElement | null>(null);
-  const captionInputRef = useRef<HTMLInputElement | null>(null);
   const galleryFileInputRef = useRef<HTMLInputElement | null>(null);
   const trimPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
   const trimViewportRef = useRef<HTMLDivElement | null>(null);
@@ -556,26 +135,8 @@ function ReelsMakerInner() {
   const cameraSetupInProgressRef = useRef(false);
   const switchCameraInProgressRef = useRef(false);
   const latestClipsRef = useRef<Array<ClipInfo | null>>([]);
-  const captionsRef = useRef<CaptionItem[]>([]);
-  const projectNameRef = useRef('');
-  const activeCutIndexRef = useRef(0);
-  const draftVersionRef = useRef(0);
-  const draftSaveTimerRef = useRef<number | null>(null);
-  const draftSaveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const sessionHydratedRef = useRef(false);
   const sessionInitKeyRef = useRef<string | null>(null);
-  const lastSavedDraftSignatureRef = useRef<string | null>(null);
-  const isExitingWithoutSavingRef = useRef(false);
-  const captionGestureRef = useRef<CaptionGestureState>({
-    mode: 'none',
-    captionId: null,
-    pointerMap: new Map(),
-    dragPointerId: null,
-    startPointer: null,
-    startStyle: null,
-    startDistance: 0,
-    startScale: 1,
-  });
 
   const [stage, setStage] = useState<Stage>('capture');
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -587,10 +148,6 @@ function ReelsMakerInner() {
   const [sessionClipMap, setSessionClipMap] = useState<Record<number, number>>({});
   const [isSessionLoading, setIsSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
-  const [projectName, setProjectName] = useState('');
-  const [draftVersion, setDraftVersion] = useState(0);
-  const [draftSaveStatus, setDraftSaveStatus] = useState<DraftSaveStatus>('idle');
-  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
   const [pendingExitHref, setPendingExitHref] = useState('/my-projects');
   const [isExitSaving, setIsExitSaving] = useState(false);
@@ -603,12 +160,8 @@ function ReelsMakerInner() {
   const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState<number | null>(null);
   const [clips, setClips] = useState<Array<ClipInfo | null>>([]);
   const [captions, setCaptions] = useState<CaptionItem[]>([]);
-  const [cameraFrameElement, setCameraFrameElement] = useState<HTMLDivElement | null>(null);
-  const [captionPreviewScale, setCaptionPreviewScale] = useState(1);
   const [cutGuideVisibility, setCutGuideVisibility] = useState<Record<number, boolean>>({});
   const [guideImageIndexByCut, setGuideImageIndexByCut] = useState<Record<number, number>>({});
-  const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(null);
-  const [editingCaptionId, setEditingCaptionId] = useState<string | null>(null);
   const [isExampleOpen, setIsExampleOpen] = useState(false);
   const [isReelOpen, setIsReelOpen] = useState(false);
   const [exampleReelIndex, setExampleReelIndex] = useState(0);
@@ -704,6 +257,30 @@ function ReelsMakerInner() {
     });
   }, [template]);
 
+  const {
+    projectName,
+    setProjectName,
+    draftSaveStatus,
+    lastSavedAt,
+    captionsRef,
+    saveDraftNow,
+    hydrateDraft,
+    resetDraft,
+    applyServerUpdate,
+    cancelScheduledSave,
+    resumeAutosave,
+    suspendAutosave,
+  } = useDraftAutosave({
+    cuts,
+    captions,
+    activeCutIndex,
+    isRegisteredUser,
+    sessionId,
+    stage,
+    isExitConfirmOpen,
+    sessionHydratedRef,
+  });
+
   const activeCut = cuts[activeCutIndex] ?? null;
   const allDone = useMemo(() => {
     if (cuts.length === 0) return false;
@@ -723,35 +300,45 @@ function ReelsMakerInner() {
   const shouldShowActiveClipPreview =
     !isActiveCutFixed && Boolean(activeClip) && recordingStatus !== 'recording';
   const activeClipId = activeCut ? sessionClipMap[activeCut.order] ?? null : null;
-  const activeCaptions = useMemo(
-    () =>
-      activeClipId == null
-        ? []
-        : captions
-            .filter(
-              (caption) =>
-                caption.placement.type === 'CLIP' &&
-                caption.placement.clipId === activeClipId
-            )
-            .sort((a, b) => a.zIndex - b.zIndex),
-    [activeClipId, captions]
-  );
-  const resolvedSelectedCaptionId = activeCaptions.some(
-    (caption) => caption.id === selectedCaptionId
-  )
-    ? selectedCaptionId
-    : activeCaptions[0]?.id ?? null;
-  const activeCaptionItem =
-    activeCaptions.find((caption) => caption.id === resolvedSelectedCaptionId) ?? null;
-  const activeCaptionText = activeCaptionItem?.text ?? '';
-  const activeCaptionStyle = activeCaptionItem?.style ?? DEFAULT_CAPTION_STYLE;
   const activeCutGuideText = activeCut?.guideText?.trim() || '등록된 컷 가이드가 없습니다.';
   const showCaptionStage =
     !activeUploadError &&
     !activeFixedError &&
     (!cameraError || Boolean(activeClip)) &&
     (!isActiveCutFixed || Boolean(activeClip));
-  const showCaptionOverlay = showCaptionStage && activeCaptions.length > 0;
+  const {
+    captionStageRef,
+    captionOverlayRef,
+    captionInputRef,
+    captionPreviewScale,
+    setSelectedCaptionId,
+    editingCaptionId,
+    setEditingCaptionId,
+    activeCaptions,
+    resolvedSelectedCaptionId,
+    activeCaptionStyle,
+    showCaptionOverlay,
+    resetCaptionGesture,
+    handleCameraFrameRef,
+    addCaptionToActiveClip,
+    deleteSelectedCaption,
+    handleCaptionPointerMove,
+    handleCaptionPointerEnd,
+    handleCaptionPointerDown,
+    handleResizeHandlePointerMove,
+    handleResizeHandlePointerEnd,
+    handleResizeHandlePointerDown,
+    handleCaptionTextChange,
+    handleCaptionToggleBox,
+  } = useCaptionEditor({
+    activeClipId,
+    showCaptionStage,
+    stage,
+    captions,
+    setCaptions,
+    captionsRef,
+    cameraFrameRef,
+  });
   const isRecordDisabled =
     isActiveCutFixed || isUploadingActiveCut || isSessionLoading || !sessionId;
   const isGalleryDisabled =
@@ -889,152 +476,6 @@ function ReelsMakerInner() {
     MIN_TRIM_DURATION_SECONDS,
     trimSliderMax > 0 ? trimSliderMax : MIN_TRIM_DURATION_SECONDS
   );
-
-  const resetCaptionGesture = useCallback(() => {
-    const gesture = captionGestureRef.current;
-    gesture.mode = 'none';
-    gesture.captionId = null;
-    gesture.pointerMap.clear();
-    gesture.dragPointerId = null;
-    gesture.startPointer = null;
-    gesture.startStyle = null;
-    gesture.startDistance = 0;
-    gesture.startScale = 1;
-  }, []);
-
-  const handleCameraFrameRef = useCallback((element: HTMLDivElement | null) => {
-    cameraFrameRef.current = element;
-    setCameraFrameElement(element);
-  }, []);
-
-  const getCaptionInteractionRect = useCallback(() => {
-    return (
-      captionStageRef.current?.getBoundingClientRect() ??
-      cameraFrameRef.current?.getBoundingClientRect() ??
-      null
-    );
-  }, []);
-
-  const updateCaptionById = useCallback(
-    (captionId: string, updater: (current: CaptionItem) => CaptionItem) => {
-      setCaptions((prev) =>
-        prev.map((caption) => (caption.id === captionId ? updater(caption) : caption))
-      );
-    },
-    []
-  );
-
-  const clampCaptionPosition = useCallback(
-    (rawXRatio: number, rawYRatio: number) => {
-      const normalizedX = clampValue(rawXRatio, 0, 1);
-      const normalizedY = clampValue(rawYRatio, 0, 1);
-
-      const interactionRect = getCaptionInteractionRect();
-      if (!interactionRect || interactionRect.width <= 0 || interactionRect.height <= 0) {
-        return { xRatio: normalizedX, yRatio: normalizedY };
-      }
-
-      const overlayRect = captionOverlayRef.current?.getBoundingClientRect();
-      const halfWidth = overlayRect
-        ? Math.min(overlayRect.width / 2, interactionRect.width / 2)
-        : 0;
-      const halfHeight = overlayRect
-        ? Math.min(overlayRect.height / 2, interactionRect.height / 2)
-        : 0;
-
-      const minX = halfWidth / interactionRect.width;
-      const maxX = 1 - minX;
-      const minY = halfHeight / interactionRect.height;
-      const maxY = 1 - minY;
-
-      return {
-        xRatio: minX > maxX ? 0.5 : clampValue(normalizedX, minX, maxX),
-        yRatio: minY > maxY ? 0.5 : clampValue(normalizedY, minY, maxY),
-      };
-    },
-    [getCaptionInteractionRect]
-  );
-
-  const applyClampedCaptionStyle = useCallback(
-    (style: CaptionStyle) => {
-      const normalized = normalizeCaptionStyle(style);
-      const position = clampCaptionPosition(normalized.xRatio, normalized.yRatio);
-      return {
-        ...normalized,
-        ...position,
-      };
-    },
-    [clampCaptionPosition]
-  );
-
-  const updateActiveCaptionText = useCallback(
-    (text: string) => {
-      if (!resolvedSelectedCaptionId) return;
-      updateCaptionById(resolvedSelectedCaptionId, (current) => ({
-        ...current,
-        text,
-      }));
-    },
-    [resolvedSelectedCaptionId, updateCaptionById]
-  );
-
-  const updateActiveCaptionStyle = useCallback(
-    (updater: (style: CaptionStyle) => CaptionStyle) => {
-      if (!resolvedSelectedCaptionId) return;
-      updateCaptionById(resolvedSelectedCaptionId, (current) => ({
-        ...current,
-        style: applyClampedCaptionStyle(updater(current.style)),
-      }));
-    },
-    [applyClampedCaptionStyle, resolvedSelectedCaptionId, updateCaptionById]
-  );
-
-  const addCaptionToActiveClip = useCallback(() => {
-    if (!showCaptionStage || activeClipId == null) return;
-    if (activeCaptions.length >= MAX_CAPTIONS_PER_CLIP) return;
-
-    const captionId = createCaptionId();
-    const nextZIndex =
-      activeCaptions.reduce((max, caption) => Math.max(max, caption.zIndex), 0) + 1;
-    const verticalOffset = Math.min(0.68, DEFAULT_CAPTION_STYLE.yRatio + activeCaptions.length * 0.1);
-    const nextCaption: CaptionItem = {
-      id: captionId,
-      text: '',
-      source: 'USER',
-      placement: {
-        type: 'CLIP',
-        clipId: activeClipId,
-      },
-      zIndex: nextZIndex,
-      style: {
-        ...DEFAULT_CAPTION_STYLE,
-        yRatio: verticalOffset,
-      },
-    };
-
-    setCaptions((prev) => [...prev, nextCaption]);
-    setSelectedCaptionId(captionId);
-    setEditingCaptionId(captionId);
-    resetCaptionGesture();
-  }, [
-    activeCaptions,
-    activeClipId,
-    resetCaptionGesture,
-    showCaptionStage,
-  ]);
-
-  const deleteSelectedCaption = useCallback(() => {
-    if (!resolvedSelectedCaptionId) return;
-    const remainingActiveCaptions = activeCaptions.filter(
-      (caption) => caption.id !== resolvedSelectedCaptionId
-    );
-    setCaptions((prev) =>
-      prev.filter((caption) => caption.id !== resolvedSelectedCaptionId)
-    );
-    setSelectedCaptionId(remainingActiveCaptions.at(-1)?.id ?? null);
-    setEditingCaptionId(null);
-    resetCaptionGesture();
-  }, [activeCaptions, resetCaptionGesture, resolvedSelectedCaptionId]);
 
   const handleGuideImageToggle = useCallback(() => {
     if (!guideImageSrc) return;
@@ -1438,13 +879,7 @@ function ReelsMakerInner() {
       setEditingCaptionId(null);
       const resolvedProjectName =
         session.projectName?.trim() || `${template.title || '릴스'} 프로젝트`;
-      setProjectName(resolvedProjectName);
-      projectNameRef.current = resolvedProjectName;
       const resolvedDraftVersion = session.draftVersion ?? 0;
-      setDraftVersion(resolvedDraftVersion);
-      draftVersionRef.current = resolvedDraftVersion;
-      setLastSavedAt(session.lastEditedAt ?? null);
-      setDraftSaveStatus('saved');
       if (session.status === 'PROCESSING') {
         setStage('processing');
       } else if (session.status === 'COMPLETED') {
@@ -1510,11 +945,13 @@ function ReelsMakerInner() {
         });
         setActiveCutIndex(resolvedActiveIndex);
       }
-      lastSavedDraftSignatureRef.current = buildDraftSignature(
-        resolvedProjectName,
-        cuts[resolvedActiveIndex]?.order ?? null,
-        restoredCaptions
-      );
+      hydrateDraft({
+        projectName: resolvedProjectName,
+        draftVersion: resolvedDraftVersion,
+        lastEditedAt: session.lastEditedAt ?? null,
+        activeClipOrder: cuts[resolvedActiveIndex]?.order ?? null,
+        captions: restoredCaptions,
+      });
       sessionHydratedRef.current = true;
       if (!requestedSessionId) {
         sessionInitKeyRef.current = `${templateId}:${session.sessionId}`;
@@ -1537,7 +974,16 @@ function ReelsMakerInner() {
     } finally {
       setIsSessionLoading(false);
     }
-  }, [cuts, requestedSessionId, router, template, templateId]);
+  }, [
+    cuts,
+    hydrateDraft,
+    requestedSessionId,
+    router,
+    setEditingCaptionId,
+    setSelectedCaptionId,
+    template,
+    templateId,
+  ]);
 
   useEffect(() => {
     createReelsSession();
@@ -1552,12 +998,8 @@ function ReelsMakerInner() {
     setSessionId(null);
     setSessionClipMap({});
     setSessionError(null);
-    setProjectName('');
-    setDraftVersion(0);
-    setDraftSaveStatus('idle');
-    setLastSavedAt(null);
+    resetDraft();
     sessionHydratedRef.current = false;
-    lastSavedDraftSignatureRef.current = null;
     setUploadedCuts({});
     setUploadingCuts({});
     setClipUploadErrors({});
@@ -1592,7 +1034,15 @@ function ReelsMakerInner() {
     setIsGalleryProcessing(false);
     setIsTrimOpen(false);
     resetTrimState();
-  }, [template?.id, cuts, resetCaptionGesture, resetTrimState]);
+  }, [
+    template?.id,
+    cuts,
+    resetCaptionGesture,
+    resetDraft,
+    resetTrimState,
+    setEditingCaptionId,
+    setSelectedCaptionId,
+  ]);
 
   useEffect(() => {
     if (cuts.length === 0) return;
@@ -2243,19 +1693,13 @@ function ReelsMakerInner() {
             completePayload?.message || '클립 업로드 완료 처리에 실패했습니다.'
           );
         }
-        const nextVersion = completePayload.data.draftVersion ?? draftVersionRef.current;
-        draftVersionRef.current = nextVersion;
-        setDraftVersion(nextVersion);
-        setLastSavedAt(completePayload.data.lastEditedAt ?? new Date().toISOString());
-        if (isRegisteredUser) {
-          setDraftSaveStatus('saved');
-        }
+        applyServerUpdate(completePayload.data);
         setUploadedCuts((prev) => ({ ...prev, [index]: true }));
       } finally {
         setUploadingCuts((prev) => ({ ...prev, [index]: false }));
       }
     },
-    [cuts, isRegisteredUser, sessionClipMap, sessionId]
+    [applyServerUpdate, cuts, sessionClipMap, sessionId]
   );
 
   const saveClipAtIndex = useCallback(
@@ -2794,197 +2238,6 @@ function ReelsMakerInner() {
     };
   }, [clips, cuts, createPosterFromClip, downloadFixedClip]);
 
-  const mergeClips = useCallback(async (clipInfos: ClipInfo[]) => {
-    if (clipInfos.length === 1) {
-      return {
-        blob: clipInfos[0].blob,
-        mimeType: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
-      };
-    }
-
-    if (!window.MediaRecorder) {
-      return {
-        blob: new Blob(clipInfos.map((clip) => clip.blob), {
-          type: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
-        }),
-        mimeType: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
-      };
-    }
-
-    const video = document.createElement('video');
-    video.muted = false;
-    video.playsInline = true;
-    video.preload = 'auto';
-    video.crossOrigin = 'anonymous';
-
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    const AudioContextClass =
-      window.AudioContext ||
-      (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    const audioContext = AudioContextClass ? new AudioContextClass() : null;
-    let audioDestination: MediaStreamAudioDestinationNode | null = null;
-    let audioSource: MediaElementAudioSourceNode | null = null;
-
-    if (!context || !canvas.captureStream) {
-      return {
-        blob: new Blob(clipInfos.map((clip) => clip.blob), {
-          type: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
-        }),
-        mimeType: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
-      };
-    }
-
-    if (audioContext) {
-      try {
-        await audioContext.resume();
-      } catch {
-        // ignore
-      }
-      audioSource = audioContext.createMediaElementSource(video);
-      audioDestination = audioContext.createMediaStreamDestination();
-      audioSource.connect(audioDestination);
-    }
-
-    const loadClip = (clip: ClipInfo) =>
-      new Promise<{ url: string }>((resolve, reject) => {
-        const url = URL.createObjectURL(clip.blob);
-        video.onloadedmetadata = () => resolve({ url });
-        video.onerror = () => {
-          URL.revokeObjectURL(url);
-          reject(new Error('영상 로드 실패'));
-        };
-        video.src = url;
-        video.load();
-      });
-
-    const firstMeta = await loadClip(clipInfos[0]);
-    const width = video.videoWidth || 720;
-    const height = video.videoHeight || 1280;
-    canvas.width = width;
-    canvas.height = height;
-    context.fillStyle = '#000';
-    context.fillRect(0, 0, width, height);
-    URL.revokeObjectURL(firstMeta.url);
-
-    const captureStream = canvas.captureStream(30);
-    const audioTracks = audioDestination?.stream.getAudioTracks() ?? [];
-    const combinedStream = new MediaStream([
-      ...captureStream.getVideoTracks(),
-      ...audioTracks,
-    ]);
-
-    if (captureStream.getVideoTracks().length === 0) {
-      return {
-        blob: new Blob(clipInfos.map((clip) => clip.blob), {
-          type: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
-        }),
-        mimeType: clipInfos[0].mimeType || clipInfos[0].blob.type || 'video/webm',
-      };
-    }
-
-    const preferredTypes = [
-      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-      'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
-      'video/mp4',
-      'video/webm;codecs=vp9,opus',
-      'video/webm;codecs=vp8,opus',
-      'video/webm',
-    ];
-    const mimeType = getSupportedMimeType(preferredTypes);
-    const recorder = new MediaRecorder(combinedStream, mimeType ? { mimeType } : undefined);
-
-    const chunks: BlobPart[] = [];
-    const mergedBlob = await new Promise<Blob>(async (resolve, reject) => {
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunks.push(event.data);
-      };
-      recorder.onerror = () => reject(new Error('영상 결합 중 오류가 발생했습니다.'));
-
-      recorder.start();
-
-      try {
-        const videoWithFrameCallback = video as HTMLVideoElement & {
-          requestVideoFrameCallback?: (callback: () => void) => number;
-          cancelVideoFrameCallback?: (handle: number) => void;
-        };
-
-        for (const clip of clipInfos) {
-          const { url } = await loadClip(clip);
-          canvas.width = video.videoWidth || width;
-          canvas.height = video.videoHeight || height;
-          context.fillStyle = '#000';
-          context.fillRect(0, 0, canvas.width, canvas.height);
-
-          let rafId = 0;
-          let frameCallbackId = 0;
-          const drawFrame = () => {
-            if (!video.paused && !video.ended && video.readyState >= 2) {
-              context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            }
-            if (!video.paused && !video.ended) {
-              if (videoWithFrameCallback.requestVideoFrameCallback) {
-                frameCallbackId = videoWithFrameCallback.requestVideoFrameCallback(drawFrame);
-              } else {
-                rafId = requestAnimationFrame(drawFrame);
-              }
-            }
-          };
-
-          video.currentTime = 0;
-          await new Promise<void>((resolve, reject) => {
-            const onPlaying = () => {
-              cleanup();
-              resolve();
-            };
-            const onError = () => {
-              cleanup();
-              reject(new Error('영상 재생 실패'));
-            };
-            const cleanup = () => {
-              video.removeEventListener('playing', onPlaying);
-              video.removeEventListener('error', onError);
-            };
-            video.addEventListener('playing', onPlaying, { once: true });
-            video.addEventListener('error', onError, { once: true });
-            const playPromise = video.play();
-            if (playPromise) {
-              playPromise.catch(onError);
-            }
-          });
-          drawFrame();
-          await new Promise<void>((resolveEnded, rejectEnded) => {
-            video.onended = () => resolveEnded();
-            video.onerror = () => rejectEnded(new Error('영상 재생 실패'));
-          });
-          if (rafId) cancelAnimationFrame(rafId);
-          if (frameCallbackId && videoWithFrameCallback.cancelVideoFrameCallback) {
-            videoWithFrameCallback.cancelVideoFrameCallback(frameCallbackId);
-          }
-          URL.revokeObjectURL(url);
-        }
-        recorder.stop();
-        recorder.onstop = () => {
-          resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || 'video/webm' }));
-        };
-      } catch (error) {
-        recorder.stop();
-        reject(error);
-      }
-    });
-
-    captureStream.getTracks().forEach((track) => track.stop());
-    audioDestination?.stream.getTracks().forEach((track) => track.stop());
-    if (audioContext) {
-      audioContext.close();
-    }
-
-    return {
-      blob: mergedBlob,
-      mimeType: mergedBlob.type || mimeType || 'video/webm',
-    };
-  }, [getSupportedMimeType]);
-
   const stopRecording = useCallback(() => {
     if (recordTimeoutRef.current) {
       window.clearTimeout(recordTimeoutRef.current);
@@ -3145,16 +2398,20 @@ function ReelsMakerInner() {
         closeTrimModal();
       }
     }
-  }, [closeTrimModal, isTrimOpen, resetCaptionGesture, stage, stopRecording]);
+  }, [
+    closeTrimModal,
+    isTrimOpen,
+    resetCaptionGesture,
+    setEditingCaptionId,
+    stage,
+    stopRecording,
+  ]);
 
   const handleComplete = async () => {
     if (!sessionId) return;
     if (!allDone) return;
     if (isRegisteredUser) {
-      if (draftSaveTimerRef.current !== null) {
-        window.clearTimeout(draftSaveTimerRef.current);
-        draftSaveTimerRef.current = null;
-      }
+      cancelScheduledSave();
       const saved = await saveDraftNow();
       if (!saved) {
         alert('최신 작업 내용을 저장하지 못했습니다. 저장을 다시 시도해 주세요.');
@@ -3281,457 +2538,11 @@ function ReelsMakerInner() {
     return () => window.clearTimeout(timer);
   }, [downloadToastMessage]);
 
-  const distanceBetweenPoints = useCallback(
-    (a: { x: number; y: number }, b: { x: number; y: number }) => {
-      return Math.hypot(a.x - b.x, a.y - b.y);
-    },
-    []
-  );
-
-  const updateGestureCaptionStyle = useCallback(
-    (updater: (style: CaptionStyle) => CaptionStyle) => {
-      const captionId = captionGestureRef.current.captionId;
-      if (!captionId) return;
-      updateCaptionById(captionId, (current) => ({
-        ...current,
-        style: applyClampedCaptionStyle(updater(current.style)),
-      }));
-    },
-    [applyClampedCaptionStyle, updateCaptionById]
-  );
-
-  const handleCaptionPointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const gesture = captionGestureRef.current;
-      if (!gesture.pointerMap.has(event.pointerId)) return;
-
-      gesture.pointerMap.set(event.pointerId, {
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      if (gesture.mode === 'pinch') {
-        if (!gesture.startStyle || gesture.pointerMap.size < 2 || gesture.startDistance <= 0) {
-          return;
-        }
-
-        const points = Array.from(gesture.pointerMap.values());
-        const nextDistance = distanceBetweenPoints(points[0], points[1]);
-        if (!Number.isFinite(nextDistance) || nextDistance <= 0) return;
-
-        const nextScale = clampValue(
-          gesture.startScale * (nextDistance / gesture.startDistance),
-          MIN_CAPTION_SCALE,
-          MAX_CAPTION_SCALE
-        );
-        updateGestureCaptionStyle(() => ({
-          ...gesture.startStyle!,
-          scale: nextScale,
-        }));
-        return;
-      }
-
-      if (
-        gesture.mode === 'drag' &&
-        gesture.dragPointerId === event.pointerId &&
-        gesture.startPointer &&
-        gesture.startStyle
-      ) {
-        const interactionRect = getCaptionInteractionRect();
-        if (!interactionRect || interactionRect.width <= 0 || interactionRect.height <= 0) return;
-
-        const deltaX = event.clientX - gesture.startPointer.x;
-        const deltaY = event.clientY - gesture.startPointer.y;
-
-        updateGestureCaptionStyle(() => ({
-          ...gesture.startStyle!,
-          xRatio: gesture.startStyle!.xRatio + deltaX / interactionRect.width,
-          yRatio: gesture.startStyle!.yRatio + deltaY / interactionRect.height,
-        }));
-      }
-    },
-    [distanceBetweenPoints, getCaptionInteractionRect, updateGestureCaptionStyle]
-  );
-
-  const handleCaptionPointerEnd = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const gesture = captionGestureRef.current;
-
-      if (gesture.pointerMap.has(event.pointerId)) {
-        gesture.pointerMap.delete(event.pointerId);
-      }
-
-      const target = event.currentTarget;
-      if (target.hasPointerCapture(event.pointerId)) {
-        target.releasePointerCapture(event.pointerId);
-      }
-
-      if (gesture.pointerMap.size === 0) {
-        resetCaptionGesture();
-        return;
-      }
-
-      if (gesture.mode === 'pinch') {
-        if (gesture.pointerMap.size >= 2 && gesture.startStyle) {
-          const points = Array.from(gesture.pointerMap.values());
-          gesture.startDistance = distanceBetweenPoints(points[0], points[1]);
-          const currentCaption = captionsRef.current.find(
-            (caption) => caption.id === gesture.captionId
-          );
-          if (!currentCaption) {
-            resetCaptionGesture();
-            return;
-          }
-          gesture.startScale = currentCaption.style.scale;
-          gesture.startStyle = { ...currentCaption.style };
-          return;
-        }
-        resetCaptionGesture();
-        return;
-      }
-
-      if (gesture.mode === 'drag' && gesture.dragPointerId === event.pointerId) {
-        resetCaptionGesture();
-      }
-    },
-    [distanceBetweenPoints, resetCaptionGesture]
-  );
-
-  const handleCaptionPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>, caption: CaptionItem) => {
-      if (!showCaptionOverlay) return;
-      if (editingCaptionId === caption.id) return;
-      if (event.pointerType === 'mouse' && event.button !== 0) return;
-
-      event.stopPropagation();
-      setSelectedCaptionId(caption.id);
-      setEditingCaptionId(null);
-
-      const gesture = captionGestureRef.current;
-      if (gesture.captionId && gesture.captionId !== caption.id) {
-        resetCaptionGesture();
-      }
-      gesture.captionId = caption.id;
-      gesture.pointerMap.set(event.pointerId, {
-        x: event.clientX,
-        y: event.clientY,
-      });
-      event.currentTarget.setPointerCapture(event.pointerId);
-
-      if (gesture.pointerMap.size >= 2) {
-        if (!gesture.startStyle) {
-          gesture.startStyle = { ...caption.style };
-        }
-        gesture.mode = 'pinch';
-        const points = Array.from(gesture.pointerMap.values());
-        gesture.startDistance = distanceBetweenPoints(points[0], points[1]);
-        gesture.startScale = caption.style.scale;
-        return;
-      }
-
-      gesture.mode = 'drag';
-      gesture.dragPointerId = event.pointerId;
-      gesture.startPointer = { x: event.clientX, y: event.clientY };
-      gesture.startStyle = { ...caption.style };
-    },
-    [
-      distanceBetweenPoints,
-      editingCaptionId,
-      resetCaptionGesture,
-      showCaptionOverlay,
-    ]
-  );
-
-  const handleResizeHandlePointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      const gesture = captionGestureRef.current;
-      if (gesture.mode !== 'resize' || gesture.dragPointerId !== event.pointerId) return;
-      if (!gesture.startStyle || !gesture.startPointer || gesture.startDistance <= 0) return;
-
-      const interactionRect = getCaptionInteractionRect();
-      if (!interactionRect || interactionRect.width <= 0 || interactionRect.height <= 0) return;
-
-      const center = {
-        x: interactionRect.left + gesture.startStyle.xRatio * interactionRect.width,
-        y: interactionRect.top + gesture.startStyle.yRatio * interactionRect.height,
-      };
-
-      const currentDistance = distanceBetweenPoints(center, {
-        x: event.clientX,
-        y: event.clientY,
-      });
-      if (!Number.isFinite(currentDistance) || currentDistance <= 0) return;
-
-      const nextScale = clampValue(
-        gesture.startScale * (currentDistance / gesture.startDistance),
-        MIN_CAPTION_SCALE,
-        MAX_CAPTION_SCALE
-      );
-
-      updateGestureCaptionStyle(() => ({
-        ...gesture.startStyle!,
-        scale: nextScale,
-      }));
-    },
-    [distanceBetweenPoints, getCaptionInteractionRect, updateGestureCaptionStyle]
-  );
-
-  const handleResizeHandlePointerEnd = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      const gesture = captionGestureRef.current;
-      if (gesture.dragPointerId === event.pointerId) {
-        const target = event.currentTarget;
-        if (target.hasPointerCapture(event.pointerId)) {
-          target.releasePointerCapture(event.pointerId);
-        }
-        resetCaptionGesture();
-      }
-    },
-    [resetCaptionGesture]
-  );
-
-  const handleResizeHandlePointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!showCaptionOverlay) return;
-      if (!activeCaptionItem) return;
-      if (event.pointerType === 'mouse' && event.button !== 0) return;
-
-      event.stopPropagation();
-      setEditingCaptionId(null);
-
-      const interactionRect = getCaptionInteractionRect();
-      if (!interactionRect || interactionRect.width <= 0 || interactionRect.height <= 0) return;
-
-      const center = {
-        x: interactionRect.left + activeCaptionStyle.xRatio * interactionRect.width,
-        y: interactionRect.top + activeCaptionStyle.yRatio * interactionRect.height,
-      };
-      const startPoint = { x: event.clientX, y: event.clientY };
-
-      const gesture = captionGestureRef.current;
-      gesture.mode = 'resize';
-      gesture.captionId = activeCaptionItem.id;
-      gesture.pointerMap.clear();
-      gesture.pointerMap.set(event.pointerId, startPoint);
-      gesture.dragPointerId = event.pointerId;
-      gesture.startPointer = startPoint;
-      gesture.startStyle = { ...activeCaptionStyle };
-      gesture.startScale = activeCaptionStyle.scale;
-      gesture.startDistance = Math.max(
-        1,
-        distanceBetweenPoints(center, startPoint)
-      );
-
-      event.currentTarget.setPointerCapture(event.pointerId);
-    },
-    [
-      activeCaptionItem,
-      activeCaptionStyle,
-      distanceBetweenPoints,
-      getCaptionInteractionRect,
-      showCaptionOverlay,
-    ]
-  );
-
-  const handleCaptionTextChange = useCallback(
-    (value: string) => {
-      updateActiveCaptionText(value);
-    },
-    [updateActiveCaptionText]
-  );
-
-  const handleCaptionToggleBox = useCallback(() => {
-    updateActiveCaptionStyle((current) => ({
-      ...current,
-      boxed: !current.boxed,
-    }));
-  }, [updateActiveCaptionStyle]);
-
-  const ensureActiveCaptionInFrame = useCallback(() => {
-    const current = activeCaptionItem;
-    if (!current) return;
-
-    const nextStyle = applyClampedCaptionStyle(current.style);
-    if (
-      Math.abs(nextStyle.xRatio - current.style.xRatio) < 0.0001 &&
-      Math.abs(nextStyle.yRatio - current.style.yRatio) < 0.0001 &&
-      Math.abs(nextStyle.scale - current.style.scale) < 0.0001 &&
-      nextStyle.boxed === current.style.boxed
-    ) {
-      return;
-    }
-
-    updateCaptionById(current.id, (prev) => ({
-      ...prev,
-      style: nextStyle,
-    }));
-  }, [
-    activeCaptionItem,
-    applyClampedCaptionStyle,
-    updateCaptionById,
-  ]);
-
-  useEffect(() => {
-    const frameElement = cameraFrameElement;
-    if (!frameElement) return;
-
-    const updateCaptionPreviewScale = () => {
-      const rect = frameElement.getBoundingClientRect();
-      const nextScale = Math.min(
-        rect.width / CAPTION_RENDER_WIDTH,
-        rect.height / CAPTION_RENDER_HEIGHT
-      );
-      if (Number.isFinite(nextScale) && nextScale > 0) {
-        setCaptionPreviewScale(nextScale);
-      }
-    };
-
-    const rafId = window.requestAnimationFrame(updateCaptionPreviewScale);
-
-    const resizeObserver =
-      typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(updateCaptionPreviewScale)
-        : null;
-    resizeObserver?.observe(frameElement);
-    window.addEventListener('resize', updateCaptionPreviewScale);
-
-    return () => {
-      window.cancelAnimationFrame(rafId);
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', updateCaptionPreviewScale);
-    };
-  }, [cameraFrameElement, stage]);
-
-  useEffect(() => {
-    captionsRef.current = captions;
-  }, [captions]);
-
-  useEffect(() => {
-    projectNameRef.current = projectName;
-  }, [projectName]);
-
-  useEffect(() => {
-    activeCutIndexRef.current = activeCutIndex;
-  }, [activeCutIndex]);
-
-  useEffect(() => {
-    draftVersionRef.current = draftVersion;
-  }, [draftVersion]);
-
-  const saveDraftNow = useCallback((): Promise<boolean> => {
-    if (!isRegisteredUser || !sessionId || !sessionHydratedRef.current) {
-      return Promise.resolve(true);
-    }
-
-    const saveTask = draftSaveQueueRef.current
-      .catch(() => false)
-      .then(async () => {
-        const activeOrder =
-          cuts[activeCutIndexRef.current]?.order ?? cuts[0]?.order ?? null;
-        const captionItems = captionsRef.current
-          .filter((caption) => caption.text.trim().length > 0)
-          .map((caption) => ({
-            id: caption.id,
-            text: caption.text,
-            source: caption.source,
-            placement: caption.placement,
-            zIndex: caption.zIndex,
-            style: buildCaptionExportStyle(caption.style),
-          }));
-        const signature = buildDraftSignature(
-          projectNameRef.current,
-          activeOrder,
-          captionsRef.current
-        );
-        if (signature === lastSavedDraftSignatureRef.current) {
-          setDraftSaveStatus('saved');
-          return true;
-        }
-        setDraftSaveStatus('saving');
-
-        try {
-          const response = await fetch(`/api/reels-maker/sessions/${sessionId}/draft`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              projectName: projectNameRef.current,
-              lastActiveClipOrder: activeOrder,
-              version: draftVersionRef.current,
-              captionItems,
-            }),
-          });
-          const payload: WebApiResponse<ReelsMakerSessionResponse> = await response.json();
-          if (!response.ok || !payload?.success || !payload?.data) {
-            throw new Error(payload?.message || '프로젝트 저장에 실패했습니다.');
-          }
-          const nextVersion = payload.data.draftVersion ?? draftVersionRef.current;
-          draftVersionRef.current = nextVersion;
-          setDraftVersion(nextVersion);
-          setLastSavedAt(payload.data.lastEditedAt ?? new Date().toISOString());
-          lastSavedDraftSignatureRef.current = signature;
-          setDraftSaveStatus('saved');
-          return true;
-        } catch {
-          setDraftSaveStatus('error');
-          return false;
-        }
-      });
-
-    draftSaveQueueRef.current = saveTask;
-    return saveTask;
-  }, [cuts, isRegisteredUser, sessionId]);
-
-  useEffect(() => {
-    if (
-      !isRegisteredUser ||
-      !sessionId ||
-      !sessionHydratedRef.current ||
-      isExitConfirmOpen ||
-      isExitingWithoutSavingRef.current ||
-      stage !== 'capture'
-    ) {
-      return;
-    }
-    if (draftSaveTimerRef.current !== null) {
-      window.clearTimeout(draftSaveTimerRef.current);
-    }
-    draftSaveTimerRef.current = window.setTimeout(() => {
-      draftSaveTimerRef.current = null;
-      void saveDraftNow();
-    }, 1000);
-    return () => {
-      if (draftSaveTimerRef.current !== null) {
-        window.clearTimeout(draftSaveTimerRef.current);
-        draftSaveTimerRef.current = null;
-      }
-    };
-  }, [
-    activeCutIndex,
-    captions,
-    isExitConfirmOpen,
-    isRegisteredUser,
-    projectName,
-    saveDraftNow,
-    sessionId,
-    stage,
-  ]);
-
   useEffect(() => {
     if (isGuestUser && sessionId && stage === 'capture') {
       setShowGuestDraftNotice(true);
     }
   }, [isGuestUser, sessionId, stage]);
-
-  useEffect(() => {
-    if (!isRegisteredUser) return;
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (draftSaveStatus !== 'saving' && draftSaveStatus !== 'error') return;
-      event.preventDefault();
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [draftSaveStatus, isRegisteredUser]);
 
   const requestExit = useCallback(
     (href: string) => {
@@ -3743,11 +2554,11 @@ function ReelsMakerInner() {
         alert('영상 업로드가 완료된 뒤 나갈 수 있습니다.');
         return;
       }
-      isExitingWithoutSavingRef.current = false;
+      resumeAutosave();
       setPendingExitHref(href);
       setIsExitConfirmOpen(true);
     },
-    [recordingStatus, uploadingCuts]
+    [recordingStatus, resumeAutosave, uploadingCuts]
   );
 
   const abandonGuestSession = useCallback(async () => {
@@ -3765,10 +2576,7 @@ function ReelsMakerInner() {
   const handleSaveAndExit = useCallback(async () => {
     setIsExitSaving(true);
     try {
-      if (draftSaveTimerRef.current !== null) {
-        window.clearTimeout(draftSaveTimerRef.current);
-        draftSaveTimerRef.current = null;
-      }
+      cancelScheduledSave();
       if (isGuestUser) {
         await abandonGuestSession();
       } else {
@@ -3782,6 +2590,7 @@ function ReelsMakerInner() {
     }
   }, [
     abandonGuestSession,
+    cancelScheduledSave,
     isGuestUser,
     pendingExitHref,
     router,
@@ -3789,63 +2598,17 @@ function ReelsMakerInner() {
   ]);
 
   const handleExitWithoutSaving = useCallback(() => {
-    isExitingWithoutSavingRef.current = true;
-    if (draftSaveTimerRef.current !== null) {
-      window.clearTimeout(draftSaveTimerRef.current);
-      draftSaveTimerRef.current = null;
-    }
+    suspendAutosave();
     setIsExitConfirmOpen(false);
     router.push(pendingExitHref);
-  }, [pendingExitHref, router]);
-
-  useEffect(() => {
-    if (selectedCaptionId === resolvedSelectedCaptionId) return;
-    setSelectedCaptionId(resolvedSelectedCaptionId);
-  }, [resolvedSelectedCaptionId, selectedCaptionId]);
-
-  useEffect(() => {
-    if (!showCaptionOverlay) return;
-
-    const frame = window.requestAnimationFrame(() => {
-      ensureActiveCaptionInFrame();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [
-    activeCutIndex,
-    activeCaptionStyle.boxed,
-    activeCaptionStyle.scale,
-    activeCaptionStyle.xRatio,
-    activeCaptionStyle.yRatio,
-    activeCaptionText,
-    ensureActiveCaptionInFrame,
-    showCaptionOverlay,
-  ]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (!showCaptionOverlay) return;
-      ensureActiveCaptionInFrame();
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [ensureActiveCaptionInFrame, showCaptionOverlay]);
-
-  useEffect(() => {
-    if (!editingCaptionId || editingCaptionId !== resolvedSelectedCaptionId) return;
-    const input = captionInputRef.current;
-    if (!input) return;
-    input.focus();
-    const valueLength = input.value.length;
-    input.setSelectionRange(valueLength, valueLength);
-  }, [editingCaptionId, resolvedSelectedCaptionId]);
+  }, [pendingExitHref, router, suspendAutosave]);
 
   useEffect(() => {
     setEditingCaptionId(null);
     resetCaptionGesture();
     setGalleryError(null);
     setTrimError(null);
-  }, [activeCutIndex, resetCaptionGesture]);
+  }, [activeCutIndex, resetCaptionGesture, setEditingCaptionId]);
 
   useEffect(() => {
     const handleDeleteKey = (event: KeyboardEvent) => {
@@ -4068,27 +2831,27 @@ function ReelsMakerInner() {
 
   if (!templateId) {
     return (
-      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
+      <FullScreenState>
         <div className="max-w-sm text-center text-sm text-white/70">
           템플릿 선택 화면으로 이동 중입니다...
         </div>
-      </div>
+      </FullScreenState>
     );
   }
 
   if (isTemplateLoading) {
     return (
-      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
+      <FullScreenState>
         <div className="max-w-sm text-center text-sm text-white/70">
           템플릿 정보를 불러오는 중입니다...
         </div>
-      </div>
+      </FullScreenState>
     );
   }
 
   if (templateError || !template || cuts.length === 0) {
     return (
-      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
+      <FullScreenState>
         <div className="max-w-sm text-center space-y-4">
           <p className="text-sm text-white/70">
             {templateError || '템플릿 정보를 불러오지 못했습니다.'}
@@ -4101,23 +2864,23 @@ function ReelsMakerInner() {
             템플릿 다시 선택하기
           </button>
         </div>
-      </div>
+      </FullScreenState>
     );
   }
 
   if (isSessionLoading) {
     return (
-      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
+      <FullScreenState>
         <div className="max-w-sm text-center text-sm text-white/70">
           릴스 제작 세션을 준비하는 중입니다...
         </div>
-      </div>
+      </FullScreenState>
     );
   }
 
   if (sessionError) {
     return (
-      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
+      <FullScreenState>
         <div className="max-w-sm text-center space-y-4">
           <p className="text-sm text-white/70">{sessionError}</p>
           <button
@@ -4128,125 +2891,29 @@ function ReelsMakerInner() {
             다시 시도하기
           </button>
         </div>
-      </div>
+      </FullScreenState>
     );
   }
 
   if (stage === 'processing') {
-    return (
-      <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
-        <div className="max-w-sm w-full text-center space-y-6">
-          <div className="w-24 h-24 rounded-full border-4 border-white/10 border-t-[#FF4D6D] animate-spin mx-auto" />
-          <div>
-            <h1 className="text-2xl font-bold mb-2">릴스를 만들고 있어요</h1>
-            <p className="text-sm text-white/60">
-              곧 완성됩니다. 잠시만 기다려주세요!
-            </p>
-          </div>
-        </div>
-      </div>
-    );
+    return <ProcessingView />;
   }
 
   if (stage === 'preview') {
     return (
-      <div className="min-h-[100dvh] bg-black text-white">
-        <div className="max-w-md mx-auto px-4 pt-6 pb-10 space-y-6">
-          <h1 className="text-center text-lg font-semibold">최종 미리보기</h1>
-
-          <div className="rounded-[28px] bg-[#1E2A3B] p-4 shadow-2xl space-y-4">
-            <div className="relative rounded-[24px] overflow-hidden">
-              <div className="aspect-[9/16] bg-black flex items-center justify-center">
-                {finalVideoUrl ? (
-                  <video
-                    src={finalVideoUrl}
-                    muted
-                    playsInline
-                    preload="metadata"
-                    poster={finalPosterUrl || undefined}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <img
-                    src={EXAMPLE_ASSETS.exampleImage}
-                    alt="미리보기"
-                    className="w-full h-full object-cover"
-                  />
-                )}
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <button
-                  type="button"
-                  onClick={() => setIsPreviewOpen(true)}
-                  disabled={!finalVideoUrl}
-                  className="w-16 h-16 rounded-full bg-white/70 flex items-center justify-center backdrop-blur shadow-lg"
-                >
-                  <Play className="w-8 h-8 text-white" />
-                </button>
-              </div>
-              {downloadToastMessage && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold flex items-center gap-2 shadow-lg">
-                  <Check className="w-4 h-4" />
-                  {downloadToastMessage}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <InstagramShareButton
-              finalVideoUrl={finalVideoUrl}
-              finalVideoMimeType={finalVideoMimeType}
-              templateTitle={template.title}
-              onShared={setDownloadToastMessage}
-            />
-            <button
-              type="button"
-              onClick={handleDownload}
-              disabled={!finalVideoUrl}
-              className="w-full rounded-full bg-[#2B3446] py-4 text-base font-semibold shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <Download className="w-5 h-5" />
-              영상 다운로드
-            </button>
-            <button
-              type="button"
-              onClick={handleResetAll}
-              className="w-full rounded-full bg-[#3B4557] py-4 text-base font-semibold shadow-lg"
-            >
-              새로운 릴스 만들기
-            </button>
-          </div>
-        </div>
-
-        {isPreviewOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
-            <button
-              type="button"
-              onClick={() => setIsPreviewOpen(false)}
-              className="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="w-full max-w-sm">
-              <div className="rounded-[28px] overflow-hidden bg-black">
-                {finalVideoUrl ? (
-                  <video
-                    src={finalVideoUrl}
-                    controls
-                    poster={finalPosterUrl || undefined}
-                    className="w-full aspect-[9/16] max-h-[70vh] object-cover"
-                  />
-                ) : (
-                  <div className="w-full aspect-[9/16] max-h-[70vh] flex items-center justify-center text-white/70 text-sm">
-                    영상 준비 중...
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      <FinalPreview
+        finalVideoUrl={finalVideoUrl}
+        finalVideoMimeType={finalVideoMimeType}
+        finalPosterUrl={finalPosterUrl}
+        templateTitle={template.title}
+        downloadToastMessage={downloadToastMessage}
+        isPreviewOpen={isPreviewOpen}
+        onOpenPreview={() => setIsPreviewOpen(true)}
+        onClosePreview={() => setIsPreviewOpen(false)}
+        onDownload={handleDownload}
+        onReset={handleResetAll}
+        onShared={setDownloadToastMessage}
+      />
     );
   }
 
@@ -4281,229 +2948,32 @@ function ReelsMakerInner() {
         onChange={handleGalleryFileChange}
       />
       {showGuestDraftNotice && isGuestUser && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 px-4">
-          <div className="w-full max-w-sm rounded-3xl bg-[#172235] p-6 text-white shadow-2xl">
-            <h2 className="text-lg font-bold">게스트로 릴스를 제작합니다</h2>
-            <p className="mt-3 text-sm leading-6 text-white/70">
-              게스트는 프로젝트 중도 저장과 이어서 만들기를 이용할 수 없습니다.
-              로그인하면 작업이 자동 저장되며 마지막 저장일로부터 30일 동안 보관됩니다.
-            </p>
-            <div className="mt-6 space-y-2">
-              <Link
-                href={buildLoginHref(currentReelsMakerHref)}
-                className="flex h-12 w-full items-center justify-center rounded-full bg-[#FF4D6D] text-sm font-semibold"
-              >
-                로그인하고 이어서 만들기
-              </Link>
-              <button
-                type="button"
-                onClick={() => setShowGuestDraftNotice(false)}
-                className="h-12 w-full rounded-full border border-white/20 text-sm font-semibold text-white/85"
-              >
-                저장 없이 계속하기
-              </button>
-            </div>
-          </div>
-        </div>
+        <GuestDraftNotice
+          loginHref={buildLoginHref(currentReelsMakerHref)}
+          onContinue={() => setShowGuestDraftNotice(false)}
+        />
       )}
       {isExitConfirmOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 px-4">
-          <div className="w-full max-w-sm rounded-3xl bg-[#172235] p-6 text-white shadow-2xl">
-            <h2 className="text-lg font-bold">
-              작업을 종료하시겠습니까?
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-white/70">
-              {isGuestUser
-                ? '게스트의 미완성 프로젝트는 저장되지 않으며, 나가면 업로드한 원본 영상과 작업 내용을 즉시 삭제합니다.'
-                : '저장하지 않고 나가면 마지막 자동 저장 이후의 변경사항은 반영되지 않습니다. 미완성 프로젝트는 마지막 저장일로부터 30일 동안 보관됩니다.'}
-            </p>
-            <div className="mt-6 space-y-2">
-              <button
-                type="button"
-                onClick={() => void handleSaveAndExit()}
-                disabled={isExitSaving}
-                className="flex h-12 w-full items-center justify-center rounded-full bg-[#FF4D6D] text-sm font-semibold disabled:opacity-50"
-              >
-                {isExitSaving
-                  ? '처리 중...'
-                  : isGuestUser
-                    ? '삭제하고 나가기'
-                    : '저장 후 나가기'}
-              </button>
-              {!isGuestUser && (
-                <button
-                  type="button"
-                  onClick={handleExitWithoutSaving}
-                  disabled={isExitSaving}
-                  className="h-12 w-full rounded-full border border-white/20 text-sm font-semibold text-white/85 disabled:opacity-50"
-                >
-                  저장하지 않고 나가기
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setIsExitConfirmOpen(false)}
-                disabled={isExitSaving}
-                className="h-12 w-full text-sm font-semibold text-white/60 disabled:opacity-50"
-              >
-                계속 작업하기
-              </button>
-            </div>
-          </div>
-        </div>
+        <ExitConfirmModal
+          isGuestUser={isGuestUser}
+          isSaving={isExitSaving}
+          onSaveAndExit={() => void handleSaveAndExit()}
+          onExitWithoutSaving={handleExitWithoutSaving}
+          onContinue={() => setIsExitConfirmOpen(false)}
+        />
       )}
       {isCaptureMenuOpen && (
-        <div className="fixed inset-0 z-[80] bg-white text-gray-900">
-          <nav
-            className="flex h-full flex-col overflow-y-auto"
-            style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
-          >
-            <div className="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 px-5">
-              <span className="text-lg font-bold">메뉴</span>
-              <button
-                type="button"
-                onClick={() => setIsCaptureMenuOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-700"
-                aria-label="메뉴 닫기"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {isAuthenticated && user && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCaptureMenuOpen(false);
-                  requestExit('/profile');
-                }}
-                className="w-full border-b border-gray-200 bg-gray-50 px-6 py-4 text-left transition hover:bg-gray-100"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-gray-200 bg-gray-100">
-                    {user.profileImageUrl ? (
-                      <Image
-                        src={user.profileImageUrl}
-                        alt="프로필"
-                        width={56}
-                        height={56}
-                        className="h-full w-full object-cover"
-                        unoptimized
-                      />
-                    ) : (
-                      <User className="h-6 w-6 text-gray-400" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-base font-semibold">
-                      {user.nickname || user.socialNickname || '사용자'}
-                    </p>
-                    {user.email && (
-                      <p className="truncate text-sm text-gray-500">{user.email}</p>
-                    )}
-                    {!user.email && isGuestUser && (
-                      <p className="truncate text-sm text-gray-500">가입 없이 이용 중</p>
-                    )}
-                  </div>
-                  <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" />
-                </div>
-              </button>
-            )}
-
-            <div className="flex-1 space-y-2 p-6">
-              {isRegisteredUser && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCaptureMenuOpen(false);
-                    requestExit('/my-projects');
-                  }}
-                  className="mb-4 flex w-full items-center justify-center rounded-xl bg-[#FF496D] px-5 py-3 text-base font-semibold text-white"
-                >
-                  저장 후 나가기
-                </button>
-              )}
-              {isGuestUser && (
-                <Link
-                  href={buildLoginHref(currentReelsMakerHref)}
-                  onClick={() => setIsCaptureMenuOpen(false)}
-                  className="mb-4 flex w-full items-center justify-center rounded-xl bg-[#FF496D] px-5 py-3 text-base font-semibold text-white"
-                >
-                  회원가입하고 보관하기
-                </Link>
-              )}
-              {!isAuthenticated && (
-                <Link
-                  href={buildLoginHref(currentReelsMakerHref)}
-                  onClick={() => setIsCaptureMenuOpen(false)}
-                  className="mb-4 flex w-full items-center justify-center rounded-xl bg-[#FF496D] px-5 py-3 text-base font-semibold text-white"
-                >
-                  로그인 / 회원가입
-                </Link>
-              )}
-
-              {CAPTURE_MENU_ITEMS.map((item) => {
-                const Icon = item.icon;
-                const targetHref =
-                  !isAuthenticated && item.requiresAuth ? buildLoginHref(item.href) : item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={targetHref}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setIsCaptureMenuOpen(false);
-                      requestExit(targetHref);
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
-                  >
-                    <Icon className="h-5 w-5 text-gray-600" />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-
-              <div className="my-2 border-t border-gray-200" />
-
-              <Link
-                href="/contents/script-creation"
-                onClick={(event) => {
-                  event.preventDefault();
-                  setIsCaptureMenuOpen(false);
-                  requestExit('/contents/script-creation');
-                }}
-                className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
-              >
-                릴스 제작
-              </Link>
-              <Link
-                href="/ranking"
-                onClick={(event) => {
-                  event.preventDefault();
-                  setIsCaptureMenuOpen(false);
-                  requestExit('/ranking');
-                }}
-                className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
-              >
-                인기 급상승 릴스
-              </Link>
-
-              {isAuthenticated && isAdmin && (
-                <Link
-                  href="/admin"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    setIsCaptureMenuOpen(false);
-                    requestExit('/admin');
-                  }}
-                  className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
-                >
-                  관리자
-                </Link>
-              )}
-            </div>
-          </nav>
-        </div>
+        <CaptureMenu
+          user={user}
+          isAuthenticated={isAuthenticated}
+          isAdmin={isAdmin}
+          isGuestUser={isGuestUser}
+          isRegisteredUser={isRegisteredUser}
+          loginHref={buildLoginHref(currentReelsMakerHref)}
+          buildLoginHref={buildLoginHref}
+          onClose={() => setIsCaptureMenuOpen(false)}
+          onRequestExit={requestExit}
+        />
       )}
       <div
         ref={captureViewportRef}
@@ -5063,382 +3533,78 @@ function ReelsMakerInner() {
       </div>
 
       {isExampleOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm rounded-[28px] bg-[#1E2A3B] overflow-hidden relative">
-            <button
-              type="button"
-              onClick={() => setIsExampleOpen(false)}
-              className="absolute top-4 right-4 z-30 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            {visibleActiveCutExampleMedia && (
-              <div className="bg-black p-4 pb-3">
-                <div className="relative mx-auto w-full max-w-[300px] aspect-[9/16] overflow-hidden rounded-[20px] bg-black">
-                  {isActiveExampleMediaLoading && (
-                    <div className="absolute inset-0 z-20 animate-pulse bg-white/10" />
-                  )}
-                  {visibleActiveCutExampleMedia.type === 'image' ? (
-                    <>
-                      <img
-                        src={visibleActiveCutExampleMedia.src}
-                        alt=""
-                        aria-hidden
-                        className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-xl"
-                      />
-                      <img
-                        src={visibleActiveCutExampleMedia.src}
-                        alt="예시 이미지"
-                        className={`pointer-events-none absolute inset-0 z-10 h-full w-full object-contain transition-opacity duration-200 ${
-                          isActiveExampleMediaLoaded ? 'opacity-100' : 'opacity-0'
-                        }`}
-                        onLoad={handleActiveExampleMediaLoad}
-                        onError={handleActiveExampleMediaError}
-                      />
-                    </>
-                  ) : (
-                    <video
-                      src={visibleActiveCutExampleMedia.src}
-                      controls
-                      playsInline
-                      preload="metadata"
-                      className={`absolute inset-0 z-10 h-full w-full object-contain transition-opacity duration-200 ${
-                        isActiveExampleMediaLoaded ? 'opacity-100' : 'opacity-0'
-                      }`}
-                      onLoadedMetadata={handleActiveExampleMediaLoad}
-                      onError={handleActiveExampleMediaError}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-            <div className={`p-5 space-y-4 ${shouldShowActiveCutExampleMedia ? '' : 'pt-16'}`}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!hasExampleReels) return;
-                  setIsExampleOpen(false);
-                  setExampleReelIndex(0);
-                  setIsReelOpen(true);
-                }}
-                disabled={!hasExampleReels}
-                className="w-full rounded-full bg-[#FF4D6D] py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                실제 릴스 보기
-              </button>
-              {!hasExampleReels && (
-                <p className="text-xs text-center text-white/55">예시 릴스 준비 중입니다.</p>
-              )}
-              <div>
-                <p className="text-sm font-semibold text-white/80 mb-2">이 컷의 포인트</p>
-                <p className="text-xs text-white/60 leading-relaxed">{activeCutGuideText}</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <CutExampleModal
+          media={visibleActiveCutExampleMedia}
+          shouldShowMedia={shouldShowActiveCutExampleMedia}
+          isLoading={isActiveExampleMediaLoading}
+          isLoaded={isActiveExampleMediaLoaded}
+          hasExampleReels={hasExampleReels}
+          guideText={activeCutGuideText}
+          onClose={() => setIsExampleOpen(false)}
+          onMediaLoad={handleActiveExampleMediaLoad}
+          onMediaError={handleActiveExampleMediaError}
+          onOpenReels={() => {
+            if (!hasExampleReels) return;
+            setIsExampleOpen(false);
+            setExampleReelIndex(0);
+            setIsReelOpen(true);
+          }}
+        />
       )}
 
       {isReelOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
-          <button
-            type="button"
-            onClick={() => {
-              setIsReelOpen(false);
-              setExampleReelIndex(0);
-            }}
-            className="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <div className="w-full max-w-sm">
-            <div className="rounded-[28px] overflow-hidden bg-[#1E2A3B] p-4">
-              <div className="relative rounded-[20px] overflow-hidden bg-black aspect-[9/16]">
-                {currentExampleReelUrl ? (
-                  <InstagramEmbed
-                    url={currentExampleReelUrl}
-                    className="absolute inset-0 h-full w-full rounded-none"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">
-                    예시 릴스가 없습니다.
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handlePrevExampleReel}
-                  disabled={isFirstExampleReel}
-                  className="absolute left-3 top-1/2 z-20 -translate-y-1/2 w-9 h-9 rounded-full bg-[#FF4D6D] text-white flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed"
-                  aria-label="이전 릴스"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleNextExampleReel}
-                  disabled={isLastExampleReel}
-                  className="absolute right-3 top-1/2 z-20 -translate-y-1/2 w-9 h-9 rounded-full bg-[#FF4D6D] text-white flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed"
-                  aria-label="다음 릴스"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="mt-4 flex items-center justify-center gap-2">
-                {exampleReelUrls.map((url, index) => (
-                  <button
-                    key={`${url}-${index}`}
-                    type="button"
-                    onClick={() => setExampleReelIndex(index)}
-                    className={`h-2.5 rounded-full transition-all ${
-                      index === exampleReelIndex ? 'w-6 bg-[#FF4D6D]' : 'w-2.5 bg-white/35'
-                    }`}
-                    aria-label={`${index + 1}번 릴스로 이동`}
-                    aria-current={index === exampleReelIndex}
-                  />
-                ))}
-              </div>
-
-              <p className="mt-3 text-center text-xs text-white/60">
-                좌우 버튼 또는 하단 점을 눌러 다른 예시 릴스를 확인하세요.
-              </p>
-              {currentExampleReelUrl && (
-                <a
-                  href={currentExampleReelUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 inline-flex w-full items-center justify-center rounded-full bg-[#FF4D6D] py-3 text-sm font-semibold text-white hover:brightness-105 transition"
-                >
-                  Instagram에서 열기
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
+        <ExampleReelsModal
+          urls={exampleReelUrls}
+          currentUrl={currentExampleReelUrl}
+          currentIndex={exampleReelIndex}
+          isFirst={isFirstExampleReel}
+          isLast={isLastExampleReel}
+          onClose={() => {
+            setIsReelOpen(false);
+            setExampleReelIndex(0);
+          }}
+          onPrevious={handlePrevExampleReel}
+          onNext={handleNextExampleReel}
+          onSelect={setExampleReelIndex}
+        />
       )}
 
       {isTrimOpen && (
-        <div
-          ref={trimViewportRef}
-          className="fixed inset-0 z-[70] flex items-center justify-center overflow-hidden bg-black/80 py-2"
-        >
-          <div className="w-full max-w-sm px-4">
-            <div
-              ref={trimMeasureRef}
-              className="w-full overflow-hidden rounded-[24px] bg-[#1E2A3B] text-white shadow-2xl"
-            >
-              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-                <h3 className="text-sm font-semibold">영상 구간 선택</h3>
-                <button
-                  type="button"
-                  onClick={closeTrimModal}
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10"
-                  aria-label="구간 선택 닫기"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="space-y-4 p-4">
-                <div className="flex justify-center">
-                  {trimSourceUrl ? (
-                    <div
-                      ref={trimPreviewContainerRef}
-                      className="relative aspect-[9/16] overflow-hidden rounded-[18px] bg-black"
-                      style={{
-                        width: trimPreviewMaxHeight
-                          ? `min(100%, ${Math.floor(trimPreviewMaxHeight * 9 / 16)}px)`
-                          : '100%',
-                        maxHeight: trimPreviewMaxHeight
-                          ? `${trimPreviewMaxHeight}px`
-                          : undefined,
-                      }}
-                    >
-                      <video
-                        ref={trimPreviewVideoRef}
-                        src={trimSourceUrl}
-                        playsInline
-                        preload="metadata"
-                        className="absolute inset-0 h-full w-full object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleTrimPlayToggle}
-                        className="absolute bottom-3 left-3 z-10 inline-flex items-center gap-2 rounded-full bg-black/65 px-3 py-2 text-xs font-semibold text-white backdrop-blur"
-                        aria-label={isTrimPlaying ? '구간 재생 일시정지' : '선택 구간 재생'}
-                      >
-                        {isTrimPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                        {isTrimPlaying ? '일시정지' : '재생'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      ref={trimPreviewContainerRef}
-                      className="flex aspect-[9/16] items-center justify-center rounded-[18px] bg-black text-xs text-white/60"
-                      style={{
-                        width: trimPreviewMaxHeight
-                          ? `min(100%, ${Math.floor(trimPreviewMaxHeight * 9 / 16)}px)`
-                          : '100%',
-                        maxHeight: trimPreviewMaxHeight
-                          ? `${trimPreviewMaxHeight}px`
-                          : undefined,
-                      }}
-                    >
-                      영상 미리보기를 준비하는 중입니다...
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  <div
-                    ref={trimTimelineRef}
-                    className="relative h-20 rounded-xl border border-white/10 bg-black/40 touch-none select-none"
-                    onPointerDown={handleTrimScrubPointerDown}
-                  >
-                    <div className="absolute inset-0 overflow-hidden rounded-xl">
-                      {trimThumbnails.length > 0 ? (
-                        <div className="flex h-full">
-                          {trimThumbnails.map((thumbnail, index) => (
-                            <img
-                              key={`${thumbnail}-${index}`}
-                              src={thumbnail}
-                              alt=""
-                              aria-hidden
-                              className="min-w-0 flex-1 object-cover"
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-[11px] text-white/55">
-                          타임라인 미리보기 생성 중...
-                        </div>
-                      )}
-                      {trimSliderMax > 0 && (
-                        <>
-                          <div
-                            className="pointer-events-none absolute inset-y-0 left-0 bg-black/60"
-                            style={{ width: `${secondsToTimelineX(trimStartSeconds)}%` }}
-                          />
-                          <div
-                            className="pointer-events-none absolute inset-y-0 right-0 bg-black/60"
-                            style={{ width: `${100 - secondsToTimelineX(trimEndSeconds)}%` }}
-                          />
-                        </>
-                      )}
-                    </div>
-                    {trimSliderMax > 0 && (
-                      <>
-                        <div
-                          className={`absolute inset-y-0 z-20 rounded-md border-2 bg-white/10 ${
-                            activeTrimDrag === 'window' ? 'border-[#4DE8FF]' : 'border-white/90'
-                          }`}
-                          style={{
-                            left: `${secondsToTimelineX(trimStartSeconds)}%`,
-                            width: `${Math.max(
-                              0.5,
-                              secondsToTimelineX(trimEndSeconds) - secondsToTimelineX(trimStartSeconds)
-                            )}%`,
-                          }}
-                          onPointerDown={(event) => handleTrimPointerDown(event, 'window')}
-                        />
-                        <div
-                          className="absolute inset-y-0 z-30 w-6 -translate-x-1/2 cursor-ew-resize touch-none"
-                          style={{ left: `${secondsToTimelineX(trimStartSeconds)}%` }}
-                          onPointerDown={(event) => handleTrimPointerDown(event, 'start')}
-                        >
-                          <div
-                            className={`mx-auto h-full w-[3px] rounded-full ${
-                              activeTrimDrag === 'start' ? 'bg-[#4DE8FF]' : 'bg-white'
-                            }`}
-                          />
-                        </div>
-                        <div
-                          className="absolute inset-y-0 z-30 w-6 -translate-x-1/2 cursor-ew-resize touch-none"
-                          style={{ left: `${secondsToTimelineX(trimEndSeconds)}%` }}
-                          onPointerDown={(event) => handleTrimPointerDown(event, 'end')}
-                        >
-                          <div
-                            className={`mx-auto h-full w-[3px] rounded-full ${
-                              activeTrimDrag === 'end' ? 'bg-[#4DE8FF]' : 'bg-white'
-                            }`}
-                          />
-                        </div>
-                        <div
-                          className="absolute z-40 w-7 -translate-x-1/2 cursor-ew-resize touch-none"
-                          style={{
-                            left: `${secondsToTimelineX(trimScrubSeconds)}%`,
-                            top: '-4px',
-                            height: 'calc(100% + 8px)',
-                          }}
-                          onPointerDown={(event) => handleTrimPointerDown(event, 'scrub')}
-                        >
-                          <div className="pointer-events-none absolute left-1/2 top-0 h-full w-[2px] -translate-x-1/2 rounded-full bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]" />
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  <p className="text-center text-xs text-white/70">
-                    {trimScrubSeconds.toFixed(1)}s
-                  </p>
-
-                  <p className="text-center text-xs text-white/70">
-                    선택 구간 {trimDurationSeconds.toFixed(1)}초 / 권장 {recommendedTrimSeconds.toFixed(1)}초
-                  </p>
-                </div>
-
-                {trimError && <p className="text-center text-xs text-rose-300">{trimError}</p>}
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={closeTrimModal}
-                    disabled={isGalleryProcessing}
-                    className="flex-1 rounded-xl bg-white/10 py-2 text-sm disabled:opacity-50"
-                  >
-                    취소
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleTrimConfirm}
-                    disabled={isGalleryProcessing || !trimSourceFile || !trimSourceMetadata}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#00C7E6] py-2 text-sm font-semibold disabled:opacity-50"
-                  >
-                    {isGalleryProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    확인
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <TrimModal
+          viewportRef={trimViewportRef}
+          measureRef={trimMeasureRef}
+          previewContainerRef={trimPreviewContainerRef}
+          previewVideoRef={trimPreviewVideoRef}
+          timelineRef={trimTimelineRef}
+          sourceUrl={trimSourceUrl}
+          sourceFile={trimSourceFile}
+          sourceMetadata={trimSourceMetadata}
+          previewMaxHeight={trimPreviewMaxHeight}
+          isPlaying={isTrimPlaying}
+          thumbnails={trimThumbnails}
+          sliderMax={trimSliderMax}
+          startSeconds={trimStartSeconds}
+          endSeconds={trimEndSeconds}
+          scrubSeconds={trimScrubSeconds}
+          durationSeconds={trimDurationSeconds}
+          recommendedSeconds={recommendedTrimSeconds}
+          activeDrag={activeTrimDrag}
+          error={trimError}
+          isProcessing={isGalleryProcessing}
+          onClose={closeTrimModal}
+          onPlayToggle={() => void handleTrimPlayToggle()}
+          onScrubPointerDown={handleTrimScrubPointerDown}
+          onPointerDown={handleTrimPointerDown}
+          secondsToTimelineX={secondsToTimelineX}
+          onConfirm={() => void handleTrimConfirm()}
+        />
       )}
 
       {isResetOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm rounded-[24px] bg-[#1E2A3B] p-6 text-white">
-            <h3 className="text-lg font-semibold mb-2">촬영 재시도</h3>
-            <p className="text-sm text-white/70 mb-5">
-              촬영한 영상을 다시 찍으시겠어요? 현재 영상은 삭제됩니다.
-            </p>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setIsResetOpen(false)}
-                className="flex-1 rounded-xl bg-white/10 py-2 text-sm"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                onClick={handleResetCut}
-                className="flex-1 rounded-xl bg-[#FF4D6D] py-2 text-sm font-semibold"
-              >
-                다시 찍기
-              </button>
-            </div>
-          </div>
-        </div>
+        <ResetCutModal
+          onCancel={() => setIsResetOpen(false)}
+          onConfirm={handleResetCut}
+        />
       )}
     </div>
   );
