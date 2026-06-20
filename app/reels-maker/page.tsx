@@ -23,6 +23,7 @@ import {
   Check,
   CheckCircle,
   Download,
+  FolderOpen,
   Image as ImageIcon,
   LayoutTemplate,
   Loader2,
@@ -188,6 +189,12 @@ const CAPTURE_MENU_ITEMS: CaptureMenuItem[] = [
     requiresAuth: true,
   },
   {
+    href: '/my-projects',
+    label: '제작 중인 프로젝트',
+    icon: FolderOpen,
+    requiresAuth: true,
+  },
+  {
     href: '/completed-reels',
     label: '제작 완료된 릴스',
     icon: CheckCircle,
@@ -242,6 +249,9 @@ type ReelsMakerSessionClip = {
   defaultCaption?: string | null;
   status?: string | null;
   objectKey?: string | null;
+  downloadUrl?: string | null;
+  contentType?: string | null;
+  actualDurationSeconds?: number | null;
 };
 
 type ReelsMakerSessionResponse = {
@@ -250,7 +260,14 @@ type ReelsMakerSessionResponse = {
   status: string;
   finalVideoUrl?: string | null;
   processingJobId?: string | null;
+  projectName?: string | null;
+  lastActiveClipOrder?: number | null;
+  draftVersion?: number | null;
+  lastEditedAt?: string | null;
+  expiresAt?: string | null;
+  draftSavingEnabled?: boolean;
   clips: ReelsMakerSessionClip[];
+  captionItems?: CaptionItem[];
 };
 
 type ReelsMakerClipPresignResponse = {
@@ -260,6 +277,8 @@ type ReelsMakerClipPresignResponse = {
   downloadUrl?: string | null;
   expiresAt?: string | null;
 };
+
+type DraftSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 type ReelsMakerStatusResponse = {
   sessionId: number;
@@ -484,11 +503,32 @@ const buildCaptionExportStyle = (style: CaptionStyle): CaptionStyle => {
   };
 };
 
+const buildDraftSignature = (
+  projectName: string,
+  activeClipOrder: number | null,
+  captions: CaptionItem[]
+) =>
+  JSON.stringify({
+    projectName: projectName.trim(),
+    activeClipOrder,
+    captionItems: captions
+      .filter((caption) => caption.text.trim().length > 0)
+      .map((caption) => ({
+        id: caption.id,
+        text: caption.text,
+        source: caption.source,
+        placement: caption.placement,
+        zIndex: caption.zIndex,
+        style: buildCaptionExportStyle(caption.style),
+      })),
+  });
+
 function ReelsMakerInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, user } = useAuth();
   const templateId = searchParams.get('templateId');
+  const requestedSessionId = searchParams.get('sessionId');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraFrameRef = useRef<HTMLDivElement | null>(null);
   const captionStageRef = useRef<HTMLDivElement | null>(null);
@@ -517,6 +557,15 @@ function ReelsMakerInner() {
   const switchCameraInProgressRef = useRef(false);
   const latestClipsRef = useRef<Array<ClipInfo | null>>([]);
   const captionsRef = useRef<CaptionItem[]>([]);
+  const projectNameRef = useRef('');
+  const activeCutIndexRef = useRef(0);
+  const draftVersionRef = useRef(0);
+  const draftSaveTimerRef = useRef<number | null>(null);
+  const draftSaveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
+  const sessionHydratedRef = useRef(false);
+  const sessionInitKeyRef = useRef<string | null>(null);
+  const lastSavedDraftSignatureRef = useRef<string | null>(null);
+  const isExitingWithoutSavingRef = useRef(false);
   const captionGestureRef = useRef<CaptionGestureState>({
     mode: 'none',
     captionId: null,
@@ -538,6 +587,14 @@ function ReelsMakerInner() {
   const [sessionClipMap, setSessionClipMap] = useState<Record<number, number>>({});
   const [isSessionLoading, setIsSessionLoading] = useState(false);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState('');
+  const [draftVersion, setDraftVersion] = useState(0);
+  const [draftSaveStatus, setDraftSaveStatus] = useState<DraftSaveStatus>('idle');
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
+  const [pendingExitHref, setPendingExitHref] = useState('/my-projects');
+  const [isExitSaving, setIsExitSaving] = useState(false);
+  const [showGuestDraftNotice, setShowGuestDraftNotice] = useState(false);
   const [uploadedCuts, setUploadedCuts] = useState<Record<number, boolean>>({});
   const [uploadingCuts, setUploadingCuts] = useState<Record<number, boolean>>({});
   const [clipUploadErrors, setClipUploadErrors] = useState<Record<number, string>>({});
@@ -590,8 +647,13 @@ function ReelsMakerInner() {
 
   const isAdmin = user?.role?.toUpperCase() === USER_ROLES.ADMIN;
   const isGuestUser = Boolean(user?.guest || user?.provider === 'GUEST');
+  const isRegisteredUser = Boolean(isAuthenticated && user && !isGuestUser);
   const currentReelsMakerHref = templateId
-    ? `/reels-maker?templateId=${encodeURIComponent(templateId)}`
+    ? `/reels-maker?templateId=${encodeURIComponent(templateId)}${
+        sessionId || requestedSessionId
+          ? `&sessionId=${encodeURIComponent(String(sessionId ?? requestedSessionId))}`
+          : ''
+      }`
     : '/reels-maker';
   const buildLoginHref = useCallback(
     (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`,
@@ -1323,22 +1385,39 @@ function ReelsMakerInner() {
 
   const createReelsSession = useCallback(async () => {
     if (!templateId || !template) return;
+    const initKey = `${templateId}:${requestedSessionId ?? 'new'}`;
+    if (sessionInitKeyRef.current === initKey) return;
+    sessionInitKeyRef.current = initKey;
 
     setIsSessionLoading(true);
     setSessionError(null);
+    sessionHydratedRef.current = false;
     try {
-      const response = await fetch('/api/reels-maker/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateId }),
-      });
+      const response = requestedSessionId
+        ? await fetch(`/api/reels-maker/sessions/${encodeURIComponent(requestedSessionId)}`, {
+            method: 'GET',
+            cache: 'no-store',
+          })
+        : await fetch('/api/reels-maker/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ templateId }),
+          });
 
       const payload: WebApiResponse<ReelsMakerSessionResponse> = await response.json();
       if (!response.ok || !payload?.success || !payload?.data) {
-        throw new Error(payload?.message || '릴스 제작 세션을 생성하지 못했습니다.');
+        throw new Error(
+          payload?.message ||
+            (requestedSessionId
+              ? '저장된 프로젝트를 불러오지 못했습니다.'
+              : '릴스 제작 세션을 생성하지 못했습니다.')
+        );
       }
 
       const session = payload.data;
+      if (session.templateId !== templateId) {
+        throw new Error('선택한 템플릿과 저장된 프로젝트가 일치하지 않습니다.');
+      }
       const mapping: Record<number, number> = {};
       (session.clips ?? []).forEach((clip) => {
         if (clip?.order != null && clip?.clipId != null) {
@@ -1347,36 +1426,118 @@ function ReelsMakerInner() {
       });
       setSessionId(session.sessionId);
       setSessionClipMap(mapping);
-      const defaultCaptions = (session.clips ?? []).flatMap((clip) => {
-        const fallbackCaption =
-          cuts.find((cut) => cut.order === clip.order)?.defaultCaption ?? '';
-        const text = (clip.defaultCaption ?? fallbackCaption).trim();
-        if (!text) return [];
-        return [
-          {
-            id: `template-${session.sessionId}-${clip.clipId}`,
-            text,
-            source: 'TEMPLATE' as const,
-            placement: {
-              type: 'CLIP' as const,
-              clipId: clip.clipId,
-            },
-            zIndex: 1,
-            style: { ...DEFAULT_CAPTION_STYLE },
-          },
-        ];
-      });
-      setCaptions(defaultCaptions);
-      setSelectedCaptionId(defaultCaptions[0]?.id ?? null);
+      const restoredCaptions =
+        Array.isArray(session.captionItems) && session.captionItems.length > 0
+          ? session.captionItems.map((caption) => ({
+              ...caption,
+              style: normalizeCaptionStyle(caption.style ?? DEFAULT_CAPTION_STYLE),
+            }))
+          : [];
+      setCaptions(restoredCaptions);
+      setSelectedCaptionId(restoredCaptions[0]?.id ?? null);
       setEditingCaptionId(null);
+      const resolvedProjectName =
+        session.projectName?.trim() || `${template.title || '릴스'} 프로젝트`;
+      setProjectName(resolvedProjectName);
+      projectNameRef.current = resolvedProjectName;
+      const resolvedDraftVersion = session.draftVersion ?? 0;
+      setDraftVersion(resolvedDraftVersion);
+      draftVersionRef.current = resolvedDraftVersion;
+      setLastSavedAt(session.lastEditedAt ?? null);
+      setDraftSaveStatus('saved');
+      if (session.status === 'PROCESSING') {
+        setStage('processing');
+      } else if (session.status === 'COMPLETED') {
+        setFinalVideoUrl(session.finalVideoUrl || null);
+        setFinalVideoMimeType('video/mp4');
+        setStage('preview');
+      } else if (session.status === 'FAILED') {
+        setStage('capture');
+      }
+
+      const restoredUploadedCuts: Record<number, boolean> = {};
+      const restoredClips: Array<ClipInfo | null> = Array(cuts.length).fill(null);
+      await Promise.all(
+        (session.clips ?? []).map(async (sessionClip) => {
+          const index = cuts.findIndex((cut) => cut.order === sessionClip.order);
+          if (index < 0) return;
+          const cut = cuts[index];
+          const isUploaded = sessionClip.status === 'UPLOADED';
+          restoredUploadedCuts[index] = cut.isFixed || isUploaded;
+          if (
+            !requestedSessionId ||
+            session.status !== 'CAPTURE' ||
+            cut.isFixed ||
+            !isUploaded ||
+            !sessionClip.downloadUrl
+          ) {
+            return;
+          }
+          try {
+            const clipResponse = await fetch(
+              `/api/reels-maker/download?url=${encodeURIComponent(sessionClip.downloadUrl)}`,
+              { method: 'GET', cache: 'no-store' }
+            );
+            if (!clipResponse.ok) return;
+            const blob = await clipResponse.blob();
+            const mimeType =
+              sessionClip.contentType || blob.type || 'video/webm';
+            restoredClips[index] = {
+              blob,
+              url: URL.createObjectURL(blob),
+              duration:
+                sessionClip.actualDurationSeconds ?? sessionClip.durationSeconds ?? 0,
+              mimeType,
+            };
+          } catch {
+            // 서버 업로드 상태는 유지하고 미리보기만 생략한다.
+          }
+        })
+      );
+      setUploadedCuts(restoredUploadedCuts);
+      const restoredIndex = cuts.findIndex(
+        (cut) => cut.order === session.lastActiveClipOrder
+      );
+      const resolvedActiveIndex = restoredIndex >= 0 ? restoredIndex : 0;
+      if (requestedSessionId) {
+        setClips((prev) => {
+          prev.forEach((clip, index) => {
+            if (clip?.url && !cuts[index]?.isFixed) {
+              URL.revokeObjectURL(clip.url);
+            }
+          });
+          return restoredClips;
+        });
+        setActiveCutIndex(resolvedActiveIndex);
+      }
+      lastSavedDraftSignatureRef.current = buildDraftSignature(
+        resolvedProjectName,
+        cuts[resolvedActiveIndex]?.order ?? null,
+        restoredCaptions
+      );
+      sessionHydratedRef.current = true;
+      if (!requestedSessionId) {
+        sessionInitKeyRef.current = `${templateId}:${session.sessionId}`;
+        router.replace(
+          `/reels-maker?templateId=${encodeURIComponent(templateId)}&sessionId=${session.sessionId}`
+        );
+      }
     } catch (error: unknown) {
-      setSessionError(getErrorMessage(error, '릴스 제작 세션을 생성하지 못했습니다.'));
+      sessionInitKeyRef.current = null;
+      setSessionError(
+        getErrorMessage(
+          error,
+          requestedSessionId
+            ? '저장된 프로젝트를 불러오지 못했습니다.'
+            : '릴스 제작 세션을 생성하지 못했습니다.'
+        )
+      );
       setSessionId(null);
       setSessionClipMap({});
     } finally {
       setIsSessionLoading(false);
     }
-  }, [cuts, template, templateId]);
+  }, [cuts, requestedSessionId, router, template, templateId]);
 
   useEffect(() => {
     createReelsSession();
@@ -1391,6 +1552,12 @@ function ReelsMakerInner() {
     setSessionId(null);
     setSessionClipMap({});
     setSessionError(null);
+    setProjectName('');
+    setDraftVersion(0);
+    setDraftSaveStatus('idle');
+    setLastSavedAt(null);
+    sessionHydratedRef.current = false;
+    lastSavedDraftSignatureRef.current = null;
     setUploadedCuts({});
     setUploadingCuts({});
     setClipUploadErrors({});
@@ -2017,7 +2184,7 @@ function ReelsMakerInner() {
   }, []);
 
   const uploadRecordedClip = useCallback(
-    async (index: number, blob: Blob, mimeType: string) => {
+    async (index: number, blob: Blob, mimeType: string, duration: number) => {
       if (!sessionId) {
         throw new Error('릴스 제작 세션이 준비되지 않았습니다.');
       }
@@ -2058,12 +2225,37 @@ function ReelsMakerInner() {
           throw new Error('클립 업로드에 실패했습니다.');
         }
 
+        const completeResponse = await fetch(
+          `/api/reels-maker/sessions/${sessionId}/clips/${clipId}/upload-complete`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              objectKey: payload.data.objectKey,
+              actualDurationSeconds: duration,
+            }),
+          }
+        );
+        const completePayload: WebApiResponse<ReelsMakerSessionResponse> =
+          await completeResponse.json();
+        if (!completeResponse.ok || !completePayload?.success || !completePayload?.data) {
+          throw new Error(
+            completePayload?.message || '클립 업로드 완료 처리에 실패했습니다.'
+          );
+        }
+        const nextVersion = completePayload.data.draftVersion ?? draftVersionRef.current;
+        draftVersionRef.current = nextVersion;
+        setDraftVersion(nextVersion);
+        setLastSavedAt(completePayload.data.lastEditedAt ?? new Date().toISOString());
+        if (isRegisteredUser) {
+          setDraftSaveStatus('saved');
+        }
         setUploadedCuts((prev) => ({ ...prev, [index]: true }));
       } finally {
         setUploadingCuts((prev) => ({ ...prev, [index]: false }));
       }
     },
-    [cuts, sessionClipMap, sessionId]
+    [cuts, isRegisteredUser, sessionClipMap, sessionId]
   );
 
   const saveClipAtIndex = useCallback(
@@ -2104,7 +2296,7 @@ function ReelsMakerInner() {
         // 포스터 생성 실패는 업로드를 막지 않는다.
       }
 
-      await uploadRecordedClip(index, blob, mimeType);
+      await uploadRecordedClip(index, blob, mimeType, duration);
       setRecordingStatus('done');
       setGalleryError(null);
       setCameraError(null);
@@ -2958,6 +3150,17 @@ function ReelsMakerInner() {
   const handleComplete = async () => {
     if (!sessionId) return;
     if (!allDone) return;
+    if (isRegisteredUser) {
+      if (draftSaveTimerRef.current !== null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+      const saved = await saveDraftNow();
+      if (!saved) {
+        alert('최신 작업 내용을 저장하지 못했습니다. 저장을 다시 시도해 주세요.');
+        return;
+      }
+    }
 
     const captionItems = captions
       .filter((caption) => caption.text.trim().length > 0)
@@ -3404,6 +3607,198 @@ function ReelsMakerInner() {
   }, [captions]);
 
   useEffect(() => {
+    projectNameRef.current = projectName;
+  }, [projectName]);
+
+  useEffect(() => {
+    activeCutIndexRef.current = activeCutIndex;
+  }, [activeCutIndex]);
+
+  useEffect(() => {
+    draftVersionRef.current = draftVersion;
+  }, [draftVersion]);
+
+  const saveDraftNow = useCallback((): Promise<boolean> => {
+    if (!isRegisteredUser || !sessionId || !sessionHydratedRef.current) {
+      return Promise.resolve(true);
+    }
+
+    const saveTask = draftSaveQueueRef.current
+      .catch(() => false)
+      .then(async () => {
+        const activeOrder =
+          cuts[activeCutIndexRef.current]?.order ?? cuts[0]?.order ?? null;
+        const captionItems = captionsRef.current
+          .filter((caption) => caption.text.trim().length > 0)
+          .map((caption) => ({
+            id: caption.id,
+            text: caption.text,
+            source: caption.source,
+            placement: caption.placement,
+            zIndex: caption.zIndex,
+            style: buildCaptionExportStyle(caption.style),
+          }));
+        const signature = buildDraftSignature(
+          projectNameRef.current,
+          activeOrder,
+          captionsRef.current
+        );
+        if (signature === lastSavedDraftSignatureRef.current) {
+          setDraftSaveStatus('saved');
+          return true;
+        }
+        setDraftSaveStatus('saving');
+
+        try {
+          const response = await fetch(`/api/reels-maker/sessions/${sessionId}/draft`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              projectName: projectNameRef.current,
+              lastActiveClipOrder: activeOrder,
+              version: draftVersionRef.current,
+              captionItems,
+            }),
+          });
+          const payload: WebApiResponse<ReelsMakerSessionResponse> = await response.json();
+          if (!response.ok || !payload?.success || !payload?.data) {
+            throw new Error(payload?.message || '프로젝트 저장에 실패했습니다.');
+          }
+          const nextVersion = payload.data.draftVersion ?? draftVersionRef.current;
+          draftVersionRef.current = nextVersion;
+          setDraftVersion(nextVersion);
+          setLastSavedAt(payload.data.lastEditedAt ?? new Date().toISOString());
+          lastSavedDraftSignatureRef.current = signature;
+          setDraftSaveStatus('saved');
+          return true;
+        } catch {
+          setDraftSaveStatus('error');
+          return false;
+        }
+      });
+
+    draftSaveQueueRef.current = saveTask;
+    return saveTask;
+  }, [cuts, isRegisteredUser, sessionId]);
+
+  useEffect(() => {
+    if (
+      !isRegisteredUser ||
+      !sessionId ||
+      !sessionHydratedRef.current ||
+      isExitConfirmOpen ||
+      isExitingWithoutSavingRef.current ||
+      stage !== 'capture'
+    ) {
+      return;
+    }
+    if (draftSaveTimerRef.current !== null) {
+      window.clearTimeout(draftSaveTimerRef.current);
+    }
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      draftSaveTimerRef.current = null;
+      void saveDraftNow();
+    }, 1000);
+    return () => {
+      if (draftSaveTimerRef.current !== null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+    };
+  }, [
+    activeCutIndex,
+    captions,
+    isExitConfirmOpen,
+    isRegisteredUser,
+    projectName,
+    saveDraftNow,
+    sessionId,
+    stage,
+  ]);
+
+  useEffect(() => {
+    if (isGuestUser && sessionId && stage === 'capture') {
+      setShowGuestDraftNotice(true);
+    }
+  }, [isGuestUser, sessionId, stage]);
+
+  useEffect(() => {
+    if (!isRegisteredUser) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (draftSaveStatus !== 'saving' && draftSaveStatus !== 'error') return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [draftSaveStatus, isRegisteredUser]);
+
+  const requestExit = useCallback(
+    (href: string) => {
+      if (recordingStatus === 'recording') {
+        alert('녹화를 먼저 종료한 뒤 나가주세요.');
+        return;
+      }
+      if (Object.values(uploadingCuts).some(Boolean)) {
+        alert('영상 업로드가 완료된 뒤 나갈 수 있습니다.');
+        return;
+      }
+      isExitingWithoutSavingRef.current = false;
+      setPendingExitHref(href);
+      setIsExitConfirmOpen(true);
+    },
+    [recordingStatus, uploadingCuts]
+  );
+
+  const abandonGuestSession = useCallback(async () => {
+    if (!sessionId || !isGuestUser) return true;
+    try {
+      const response = await fetch(`/api/reels-maker/sessions/${sessionId}/abandon`, {
+        method: 'POST',
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }, [isGuestUser, sessionId]);
+
+  const handleSaveAndExit = useCallback(async () => {
+    setIsExitSaving(true);
+    try {
+      if (draftSaveTimerRef.current !== null) {
+        window.clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+      if (isGuestUser) {
+        await abandonGuestSession();
+      } else {
+        const saved = await saveDraftNow();
+        if (!saved) return;
+      }
+      setIsExitConfirmOpen(false);
+      router.push(pendingExitHref);
+    } finally {
+      setIsExitSaving(false);
+    }
+  }, [
+    abandonGuestSession,
+    isGuestUser,
+    pendingExitHref,
+    router,
+    saveDraftNow,
+  ]);
+
+  const handleExitWithoutSaving = useCallback(() => {
+    isExitingWithoutSavingRef.current = true;
+    if (draftSaveTimerRef.current !== null) {
+      window.clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+    setIsExitConfirmOpen(false);
+    router.push(pendingExitHref);
+  }, [pendingExitHref, router]);
+
+  useEffect(() => {
     if (selectedCaptionId === resolvedSelectedCaptionId) return;
     setSelectedCaptionId(resolvedSelectedCaptionId);
   }, [resolvedSelectedCaptionId, selectedCaptionId]);
@@ -3663,7 +4058,12 @@ function ReelsMakerInner() {
     setIsTrimOpen(false);
     resetTrimState();
     setupCamera();
-    createReelsSession();
+    if (templateId && requestedSessionId) {
+      router.replace(`/reels-maker?templateId=${encodeURIComponent(templateId)}`);
+    } else {
+      sessionInitKeyRef.current = null;
+      createReelsSession();
+    }
   };
 
   if (!templateId) {
@@ -3880,6 +4280,78 @@ function ReelsMakerInner() {
         className="hidden"
         onChange={handleGalleryFileChange}
       />
+      {showGuestDraftNotice && isGuestUser && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 px-4">
+          <div className="w-full max-w-sm rounded-3xl bg-[#172235] p-6 text-white shadow-2xl">
+            <h2 className="text-lg font-bold">게스트로 릴스를 제작합니다</h2>
+            <p className="mt-3 text-sm leading-6 text-white/70">
+              게스트는 프로젝트 중도 저장과 이어서 만들기를 이용할 수 없습니다.
+              로그인하면 작업이 자동 저장되며 마지막 저장일로부터 30일 동안 보관됩니다.
+            </p>
+            <div className="mt-6 space-y-2">
+              <Link
+                href={buildLoginHref(currentReelsMakerHref)}
+                className="flex h-12 w-full items-center justify-center rounded-full bg-[#FF4D6D] text-sm font-semibold"
+              >
+                로그인하고 이어서 만들기
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowGuestDraftNotice(false)}
+                className="h-12 w-full rounded-full border border-white/20 text-sm font-semibold text-white/85"
+              >
+                저장 없이 계속하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isExitConfirmOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 px-4">
+          <div className="w-full max-w-sm rounded-3xl bg-[#172235] p-6 text-white shadow-2xl">
+            <h2 className="text-lg font-bold">
+              작업을 종료하시겠습니까?
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-white/70">
+              {isGuestUser
+                ? '게스트의 미완성 프로젝트는 저장되지 않으며, 나가면 업로드한 원본 영상과 작업 내용을 즉시 삭제합니다.'
+                : '저장하지 않고 나가면 마지막 자동 저장 이후의 변경사항은 반영되지 않습니다. 미완성 프로젝트는 마지막 저장일로부터 30일 동안 보관됩니다.'}
+            </p>
+            <div className="mt-6 space-y-2">
+              <button
+                type="button"
+                onClick={() => void handleSaveAndExit()}
+                disabled={isExitSaving}
+                className="flex h-12 w-full items-center justify-center rounded-full bg-[#FF4D6D] text-sm font-semibold disabled:opacity-50"
+              >
+                {isExitSaving
+                  ? '처리 중...'
+                  : isGuestUser
+                    ? '삭제하고 나가기'
+                    : '저장 후 나가기'}
+              </button>
+              {!isGuestUser && (
+                <button
+                  type="button"
+                  onClick={handleExitWithoutSaving}
+                  disabled={isExitSaving}
+                  className="h-12 w-full rounded-full border border-white/20 text-sm font-semibold text-white/85 disabled:opacity-50"
+                >
+                  저장하지 않고 나가기
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsExitConfirmOpen(false)}
+                disabled={isExitSaving}
+                className="h-12 w-full text-sm font-semibold text-white/60 disabled:opacity-50"
+              >
+                계속 작업하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {isCaptureMenuOpen && (
         <div className="fixed inset-0 z-[80] bg-white text-gray-900">
           <nav
@@ -3903,7 +4375,7 @@ function ReelsMakerInner() {
                 type="button"
                 onClick={() => {
                   setIsCaptureMenuOpen(false);
-                  router.push('/profile');
+                  requestExit('/profile');
                 }}
                 className="w-full border-b border-gray-200 bg-gray-50 px-6 py-4 text-left transition hover:bg-gray-100"
               >
@@ -3939,6 +4411,18 @@ function ReelsMakerInner() {
             )}
 
             <div className="flex-1 space-y-2 p-6">
+              {isRegisteredUser && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCaptureMenuOpen(false);
+                    requestExit('/my-projects');
+                  }}
+                  className="mb-4 flex w-full items-center justify-center rounded-xl bg-[#FF496D] px-5 py-3 text-base font-semibold text-white"
+                >
+                  저장 후 나가기
+                </button>
+              )}
               {isGuestUser && (
                 <Link
                   href={buildLoginHref(currentReelsMakerHref)}
@@ -3966,7 +4450,11 @@ function ReelsMakerInner() {
                   <Link
                     key={item.href}
                     href={targetHref}
-                    onClick={() => setIsCaptureMenuOpen(false)}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setIsCaptureMenuOpen(false);
+                      requestExit(targetHref);
+                    }}
                     className="flex w-full items-center gap-3 rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
                   >
                     <Icon className="h-5 w-5 text-gray-600" />
@@ -3979,14 +4467,22 @@ function ReelsMakerInner() {
 
               <Link
                 href="/contents/script-creation"
-                onClick={() => setIsCaptureMenuOpen(false)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setIsCaptureMenuOpen(false);
+                  requestExit('/contents/script-creation');
+                }}
                 className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
               >
                 릴스 제작
               </Link>
               <Link
                 href="/ranking"
-                onClick={() => setIsCaptureMenuOpen(false)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setIsCaptureMenuOpen(false);
+                  requestExit('/ranking');
+                }}
                 className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
               >
                 인기 급상승 릴스
@@ -3995,7 +4491,11 @@ function ReelsMakerInner() {
               {isAuthenticated && isAdmin && (
                 <Link
                   href="/admin"
-                  onClick={() => setIsCaptureMenuOpen(false)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setIsCaptureMenuOpen(false);
+                    requestExit('/admin');
+                  }}
                   className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
                 >
                   관리자
@@ -4031,7 +4531,7 @@ function ReelsMakerInner() {
                 <div className="mb-0 flex h-16 shrink-0 items-center gap-2 px-3 lg:mb-3 lg:h-auto lg:px-1">
                   <button
                     type="button"
-                    onClick={() => router.push('/templates')}
+                    onClick={() => requestExit('/templates')}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10"
                     aria-label="뒤로가기"
                   >
@@ -4039,7 +4539,22 @@ function ReelsMakerInner() {
                   </button>
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-sm font-semibold text-white/80">릴스 제작</span>
+                      {isRegisteredUser ? (
+                        <input
+                          value={projectName}
+                          onChange={(event) => setProjectName(event.target.value.slice(0, 50))}
+                          onBlur={() => {
+                            if (!projectName.trim()) {
+                              setProjectName(`${template.title || '릴스'} 프로젝트`);
+                            }
+                          }}
+                          aria-label="프로젝트 이름"
+                          className="min-w-0 flex-1 truncate border-0 bg-transparent text-sm font-semibold text-white/90 outline-none placeholder:text-white/45"
+                          placeholder="프로젝트 이름"
+                        />
+                      ) : (
+                        <span className="truncate text-sm font-semibold text-white/80">릴스 제작</span>
+                      )}
                       {recordingStatus === 'recording' && (
                         <span className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#FF4D6D] px-2.5 text-[11px] font-semibold">
                           <span className="h-1.5 w-1.5 rounded-full bg-white" />
@@ -4047,6 +4562,35 @@ function ReelsMakerInner() {
                         </span>
                       )}
                     </div>
+                    {isRegisteredUser && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (draftSaveStatus === 'error') void saveDraftNow();
+                        }}
+                        className={`mt-0.5 block text-[10px] ${
+                          draftSaveStatus === 'error'
+                            ? 'text-rose-300 underline'
+                            : 'text-white/50'
+                        }`}
+                      >
+                        {draftSaveStatus === 'saving'
+                          ? '저장 중...'
+                          : draftSaveStatus === 'error'
+                            ? '저장 실패 · 다시 시도'
+                            : lastSavedAt
+                              ? `자동 저장됨 · ${new Date(lastSavedAt).toLocaleTimeString('ko-KR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}`
+                              : '자동 저장 준비 중'}
+                      </button>
+                    )}
+                    {isGuestUser && (
+                      <p className="mt-0.5 text-[10px] text-amber-200/90">
+                        게스트 작업은 중간 저장되지 않습니다.
+                      </p>
+                    )}
                   </div>
                   <button
                     type="button"

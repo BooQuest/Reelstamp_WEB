@@ -9,7 +9,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
-import { User, Sparkles, LayoutTemplate, TrendingUp, Bookmark, CheckCircle, ChevronRight, ChevronLeft, Menu } from 'lucide-react';
+import { User, Sparkles, LayoutTemplate, TrendingUp, Bookmark, CheckCircle, ChevronRight, ChevronLeft, Menu, FolderOpen } from 'lucide-react';
 
 // 메뉴 항목 타입 정의
 interface MenuItem {
@@ -86,6 +86,12 @@ const MOBILE_PRIMARY_ITEMS: MobileMenuItem[] = [
     href: '/saved-reels',
     label: '저장된 릴스',
     icon: Bookmark,
+    requiresAuth: true,
+  },
+  {
+    href: '/my-projects',
+    label: '제작 중인 프로젝트',
+    icon: FolderOpen,
     requiresAuth: true,
   },
   {
@@ -502,6 +508,14 @@ export default function Header() {
                             >
                               <Bookmark className="w-5 h-5 text-gray-400" />
                               <span className="text-base font-medium">저장된 릴스</span>
+                            </Link>
+                            <Link
+                              href="/my-projects"
+                              onClick={() => setIsProfileMenuOpen(false)}
+                              className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                              <FolderOpen className="w-5 h-5 text-gray-400" />
+                              <span className="text-base font-medium">제작 중인 프로젝트</span>
                             </Link>
                             <Link
                               href="/completed-reels"
