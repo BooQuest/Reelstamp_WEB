@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { User, Mail, Building, HelpCircle, LogOut, Settings, Crown, CreditCard, MessageCircle } from 'lucide-react';
+import { User, Mail, Building, HelpCircle, LogOut, Settings, Crown, CreditCard, MessageCircle, UserPlus } from 'lucide-react';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { UserInfo } from '@/app/lib/api/auth';
 
@@ -94,7 +94,7 @@ export default function ProfileClient({ initialUser }: ProfileClientProps) {
               onClick={() => router.push('/login')}
               className="w-full bg-[#FF496D] rounded-2xl p-4 shadow-sm text-left hover:bg-[#E63E62] transition-all flex items-center gap-3"
             >
-              <Crown className="w-5 h-5 text-white" />
+              <UserPlus className="w-5 h-5 flex-shrink-0 text-white" />
               <span className="font-semibold text-white">회원가입하고 안전하게 보관하기</span>
             </button>
           )}
@@ -111,7 +111,7 @@ export default function ProfileClient({ initialUser }: ProfileClientProps) {
             onClick={() => router.push('/plan')}
             className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:bg-gray-50 transition-all flex items-center gap-3"
           >
-            <Crown className="w-5 h-5 text-gray-500" />
+            <Crown className="w-5 h-5 flex-shrink-0 text-gray-500" />
             <span className="font-semibold text-gray-900">이용 중인 플랜</span>
           </button>
 
