@@ -29,11 +29,13 @@ type HydrateDraftInput = {
   lastEditedAt: string | null;
   activeClipOrder: number | null;
   captions: CaptionItem[];
+  captionsEnabled: boolean;
 };
 
 type Params = {
   cuts: CutLike[];
   captions: CaptionItem[];
+  captionsEnabled: boolean;
   activeCutIndex: number;
   isRegisteredUser: boolean;
   sessionId: number | null;
@@ -45,6 +47,7 @@ type Params = {
 export default function useDraftAutosave({
   cuts,
   captions,
+  captionsEnabled,
   activeCutIndex,
   isRegisteredUser,
   sessionId,
@@ -55,6 +58,7 @@ export default function useDraftAutosave({
   const captionsRef = useRef<CaptionItem[]>([]);
   const projectNameRef = useRef('');
   const activeCutIndexRef = useRef(0);
+  const captionsEnabledRef = useRef(true);
   const draftVersionRef = useRef(0);
   const draftSaveTimerRef = useRef<number | null>(null);
   const draftSaveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
@@ -78,6 +82,10 @@ export default function useDraftAutosave({
   useEffect(() => {
     activeCutIndexRef.current = activeCutIndex;
   }, [activeCutIndex]);
+
+  useEffect(() => {
+    captionsEnabledRef.current = captionsEnabled;
+  }, [captionsEnabled]);
 
   useEffect(() => {
     draftVersionRef.current = draftVersion;
@@ -106,6 +114,7 @@ export default function useDraftAutosave({
             id: caption.id,
             text: caption.text,
             source: caption.source,
+            role: caption.role,
             placement: caption.placement,
             zIndex: caption.zIndex,
             style: buildCaptionExportStyle(caption.style),
@@ -113,7 +122,8 @@ export default function useDraftAutosave({
         const signature = buildDraftSignature(
           projectNameRef.current,
           activeOrder,
-          captionsRef.current
+          captionsRef.current,
+          captionsEnabledRef.current
         );
         if (signature === lastSavedDraftSignatureRef.current) {
           setDraftSaveStatus('saved');
@@ -132,6 +142,7 @@ export default function useDraftAutosave({
                 lastActiveClipOrder: activeOrder,
                 version: draftVersionRef.current,
                 captionItems,
+                captionsEnabled: captionsEnabledRef.current,
               }),
             }
           );
@@ -167,7 +178,7 @@ export default function useDraftAutosave({
       !sessionHydratedRef.current ||
       isExitConfirmOpen ||
       isExitingWithoutSavingRef.current ||
-      stage !== 'capture'
+      (stage !== 'capture' && stage !== 'caption-edit')
     ) {
       return;
     }
@@ -181,6 +192,7 @@ export default function useDraftAutosave({
     activeCutIndex,
     cancelScheduledSave,
     captions,
+    captionsEnabled,
     isExitConfirmOpen,
     isRegisteredUser,
     projectName,
@@ -211,7 +223,8 @@ export default function useDraftAutosave({
     lastSavedDraftSignatureRef.current = buildDraftSignature(
       input.projectName,
       input.activeClipOrder,
-      input.captions
+      input.captions,
+      input.captionsEnabled
     );
   }, []);
 

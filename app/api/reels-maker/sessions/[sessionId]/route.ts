@@ -30,7 +30,7 @@ function parseApiError(error: unknown) {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { sessionId?: string } | Promise<{ sessionId?: string }> }
+  { params }: { params: Promise<{ sessionId?: string }> }
 ) {
   try {
     const { getServerApiClient } = await import('@/app/lib/api/server-client');
@@ -81,7 +81,7 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { sessionId?: string } | Promise<{ sessionId?: string }> }
+  { params }: { params: Promise<{ sessionId?: string }> }
 ) {
   try {
     const { getServerApiClient } = await import('@/app/lib/api/server-client');

@@ -29,6 +29,8 @@ import type { WebApiResponse } from '@/app/lib/api/auth';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
 import CaptureMenu from '@/app/reels-maker/components/CaptureMenu';
+import AutoCaptionEditor from '@/app/reels-maker/components/AutoCaptionEditor';
+import CaptionOverlayStage from '@/app/reels-maker/components/CaptionOverlayStage';
 import CapturedClipPreview from '@/app/reels-maker/components/CapturedClipPreview';
 import CutExampleModal from '@/app/reels-maker/components/CutExampleModal';
 import ExampleReelsModal from '@/app/reels-maker/components/ExampleReelsModal';
@@ -40,31 +42,10 @@ import ProcessingView from '@/app/reels-maker/components/ProcessingView';
 import ResetCutModal from '@/app/reels-maker/components/ResetCutModal';
 import TrimModal from '@/app/reels-maker/components/TrimModal';
 import useCaptionEditor from '@/app/reels-maker/hooks/useCaptionEditor';
+import useAutoCaption from '@/app/reels-maker/hooks/useAutoCaption';
 import useDraftAutosave from '@/app/reels-maker/hooks/useDraftAutosave';
 import {
-  CAPTION_BASE_FONT_SIZE_PX,
-  CAPTION_BOX_BACKGROUND_OPACITY,
-  CAPTION_BOX_BORDER_RADIUS_PX,
-  CAPTION_BOX_PADDING_X_PX,
-  CAPTION_BOX_PADDING_Y_PX,
-  CAPTION_FONT_FAMILY,
-  CAPTION_FONT_WEIGHT,
-  CAPTION_INPUT_MIN_WIDTH_PX,
-  CAPTION_LINE_BREAK,
-  CAPTION_LINE_HEIGHT_PX,
-  CAPTION_MAX_WIDTH_PX,
-  CAPTION_OVERFLOW_WRAP,
-  CAPTION_RENDER_HEIGHT,
-  CAPTION_RENDER_WIDTH,
-  CAPTION_RESIZE_HANDLE_FONT_SIZE_PX,
-  CAPTION_RESIZE_HANDLE_OFFSET_PX,
-  CAPTION_RESIZE_HANDLE_SIZE_PX,
-  CAPTION_SHADOW_BLUR_PX,
-  CAPTION_SHADOW_COLOR,
-  CAPTION_SHADOW_OFFSET_Y_PX,
-  CAPTION_TEXT_COLOR,
-  CAPTION_WHITE_SPACE,
-  CAPTION_WORD_BREAK,
+  AUTO_CAPTION_DEFAULT_STYLE,
   COMPLETE_START_FAILED_USER_MESSAGE,
   DEFAULT_CAPTION_STYLE,
   DEFAULT_GALLERY_CLIP_DURATION_SECONDS,
@@ -104,6 +85,26 @@ import {
   normalizeCaptionStyle,
 } from '@/app/reels-maker/utils/captions';
 import { getErrorMessage } from '@/app/reels-maker/utils/errors';
+
+const normalizeSessionCaptions = (
+  rawCaptions: CaptionItem[] | undefined
+): CaptionItem[] => {
+  return (rawCaptions ?? []).map((caption) => {
+    const source = caption.source ?? 'USER';
+    const role = source === 'AUTO' ? 'SPEECH' : 'OVERLAY';
+    return {
+      ...caption,
+      source,
+      role,
+      style: normalizeCaptionStyle(
+        caption.style ??
+          (source === 'AUTO'
+            ? AUTO_CAPTION_DEFAULT_STYLE
+            : DEFAULT_CAPTION_STYLE)
+      ),
+    };
+  });
+};
 
 function ReelsMakerInner() {
   const router = useRouter();
@@ -160,6 +161,18 @@ function ReelsMakerInner() {
   const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState<number | null>(null);
   const [clips, setClips] = useState<Array<ClipInfo | null>>([]);
   const [captions, setCaptions] = useState<CaptionItem[]>([]);
+  const [captionsEnabled, setCaptionsEnabled] = useState(true);
+  const [autoCaptionAvailable, setAutoCaptionAvailable] = useState(false);
+  const [autoCaptionRemainingAttempts, setAutoCaptionRemainingAttempts] =
+    useState(0);
+  const [activeAutoCaptionJobId, setActiveAutoCaptionJobId] = useState<
+    string | null
+  >(null);
+  const [staleAutoCaptionClipIds, setStaleAutoCaptionClipIds] = useState<
+    number[]
+  >([]);
+  const [acceptedStaleAutoCaptionClipIds, setAcceptedStaleAutoCaptionClipIds] =
+    useState<number[]>([]);
   const [cutGuideVisibility, setCutGuideVisibility] = useState<Record<number, boolean>>({});
   const [guideImageIndexByCut, setGuideImageIndexByCut] = useState<Record<number, number>>({});
   const [isExampleOpen, setIsExampleOpen] = useState(false);
@@ -273,6 +286,7 @@ function ReelsMakerInner() {
   } = useDraftAutosave({
     cuts,
     captions,
+    captionsEnabled,
     activeCutIndex,
     isRegisteredUser,
     sessionId,
@@ -302,6 +316,7 @@ function ReelsMakerInner() {
   const activeClipId = activeCut ? sessionClipMap[activeCut.order] ?? null : null;
   const activeCutGuideText = activeCut?.guideText?.trim() || '등록된 컷 가이드가 없습니다.';
   const showCaptionStage =
+    captionsEnabled &&
     !activeUploadError &&
     !activeFixedError &&
     (!cameraError || Boolean(activeClip)) &&
@@ -338,6 +353,39 @@ function ReelsMakerInner() {
     setCaptions,
     captionsRef,
     cameraFrameRef,
+  });
+  const activeOverlayCaptionCount = activeCaptions.filter(
+    (caption) => caption.source !== 'AUTO'
+  ).length;
+  const applyCaptionSessionSnapshot = useCallback(
+    (session: ReelsMakerSessionResponse) => {
+      const nextCaptions = normalizeSessionCaptions(session.captionItems);
+      setCaptions(nextCaptions);
+      setCaptionsEnabled(session.captionsEnabled !== false);
+      setAutoCaptionAvailable(Boolean(session.autoCaptionAvailable));
+      setAutoCaptionRemainingAttempts(
+        session.autoCaptionRemainingAttempts ?? 0
+      );
+      setActiveAutoCaptionJobId(session.activeAutoCaptionJobId ?? null);
+      setStaleAutoCaptionClipIds(session.staleAutoCaptionClipIds ?? []);
+      setAcceptedStaleAutoCaptionClipIds((current) =>
+        current.filter((clipId) =>
+          (session.staleAutoCaptionClipIds ?? []).includes(clipId)
+        )
+      );
+      applyServerUpdate(session);
+    },
+    [applyServerUpdate]
+  );
+  const {
+    job: autoCaptionJob,
+    error: autoCaptionError,
+    isProcessing: isAutoCaptionProcessing,
+    start: startAutoCaption,
+  } = useAutoCaption({
+    sessionId,
+    initialJobId: activeAutoCaptionJobId,
+    onSessionReloaded: applyCaptionSessionSnapshot,
   });
   const isRecordDisabled =
     isActiveCutFixed || isUploadingActiveCut || isSessionLoading || !sessionId;
@@ -867,14 +915,16 @@ function ReelsMakerInner() {
       });
       setSessionId(session.sessionId);
       setSessionClipMap(mapping);
-      const restoredCaptions =
-        Array.isArray(session.captionItems) && session.captionItems.length > 0
-          ? session.captionItems.map((caption) => ({
-              ...caption,
-              style: normalizeCaptionStyle(caption.style ?? DEFAULT_CAPTION_STYLE),
-            }))
-          : [];
+      const restoredCaptions = normalizeSessionCaptions(session.captionItems);
       setCaptions(restoredCaptions);
+      setCaptionsEnabled(session.captionsEnabled !== false);
+      setAutoCaptionAvailable(Boolean(session.autoCaptionAvailable));
+      setAutoCaptionRemainingAttempts(
+        session.autoCaptionRemainingAttempts ?? 0
+      );
+      setActiveAutoCaptionJobId(session.activeAutoCaptionJobId ?? null);
+      setStaleAutoCaptionClipIds(session.staleAutoCaptionClipIds ?? []);
+      setAcceptedStaleAutoCaptionClipIds([]);
       setSelectedCaptionId(restoredCaptions[0]?.id ?? null);
       setEditingCaptionId(null);
       const resolvedProjectName =
@@ -888,6 +938,8 @@ function ReelsMakerInner() {
         setStage('preview');
       } else if (session.status === 'FAILED') {
         setStage('capture');
+      } else if (session.activeAutoCaptionJobId) {
+        setStage('caption-edit');
       }
 
       const restoredUploadedCuts: Record<number, boolean> = {};
@@ -951,6 +1003,7 @@ function ReelsMakerInner() {
         lastEditedAt: session.lastEditedAt ?? null,
         activeClipOrder: cuts[resolvedActiveIndex]?.order ?? null,
         captions: restoredCaptions,
+        captionsEnabled: session.captionsEnabled !== false,
       });
       sessionHydratedRef.current = true;
       if (!requestedSessionId) {
@@ -1004,6 +1057,12 @@ function ReelsMakerInner() {
     setUploadingCuts({});
     setClipUploadErrors({});
     setCaptions([]);
+    setCaptionsEnabled(true);
+    setAutoCaptionAvailable(false);
+    setAutoCaptionRemainingAttempts(0);
+    setActiveAutoCaptionJobId(null);
+    setStaleAutoCaptionClipIds([]);
+    setAcceptedStaleAutoCaptionClipIds([]);
     setSelectedCaptionId(null);
     setCutGuideVisibility(() => {
       const next: Record<number, boolean> = {};
@@ -1694,6 +1753,22 @@ function ReelsMakerInner() {
           );
         }
         applyServerUpdate(completePayload.data);
+        setCaptionsEnabled(completePayload.data.captionsEnabled !== false);
+        setAutoCaptionAvailable(
+          Boolean(completePayload.data.autoCaptionAvailable)
+        );
+        setAutoCaptionRemainingAttempts(
+          completePayload.data.autoCaptionRemainingAttempts ?? 0
+        );
+        setActiveAutoCaptionJobId(
+          completePayload.data.activeAutoCaptionJobId ?? null
+        );
+        setStaleAutoCaptionClipIds(
+          completePayload.data.staleAutoCaptionClipIds ?? []
+        );
+        setAcceptedStaleAutoCaptionClipIds((current) =>
+          current.filter((acceptedClipId) => acceptedClipId !== clipId)
+        );
         setUploadedCuts((prev) => ({ ...prev, [index]: true }));
       } finally {
         setUploadingCuts((prev) => ({ ...prev, [index]: false }));
@@ -2407,7 +2482,12 @@ function ReelsMakerInner() {
     stopRecording,
   ]);
 
-  const handleComplete = async () => {
+  const handleComplete = () => {
+    if (!allDone) return;
+    setStage('caption-edit');
+  };
+
+  const handleFinalComplete = async () => {
     if (!sessionId) return;
     if (!allDone) return;
     if (isRegisteredUser) {
@@ -2425,6 +2505,7 @@ function ReelsMakerInner() {
         id: caption.id,
         text: caption.text,
         source: caption.source,
+        role: caption.role,
         placement: caption.placement,
         zIndex: caption.zIndex,
         style: buildCaptionExportStyle(caption.style),
@@ -2436,7 +2517,11 @@ function ReelsMakerInner() {
       const response = await fetch(`/api/reels-maker/sessions/${sessionId}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ captionItems }),
+        body: JSON.stringify({
+          captionItems,
+          captionsEnabled,
+          acceptedStaleAutoCaptionClipIds,
+        }),
       });
       const payload = (await response.json()) as
         | WebApiResponse<ReelsMakerStatusResponse>
@@ -2895,6 +2980,58 @@ function ReelsMakerInner() {
     );
   }
 
+  if (stage === 'caption-edit' && sessionId) {
+    return (
+      <AutoCaptionEditor
+        sessionId={sessionId}
+        cuts={cuts}
+        clips={clips}
+        clipPosters={clipPosters}
+        sessionClipMap={sessionClipMap}
+        captions={captions}
+        setCaptions={setCaptions}
+        activeCutIndex={activeCutIndex}
+        setActiveCutIndex={setActiveCutIndex}
+        captionsEnabled={captionsEnabled}
+        setCaptionsEnabled={setCaptionsEnabled}
+        autoCaptionAvailable={autoCaptionAvailable}
+        remainingAttempts={
+          autoCaptionJob?.remainingAttempts ?? autoCaptionRemainingAttempts
+        }
+        staleClipIds={
+          autoCaptionJob?.staleClipIds ?? staleAutoCaptionClipIds
+        }
+        acceptedStaleClipIds={acceptedStaleAutoCaptionClipIds}
+        job={autoCaptionJob}
+        jobError={autoCaptionError}
+        isProcessing={isAutoCaptionProcessing}
+        isRegisteredUser={isRegisteredUser}
+        loginHref={buildLoginHref(currentReelsMakerHref)}
+        onStartAutoCaption={startAutoCaption}
+        onAcceptStale={setAcceptedStaleAutoCaptionClipIds}
+        onBack={() => setStage('capture')}
+        onComplete={() => void handleFinalComplete()}
+        handleFrameRef={handleCameraFrameRef}
+        captionStageRef={captionStageRef}
+        captionOverlayRef={captionOverlayRef}
+        captionInputRef={captionInputRef}
+        captionPreviewScale={captionPreviewScale}
+        selectedCaptionId={resolvedSelectedCaptionId}
+        editingCaptionId={editingCaptionId}
+        setSelectedCaptionId={setSelectedCaptionId}
+        setEditingCaptionId={setEditingCaptionId}
+        onCaptionPointerDown={handleCaptionPointerDown}
+        onCaptionPointerMove={handleCaptionPointerMove}
+        onCaptionPointerEnd={handleCaptionPointerEnd}
+        onResizePointerDown={handleResizeHandlePointerDown}
+        onResizePointerMove={handleResizeHandlePointerMove}
+        onResizePointerEnd={handleResizeHandlePointerEnd}
+        onCaptionTextChange={handleCaptionTextChange}
+        onToggleBox={handleCaptionToggleBox}
+      />
+    );
+  }
+
   if (stage === 'processing') {
     return <ProcessingView />;
   }
@@ -3191,131 +3328,24 @@ function ReelsMakerInner() {
                   )}
 
                   {showCaptionStage && (
-                    <div
-                      ref={captionStageRef}
-                      className="pointer-events-none absolute left-1/2 top-1/2 z-20"
-                      style={{
-                        width: `${CAPTION_RENDER_WIDTH}px`,
-                        height: `${CAPTION_RENDER_HEIGHT}px`,
-                        transform: `translate(-50%, -50%) scale(${captionPreviewScale})`,
-                        transformOrigin: 'center center',
-                      }}
-                    >
-                      {activeCaptions.map((caption) => {
-                        const isSelected = caption.id === resolvedSelectedCaptionId;
-                        const isEditing = caption.id === editingCaptionId;
-                        const hasText = caption.text.trim().length > 0;
-                        const style = caption.style;
-
-                        return (
-                          <div
-                            key={caption.id}
-                            ref={isSelected ? captionOverlayRef : undefined}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (isSelected) {
-                                setEditingCaptionId(caption.id);
-                              } else {
-                                setSelectedCaptionId(caption.id);
-                                setEditingCaptionId(null);
-                              }
-                            }}
-                            onPointerDown={(event) => handleCaptionPointerDown(event, caption)}
-                            onPointerMove={handleCaptionPointerMove}
-                            onPointerUp={handleCaptionPointerEnd}
-                            onPointerCancel={handleCaptionPointerEnd}
-                            className="pointer-events-auto absolute select-none"
-                            style={{
-                              left: `${style.xRatio * CAPTION_RENDER_WIDTH}px`,
-                              top: `${style.yRatio * CAPTION_RENDER_HEIGHT}px`,
-                              transform: 'translate(-50%, -50%)',
-                              zIndex: caption.zIndex,
-                              maxWidth: `${CAPTION_MAX_WIDTH_PX}px`,
-                              touchAction: 'none',
-                              cursor: isEditing ? 'text' : 'move',
-                              color: CAPTION_TEXT_COLOR,
-                              fontFamily: CAPTION_FONT_FAMILY,
-                              fontSize: `${CAPTION_BASE_FONT_SIZE_PX * style.scale}px`,
-                              fontWeight: CAPTION_FONT_WEIGHT,
-                              lineHeight: `${CAPTION_LINE_HEIGHT_PX * style.scale}px`,
-                              whiteSpace: CAPTION_WHITE_SPACE,
-                              overflowWrap: CAPTION_OVERFLOW_WRAP,
-                              wordBreak: CAPTION_WORD_BREAK,
-                              lineBreak: CAPTION_LINE_BREAK,
-                              padding: style.boxed
-                                ? `${CAPTION_BOX_PADDING_Y_PX * style.scale}px ${
-                                    CAPTION_BOX_PADDING_X_PX * style.scale
-                                  }px`
-                                : '0px',
-                              borderRadius: `${CAPTION_BOX_BORDER_RADIUS_PX * style.scale}px`,
-                              backgroundColor: style.boxed
-                                ? `rgba(0, 0, 0, ${CAPTION_BOX_BACKGROUND_OPACITY})`
-                                : 'transparent',
-                              boxShadow: style.boxed
-                                ? `0 ${CAPTION_SHADOW_OFFSET_Y_PX * style.scale}px ${
-                                    CAPTION_SHADOW_BLUR_PX * style.scale
-                                  }px ${CAPTION_SHADOW_COLOR}`
-                                : 'none',
-                              outline: isSelected
-                                ? `${Math.max(2, 3 / captionPreviewScale)}px solid rgba(255,77,109,0.9)`
-                                : 'none',
-                              outlineOffset: `${Math.max(2, 4 / captionPreviewScale)}px`,
-                            }}
-                          >
-                            {isEditing ? (
-                              <input
-                                ref={captionInputRef}
-                                value={caption.text}
-                                onChange={(event) => handleCaptionTextChange(event.target.value)}
-                                onBlur={() => setEditingCaptionId(null)}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter') {
-                                    setEditingCaptionId(null);
-                                  }
-                                }}
-                                onPointerDown={(event) => event.stopPropagation()}
-                                placeholder="자막을 입력하세요"
-                                className="w-full bg-transparent text-center text-white placeholder:text-white/60 focus:outline-none"
-                                style={{
-                                  minWidth: `${CAPTION_INPUT_MIN_WIDTH_PX}px`,
-                                  fontFamily: CAPTION_FONT_FAMILY,
-                                  fontWeight: CAPTION_FONT_WEIGHT,
-                                }}
-                              />
-                            ) : (
-                              <span
-                                className={`block text-center ${
-                                  hasText ? 'text-white' : 'text-white/55'
-                                }`}
-                              >
-                                {hasText ? caption.text : '자막을 입력하세요'}
-                              </span>
-                            )}
-                            {isSelected && !isEditing && (
-                              <button
-                                type="button"
-                                onPointerDown={handleResizeHandlePointerDown}
-                                onPointerMove={handleResizeHandlePointerMove}
-                                onPointerUp={handleResizeHandlePointerEnd}
-                                onPointerCancel={handleResizeHandlePointerEnd}
-                                onClick={(event) => event.stopPropagation()}
-                                className="absolute flex items-center justify-center rounded-full border border-white/40 bg-[#FF4D6D] font-bold text-white shadow-lg"
-                                style={{
-                                  right: `-${CAPTION_RESIZE_HANDLE_OFFSET_PX}px`,
-                                  bottom: `-${CAPTION_RESIZE_HANDLE_OFFSET_PX}px`,
-                                  width: `${CAPTION_RESIZE_HANDLE_SIZE_PX}px`,
-                                  height: `${CAPTION_RESIZE_HANDLE_SIZE_PX}px`,
-                                  fontSize: `${CAPTION_RESIZE_HANDLE_FONT_SIZE_PX}px`,
-                                }}
-                                aria-label="텍스트 크기 조절"
-                              >
-                                ↔
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <CaptionOverlayStage
+                      captions={activeCaptions}
+                      selectedCaptionId={resolvedSelectedCaptionId}
+                      editingCaptionId={editingCaptionId}
+                      previewScale={captionPreviewScale}
+                      stageRef={captionStageRef}
+                      overlayRef={captionOverlayRef}
+                      inputRef={captionInputRef}
+                      onSelect={setSelectedCaptionId}
+                      onEdit={setEditingCaptionId}
+                      onTextChange={handleCaptionTextChange}
+                      onCaptionPointerDown={handleCaptionPointerDown}
+                      onCaptionPointerMove={handleCaptionPointerMove}
+                      onCaptionPointerEnd={handleCaptionPointerEnd}
+                      onResizePointerDown={handleResizeHandlePointerDown}
+                      onResizePointerMove={handleResizeHandlePointerMove}
+                      onResizePointerEnd={handleResizeHandlePointerEnd}
+                    />
                   )}
 
                   <div className="pointer-events-none absolute inset-x-0 top-0 z-30 space-y-2 bg-gradient-to-b from-black/35 via-black/10 to-transparent px-3 pb-6 pt-3">
@@ -3335,12 +3365,12 @@ function ReelsMakerInner() {
                           disabled={
                             !showCaptionStage ||
                             activeClipId == null ||
-                            activeCaptions.length >= MAX_CAPTIONS_PER_CLIP
+                            activeOverlayCaptionCount >= MAX_CAPTIONS_PER_CLIP
                           }
                           className="flex h-10 min-w-0 w-full items-center justify-center gap-1 rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <Plus className="h-3.5 w-3.5" />
-                          자막 추가 {activeCaptions.length}/{MAX_CAPTIONS_PER_CLIP}
+                          자막 추가 {activeOverlayCaptionCount}/{MAX_CAPTIONS_PER_CLIP}
                         </button>
                         <button
                           type="button"

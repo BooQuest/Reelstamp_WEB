@@ -208,7 +208,10 @@ export default function useCaptionEditor({
 
   const addCaptionToActiveClip = useCallback(() => {
     if (!showCaptionStage || activeClipId == null) return;
-    if (activeCaptions.length >= MAX_CAPTIONS_PER_CLIP) return;
+    const overlayCaptionCount = activeCaptions.filter(
+      (caption) => caption.source !== 'AUTO'
+    ).length;
+    if (overlayCaptionCount >= MAX_CAPTIONS_PER_CLIP) return;
 
     const captionId = createCaptionId();
     const nextZIndex =
@@ -218,7 +221,7 @@ export default function useCaptionEditor({
       ) + 1;
     const verticalOffset = Math.min(
       0.68,
-      DEFAULT_CAPTION_STYLE.yRatio + activeCaptions.length * 0.1
+      DEFAULT_CAPTION_STYLE.yRatio + overlayCaptionCount * 0.1
     );
     setCaptions((prev) => [
       ...prev,
@@ -226,6 +229,7 @@ export default function useCaptionEditor({
         id: captionId,
         text: '',
         source: 'USER',
+        role: 'OVERLAY',
         placement: { type: 'CLIP', clipId: activeClipId },
         zIndex: nextZIndex,
         style: { ...DEFAULT_CAPTION_STYLE, yRatio: verticalOffset },

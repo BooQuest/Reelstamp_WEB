@@ -93,17 +93,20 @@ export const buildCaptionExportStyle = (
 export const buildDraftSignature = (
   projectName: string,
   activeClipOrder: number | null,
-  captions: CaptionItem[]
+  captions: CaptionItem[],
+  captionsEnabled: boolean = true
 ) =>
   JSON.stringify({
     projectName: projectName.trim(),
     activeClipOrder,
+    captionsEnabled,
     captionItems: captions
       .filter((caption) => caption.text.trim().length > 0)
       .map((caption) => ({
         id: caption.id,
         text: caption.text,
         source: caption.source,
+        role: caption.role,
         placement: caption.placement,
         zIndex: caption.zIndex,
         style: buildCaptionExportStyle(caption.style),

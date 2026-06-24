@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { templateId?: string } | Promise<{ templateId?: string }> }
+  { params }: { params: Promise<{ templateId?: string }> }
 ) {
   try {
     const { getServerApiClient } = await import('@/app/lib/api/server-client');
@@ -31,23 +31,30 @@ export async function POST(
     return NextResponse.json(response.data, {
       status: response.status,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const apiError = error as {
+      message?: string;
+      response?: {
+        status?: number;
+        data?: { message?: string; errorCode?: string };
+      };
+    };
     console.error('[TemplateSave API Error]', {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data,
+      message: apiError.message,
+      status: apiError.response?.status,
+      data: apiError.response?.data,
     });
 
-    const status = error.response?.status || 500;
+    const status = apiError.response?.status || 500;
     const message =
-      error.response?.data?.message || '템플릿 저장 처리 중 오류가 발생했습니다.';
+      apiError.response?.data?.message || '템플릿 저장 처리 중 오류가 발생했습니다.';
 
     return NextResponse.json(
       {
         success: false,
         status,
         message,
-        errorCode: error.response?.data?.errorCode || 'TEMPLATE_SAVE_ERROR',
+        errorCode: apiError.response?.data?.errorCode || 'TEMPLATE_SAVE_ERROR',
         data: null,
       },
       { status }

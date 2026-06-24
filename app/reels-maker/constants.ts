@@ -84,3 +84,8 @@ export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   maxWidthRatio: DEFAULT_CAPTION_MAX_WIDTH_RATIO,
   maxLines: null,
 };
+
+export const AUTO_CAPTION_DEFAULT_STYLE: CaptionStyle = {
+  ...DEFAULT_CAPTION_STYLE,
+  yRatio: 0.82,
+};

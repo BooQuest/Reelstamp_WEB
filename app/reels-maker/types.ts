@@ -16,7 +16,7 @@ export type ClipInfo = {
 };
 
 export type RecorderStatus = 'idle' | 'recording' | 'done';
-export type Stage = 'capture' | 'processing' | 'preview';
+export type Stage = 'capture' | 'caption-edit' | 'processing' | 'preview';
 export type CutDurationMode = 'RECOMMENDED' | 'FORCED';
 export type CameraFacingMode = 'environment' | 'user';
 
@@ -58,6 +58,7 @@ export type ReelsMakerSessionClip = {
   downloadUrl?: string | null;
   contentType?: string | null;
   actualDurationSeconds?: number | null;
+  fixed?: boolean;
 };
 
 export type ReelsMakerSessionResponse = {
@@ -72,6 +73,12 @@ export type ReelsMakerSessionResponse = {
   lastEditedAt?: string | null;
   expiresAt?: string | null;
   draftSavingEnabled?: boolean;
+  captionsEnabled?: boolean;
+  autoCaptionAvailable?: boolean;
+  autoCaptionRemainingAttempts?: number;
+  activeAutoCaptionJobId?: string | null;
+  activeAutoCaptionStatus?: string | null;
+  staleAutoCaptionClipIds?: number[];
   clips: ReelsMakerSessionClip[];
   captionItems?: CaptionItem[];
 };
@@ -155,10 +162,31 @@ export type CaptionPlacement =
 export type CaptionItem = {
   id: string;
   text: string;
-  source: 'TEMPLATE' | 'USER';
+  source: 'TEMPLATE' | 'USER' | 'AUTO';
+  role: 'SPEECH' | 'OVERLAY';
   placement: CaptionPlacement;
   zIndex: number;
   style: CaptionStyle;
+};
+
+export type AutoCaptionClipResult = {
+  clipId: number;
+  status: 'PROCESSING' | 'COMPLETED' | 'NO_SPEECH' | 'FAILED';
+  text?: string | null;
+  needsReview?: boolean | null;
+  errorCode?: string | null;
+  stale: boolean;
+};
+
+export type AutoCaptionJobResponse = {
+  jobId: string;
+  status: 'PROCESSING' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'STALE';
+  attemptNo: number;
+  remainingAttempts: number;
+  enabled: boolean;
+  staleClipIds: number[];
+  clips: AutoCaptionClipResult[];
+  errorCode?: string | null;
 };
 
 export type CaptionGestureMode = 'none' | 'drag' | 'pinch' | 'resize';
