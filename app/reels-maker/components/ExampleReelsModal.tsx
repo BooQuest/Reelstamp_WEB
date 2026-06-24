@@ -51,19 +51,19 @@ export default function ExampleReelsModal({
               type="button"
               onClick={onPrevious}
               disabled={isFirst}
-              className="absolute left-3 top-1/2 z-20 -translate-y-1/2 w-9 h-9 rounded-full bg-[#FF4D6D] text-white flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed"
+              className="absolute left-3 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-[#FF4D6D] text-white shadow-lg transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-35"
               aria-label="이전 릴스"
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="h-5 w-5 text-white" />
             </button>
             <button
               type="button"
               onClick={onNext}
               disabled={isLast}
-              className="absolute right-3 top-1/2 z-20 -translate-y-1/2 w-9 h-9 rounded-full bg-[#FF4D6D] text-white flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed"
+              className="absolute right-3 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-[#FF4D6D] text-white shadow-lg transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-35"
               aria-label="다음 릴스"
             >
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="h-5 w-5 text-white" />
             </button>
           </div>
 
