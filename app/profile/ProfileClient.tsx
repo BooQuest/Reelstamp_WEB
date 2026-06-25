@@ -9,9 +9,13 @@ import type { UserInfo } from '@/app/lib/api/auth';
 
 interface ProfileClientProps {
   initialUser: UserInfo;
+  initialStats: {
+    completedReelsCount: number;
+    savedTemplatesCount: number;
+  };
 }
 
-export default function ProfileClient({ initialUser }: ProfileClientProps) {
+export default function ProfileClient({ initialUser, initialStats }: ProfileClientProps) {
   const router = useRouter();
   const { user, logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -75,14 +79,18 @@ export default function ProfileClient({ initialUser }: ProfileClientProps) {
             onClick={() => router.push('/completed-reels')}
             className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-center hover:bg-gray-50 transition-all"
           >
-            <p className="text-3xl font-bold text-[#FF496D] mb-1">12</p>
+            <p className="text-3xl font-bold text-[#FF496D] mb-1">
+              {initialStats.completedReelsCount.toLocaleString('ko-KR')}
+            </p>
             <p className="text-sm text-gray-600">제작한 릴스</p>
           </button>
           <button
             onClick={() => router.push('/saved-reels')}
             className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-center hover:bg-gray-50 transition-all"
           >
-            <p className="text-3xl font-bold text-[#FF496D] mb-1">5</p>
+            <p className="text-3xl font-bold text-[#FF496D] mb-1">
+              {initialStats.savedTemplatesCount.toLocaleString('ko-KR')}
+            </p>
             <p className="text-sm text-gray-600">저장한 템플릿</p>
           </button>
         </div>
