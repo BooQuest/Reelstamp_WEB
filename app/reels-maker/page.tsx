@@ -122,6 +122,61 @@ const buildReelsMakerHref = ({
   return `/reels-maker?${params.toString()}`;
 };
 
+type SessionErrorState = {
+  type: 'auth' | 'generic';
+  message: string;
+  status?: number;
+  errorCode?: string | null;
+};
+
+const SESSION_AUTH_EXPIRED_MESSAGE =
+  '로그인이 만료되어 릴스 제작을 시작할 수 없어요. 다시 로그인한 뒤 이어서 진행해 주세요.';
+
+const SESSION_AUTH_ERROR_CODES = new Set([
+  'INVALID_TOKEN',
+  'INVALID_TOKEN_SUBJECT',
+  'TOKEN_EXPIRED',
+  'MISSING_AUTH_TOKEN',
+]);
+
+const getSessionFallbackMessage = (requestedSessionId: string | null) =>
+  requestedSessionId
+    ? '저장된 프로젝트를 불러오지 못했습니다.'
+    : '릴스 제작 세션을 생성하지 못했습니다.';
+
+const isSessionAuthError = (
+  status?: number,
+  errorCode?: string | null
+): boolean => {
+  if (status === 401) return true;
+  if (!errorCode) return false;
+
+  return SESSION_AUTH_ERROR_CODES.has(errorCode.trim().toUpperCase());
+};
+
+const buildSessionErrorState = ({
+  status,
+  errorCode,
+  message,
+  fallbackMessage,
+}: {
+  status?: number;
+  errorCode?: string | null;
+  message?: string | null;
+  fallbackMessage: string;
+}): SessionErrorState => {
+  const type = isSessionAuthError(status, errorCode) ? 'auth' : 'generic';
+  return {
+    type,
+    status,
+    errorCode,
+    message:
+      type === 'auth'
+        ? SESSION_AUTH_EXPIRED_MESSAGE
+        : message?.trim() || fallbackMessage,
+  };
+};
+
 const normalizeSessionCaptions = (
   rawCaptions: CaptionItem[] | undefined
 ): CaptionItem[] => {
@@ -145,7 +200,7 @@ const normalizeSessionCaptions = (
 function ReelsMakerInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, setUser, user } = useAuth();
   const templateId = searchParams.get('templateId');
   const requestedSessionId = searchParams.get('sessionId');
   const returnUrlParam = searchParams.get('returnUrl');
@@ -190,7 +245,7 @@ function ReelsMakerInner() {
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [sessionClipMap, setSessionClipMap] = useState<Record<number, number>>({});
   const [isSessionLoading, setIsSessionLoading] = useState(false);
-  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionError, setSessionError] = useState<SessionErrorState | null>(null);
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
   const [pendingExitHref, setPendingExitHref] = useState('/my-projects');
   const [isExitSaving, setIsExitSaving] = useState(false);
@@ -920,6 +975,7 @@ function ReelsMakerInner() {
     if (sessionInitKeyRef.current === initKey) return;
     sessionInitKeyRef.current = initKey;
 
+    const fallbackMessage = getSessionFallbackMessage(requestedSessionId);
     setIsSessionLoading(true);
     setSessionError(null);
     sessionHydratedRef.current = false;
@@ -935,17 +991,32 @@ function ReelsMakerInner() {
             body: JSON.stringify({ templateId }),
           });
 
-      const payload: WebApiResponse<ReelsMakerSessionResponse> = await response.json();
+      const payload = (await response.json()) as
+        | WebApiResponse<ReelsMakerSessionResponse>
+        | ReelsMakerErrorResponse;
       if (!response.ok || !payload?.success || !payload?.data) {
-        throw new Error(
-          payload?.message ||
-            (requestedSessionId
-              ? '저장된 프로젝트를 불러오지 못했습니다.'
-              : '릴스 제작 세션을 생성하지 못했습니다.')
-        );
+        const status =
+          typeof payload?.status === 'number' ? payload.status : response.status;
+        const errorCode =
+          typeof payload?.errorCode === 'string' ? payload.errorCode : null;
+        const nextSessionError = buildSessionErrorState({
+          status,
+          errorCode,
+          message: payload?.message,
+          fallbackMessage,
+        });
+
+        if (nextSessionError.type === 'auth') {
+          setUser(null);
+        }
+        sessionInitKeyRef.current = null;
+        setSessionError(nextSessionError);
+        setSessionId(null);
+        setSessionClipMap({});
+        return;
       }
 
-      const session = payload.data;
+      const session = payload.data as ReelsMakerSessionResponse;
       if (session.templateId !== templateId) {
         throw new Error('선택한 템플릿과 저장된 프로젝트가 일치하지 않습니다.');
       }
@@ -1060,14 +1131,10 @@ function ReelsMakerInner() {
       }
     } catch (error: unknown) {
       sessionInitKeyRef.current = null;
-      setSessionError(
-        getErrorMessage(
-          error,
-          requestedSessionId
-            ? '저장된 프로젝트를 불러오지 못했습니다.'
-            : '릴스 제작 세션을 생성하지 못했습니다.'
-        )
-      );
+      setSessionError({
+        type: 'generic',
+        message: getErrorMessage(error, fallbackMessage),
+      });
       setSessionId(null);
       setSessionClipMap({});
     } finally {
@@ -1079,6 +1146,7 @@ function ReelsMakerInner() {
     hydrateDraft,
     requestedSessionId,
     router,
+    setUser,
     setEditingCaptionId,
     setSelectedCaptionId,
     template,
@@ -3024,14 +3092,33 @@ function ReelsMakerInner() {
     return (
       <FullScreenState>
         <div className="max-w-sm text-center space-y-4">
-          <p className="text-sm text-white/70">{sessionError}</p>
-          <button
-            type="button"
-            onClick={() => createReelsSession()}
-            className="rounded-full bg-[#FF4D6D] px-4 py-2 text-sm font-semibold shadow-lg"
-          >
-            다시 시도하기
-          </button>
+          <p className="text-sm leading-6 text-white/70">{sessionError.message}</p>
+          <div className="space-y-3">
+            {sessionError.type === 'auth' ? (
+              <button
+                type="button"
+                onClick={() => router.push(buildLoginHref(currentReelsMakerHref))}
+                className="w-full rounded-full bg-[#FF4D6D] px-4 py-3 text-sm font-semibold text-white shadow-lg"
+              >
+                로그인하기
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => createReelsSession()}
+                className="w-full rounded-full bg-[#FF4D6D] px-4 py-3 text-sm font-semibold text-white shadow-lg"
+              >
+                다시 시도하기
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => router.replace(completionReturnUrl)}
+              className="w-full rounded-full border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white shadow-lg"
+            >
+              나가기
+            </button>
+          </div>
         </div>
       </FullScreenState>
     );
