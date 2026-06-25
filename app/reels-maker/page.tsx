@@ -3114,7 +3114,7 @@ function ReelsMakerInner() {
 
   return (
     <div
-      className="overflow-hidden bg-[#1E2A3B] text-white lg:bg-black"
+      className="overflow-hidden bg-[#1E2A3B] text-white lg:flex lg:flex-col lg:bg-black"
       style={{
         height: '100dvh',
         minHeight: '100vh',
@@ -3170,9 +3170,28 @@ function ReelsMakerInner() {
           onRequestExit={requestExit}
         />
       )}
+      <header className="hidden h-[72px] shrink-0 grid-cols-[96px_minmax(0,1fr)_96px] items-center border-b border-[#263244] bg-[#111827] px-12 text-[#F8FAFC] lg:grid">
+        <button
+          type="button"
+          onClick={() => requestExit(completionReturnUrl)}
+          className="flex h-10 w-10 items-center justify-center rounded-full text-[#CBD5E1] transition hover:bg-white/10 hover:text-white"
+          aria-label="뒤로가기"
+        >
+          <ChevronLeft className="h-6 w-6" />
+        </button>
+        <h1 className="text-center text-xl font-bold">릴스 제작</h1>
+        <button
+          type="button"
+          onClick={() => setIsCaptureMenuOpen(true)}
+          className="justify-self-end flex h-10 w-10 items-center justify-center rounded-full text-[#CBD5E1] transition hover:bg-white/10 hover:text-white"
+          aria-label="메뉴"
+        >
+          <Menu className="h-6 w-6" />
+        </button>
+      </header>
       <div
         ref={captureViewportRef}
-        className="h-full w-full overflow-hidden lg:mx-auto lg:max-w-[440px]"
+        className="h-full w-full overflow-hidden lg:mx-auto lg:h-auto lg:min-h-0 lg:max-w-[440px] lg:flex-1"
         style={{
           boxSizing: 'border-box',
           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
@@ -3197,7 +3216,7 @@ function ReelsMakerInner() {
                   <button
                     type="button"
                     onClick={() => requestExit('/templates')}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10 lg:hidden"
                     aria-label="뒤로가기"
                   >
                     <ChevronLeft className="h-6 w-6" />
@@ -3267,7 +3286,7 @@ function ReelsMakerInner() {
                   <button
                     type="button"
                     onClick={() => setIsCaptureMenuOpen(true)}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10 lg:hidden"
                     aria-label="메뉴"
                   >
                     <Menu className="h-6 w-6" />
