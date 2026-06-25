@@ -47,13 +47,18 @@ const normalizeCategory = (category: TemplateCategory): TemplateCategory => ({
   templates: (category.templates ?? []).map(normalizeTemplate),
 });
 
+const buildReelsMakerHref = (templateId: string, returnUrl: string) =>
+  `/reels-maker?templateId=${encodeURIComponent(templateId)}&returnUrl=${encodeURIComponent(returnUrl)}`;
+
 export default function AllTemplatesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated } = useAuth();
   const selectedCategoryId = searchParams.get('category');
   const templateIdParam = searchParams.get('templateId');
-  const returnUrl = selectedCategoryId
+  const returnUrl = templateIdParam
+    ? `/all-templates?templateId=${encodeURIComponent(templateIdParam)}`
+    : selectedCategoryId
     ? `/all-templates?category=${encodeURIComponent(selectedCategoryId)}`
     : '/all-templates';
   const { savedSet, toggleSave } = useSavedTemplates({ returnUrl });
@@ -211,7 +216,7 @@ export default function AllTemplatesClient() {
       return;
     }
 
-    const destination = `/reels-maker?templateId=${activeTemplate.id}`;
+    const destination = buildReelsMakerHref(activeTemplate.id, returnUrl);
     router.push(
       isAuthenticated ? destination : `/login?returnUrl=${encodeURIComponent(destination)}`
     );

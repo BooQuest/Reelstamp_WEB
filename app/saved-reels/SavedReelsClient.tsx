@@ -5,6 +5,9 @@ import { Bookmark, Play } from 'lucide-react';
 import { useSavedTemplates } from '@/app/hooks/useSavedTemplates';
 import TemplateMediaPreview from '@/app/components/ui/TemplateMediaPreview';
 
+const buildReelsMakerHref = (templateId: string) =>
+  `/reels-maker?templateId=${encodeURIComponent(templateId)}&returnUrl=${encodeURIComponent('/saved-reels')}`;
+
 export default function SavedReelsClient() {
   const router = useRouter();
   const { savedTemplates, isLoading, error, toggleSave } = useSavedTemplates({
@@ -16,7 +19,7 @@ export default function SavedReelsClient() {
   };
 
   const handleCreate = (templateId: string) => {
-    router.push(`/reels-maker?templateId=${templateId}`);
+    router.push(buildReelsMakerHref(templateId));
   };
 
   if (isLoading) {

@@ -12,6 +12,7 @@ type Props = {
   onOpenPreview: () => void;
   onClosePreview: () => void;
   onDownload: () => void;
+  onDone: () => void;
   onReset: () => void;
   onShared: (message: string | null) => void;
 };
@@ -26,13 +27,24 @@ export default function FinalPreview({
   onOpenPreview,
   onClosePreview,
   onDownload,
+  onDone,
   onReset,
   onShared,
 }: Props) {
   return (
     <div className="min-h-[100dvh] bg-black text-white">
-      <div className="max-w-md mx-auto px-4 pt-6 pb-10 space-y-6">
-        <h1 className="text-center text-lg font-semibold">최종 미리보기</h1>
+      <div className="max-w-md mx-auto px-4 pt-4 pb-10 space-y-6">
+        <header className="grid grid-cols-[72px_minmax(0,1fr)_72px] items-center">
+          <div aria-hidden="true" />
+          <h1 className="text-center text-lg font-semibold">릴스 제작 완료</h1>
+          <button
+            type="button"
+            onClick={onDone}
+            className="justify-self-end rounded-full px-3 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/10"
+          >
+            완료
+          </button>
+        </header>
 
         <div className="rounded-[28px] bg-[#1E2A3B] p-4 shadow-2xl space-y-4">
           <div className="relative rounded-[24px] overflow-hidden">

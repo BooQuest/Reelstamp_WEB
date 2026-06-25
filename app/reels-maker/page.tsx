@@ -86,6 +86,42 @@ import {
 } from '@/app/reels-maker/utils/captions';
 import { getErrorMessage } from '@/app/reels-maker/utils/errors';
 
+const DEFAULT_COMPLETION_RETURN_URL = '/templates';
+
+const normalizeCompletionReturnUrl = (value: string | null): string => {
+  if (!value) return DEFAULT_COMPLETION_RETURN_URL;
+
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) {
+    return DEFAULT_COMPLETION_RETURN_URL;
+  }
+  if (trimmed.startsWith('/login') || trimmed.startsWith('/reels-maker')) {
+    return DEFAULT_COMPLETION_RETURN_URL;
+  }
+
+  return trimmed;
+};
+
+const buildReelsMakerHref = ({
+  templateId,
+  sessionId,
+  returnUrl,
+}: {
+  templateId: string;
+  sessionId?: number | string | null;
+  returnUrl?: string | null;
+}) => {
+  const params = new URLSearchParams({ templateId });
+  if (sessionId) {
+    params.set('sessionId', String(sessionId));
+  }
+  if (returnUrl) {
+    params.set('returnUrl', returnUrl);
+  }
+
+  return `/reels-maker?${params.toString()}`;
+};
+
 const normalizeSessionCaptions = (
   rawCaptions: CaptionItem[] | undefined
 ): CaptionItem[] => {
@@ -112,6 +148,12 @@ function ReelsMakerInner() {
   const { isAuthenticated, user } = useAuth();
   const templateId = searchParams.get('templateId');
   const requestedSessionId = searchParams.get('sessionId');
+  const returnUrlParam = searchParams.get('returnUrl');
+  const completionReturnUrl = useMemo(
+    () => normalizeCompletionReturnUrl(returnUrlParam),
+    [returnUrlParam]
+  );
+  const explicitCompletionReturnUrl = returnUrlParam ? completionReturnUrl : null;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraFrameRef = useRef<HTMLDivElement | null>(null);
   const galleryFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -215,11 +257,11 @@ function ReelsMakerInner() {
   const isGuestUser = Boolean(user?.guest || user?.provider === 'GUEST');
   const isRegisteredUser = Boolean(isAuthenticated && user && !isGuestUser);
   const currentReelsMakerHref = templateId
-    ? `/reels-maker?templateId=${encodeURIComponent(templateId)}${
-        sessionId || requestedSessionId
-          ? `&sessionId=${encodeURIComponent(String(sessionId ?? requestedSessionId))}`
-          : ''
-      }`
+    ? buildReelsMakerHref({
+        templateId,
+        sessionId: sessionId ?? requestedSessionId,
+        returnUrl: explicitCompletionReturnUrl,
+      })
     : '/reels-maker';
   const buildLoginHref = useCallback(
     (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`,
@@ -1009,7 +1051,11 @@ function ReelsMakerInner() {
       if (!requestedSessionId) {
         sessionInitKeyRef.current = `${templateId}:${session.sessionId}`;
         router.replace(
-          `/reels-maker?templateId=${encodeURIComponent(templateId)}&sessionId=${session.sessionId}`
+          buildReelsMakerHref({
+            templateId,
+            sessionId: session.sessionId,
+            returnUrl: explicitCompletionReturnUrl,
+          })
         );
       }
     } catch (error: unknown) {
@@ -1029,6 +1075,7 @@ function ReelsMakerInner() {
     }
   }, [
     cuts,
+    explicitCompletionReturnUrl,
     hydrateDraft,
     requestedSessionId,
     router,
@@ -2835,6 +2882,11 @@ function ReelsMakerInner() {
     setDownloadToastMessage(isMp4 ? '다운로드 완료!' : 'MP4 미지원 브라우저로 WEBM으로 다운로드됩니다.');
   };
 
+  const handleFinalDone = () => {
+    setIsPreviewOpen(false);
+    router.replace(completionReturnUrl);
+  };
+
   const handleResetAll = () => {
     setStage('capture');
     setActiveCutIndex(0);
@@ -2907,7 +2959,12 @@ function ReelsMakerInner() {
     resetTrimState();
     setupCamera();
     if (templateId && requestedSessionId) {
-      router.replace(`/reels-maker?templateId=${encodeURIComponent(templateId)}`);
+      router.replace(
+        buildReelsMakerHref({
+          templateId,
+          returnUrl: explicitCompletionReturnUrl,
+        })
+      );
     } else {
       sessionInitKeyRef.current = null;
       createReelsSession();
@@ -3048,6 +3105,7 @@ function ReelsMakerInner() {
         onOpenPreview={() => setIsPreviewOpen(true)}
         onClosePreview={() => setIsPreviewOpen(false)}
         onDownload={handleDownload}
+        onDone={handleFinalDone}
         onReset={handleResetAll}
         onShared={setDownloadToastMessage}
       />

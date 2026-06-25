@@ -37,6 +37,13 @@ const STATUS_TABS = [
   { status: 'COMPLETED', label: '제작 완료' },
 ] as const;
 
+const buildReelsMakerHref = (
+  templateId: string,
+  sessionId: number,
+  returnUrl: string
+) =>
+  `/reels-maker?templateId=${encodeURIComponent(templateId)}&sessionId=${sessionId}&returnUrl=${encodeURIComponent(returnUrl)}`;
+
 export default function MyProjectsClient({
   initialProjects,
   loadError,
@@ -199,8 +206,9 @@ export default function MyProjectsClient({
                             window.open(project.finalVideoUrl, '_blank', 'noopener,noreferrer');
                             return;
                           }
+                          const returnUrl = `/my-projects?status=${encodeURIComponent(activeStatus)}`;
                           router.push(
-                            `/reels-maker?templateId=${encodeURIComponent(project.templateId)}&sessionId=${project.sessionId}`
+                            buildReelsMakerHref(project.templateId, project.sessionId, returnUrl)
                           );
                         }}
                         className="h-11 flex-1 rounded-full bg-[#FF4D6D] text-sm font-semibold"

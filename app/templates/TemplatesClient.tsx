@@ -22,6 +22,9 @@ type TemplateListResponse = {
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
 
+const buildReelsMakerHref = (templateId: string) =>
+  `/reels-maker?templateId=${encodeURIComponent(templateId)}&returnUrl=${encodeURIComponent('/templates')}`;
+
 export default function TemplatesClient() {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
@@ -96,7 +99,7 @@ export default function TemplatesClient() {
       router.push('/login?returnUrl=' + encodeURIComponent('/templates'));
       return;
     }
-    router.push(`/reels-maker?templateId=${activeTemplate.id}`);
+    router.push(buildReelsMakerHref(activeTemplate.id));
   };
 
   const getCardStyle = (index: number) => {
