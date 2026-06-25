@@ -20,7 +20,6 @@ import {
   Image as ImageIcon,
   Loader2,
   Menu,
-  Play,
   Plus,
   RotateCcw,
   SwitchCamera,
@@ -31,12 +30,14 @@ import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
 import CaptureMenu from '@/app/reels-maker/components/CaptureMenu';
 import AutoCaptionEditor from '@/app/reels-maker/components/AutoCaptionEditor';
+import CameraPreviewVideo from '@/app/reels-maker/components/CameraPreviewVideo';
 import CaptionOverlayStage from '@/app/reels-maker/components/CaptionOverlayStage';
 import CapturedClipPreview from '@/app/reels-maker/components/CapturedClipPreview';
 import CutExampleModal from '@/app/reels-maker/components/CutExampleModal';
 import ExampleReelsModal from '@/app/reels-maker/components/ExampleReelsModal';
 import ExitConfirmModal from '@/app/reels-maker/components/ExitConfirmModal';
 import FinalPreview from '@/app/reels-maker/components/FinalPreview';
+import FixedClipVideo from '@/app/reels-maker/components/FixedClipVideo';
 import FullScreenState from '@/app/reels-maker/components/FullScreenState';
 import GuestDraftNotice from '@/app/reels-maker/components/GuestDraftNotice';
 import ProcessingView from '@/app/reels-maker/components/ProcessingView';
@@ -210,8 +211,6 @@ function ReelsMakerInner() {
     [returnUrlParam]
   );
   const explicitCompletionReturnUrl = returnUrlParam ? completionReturnUrl : null;
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const fixedVideoRef = useRef<HTMLVideoElement | null>(null);
   const cameraFrameRef = useRef<HTMLDivElement | null>(null);
   const galleryFileInputRef = useRef<HTMLInputElement | null>(null);
   const trimPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -285,8 +284,6 @@ function ReelsMakerInner() {
   const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
   const [fixedClipErrors, setFixedClipErrors] = useState<Record<number, string>>({});
   const [clipPosters, setClipPosters] = useState<Record<number, string>>({});
-  const [isFixedVideoPlaying, setIsFixedVideoPlaying] = useState(false);
-  const [hasFixedVideoEnded, setHasFixedVideoEnded] = useState(false);
   const [cameraFacingMode, setCameraFacingMode] = useState<CameraFacingMode>('environment');
   const [galleryError, setGalleryError] = useState<string | null>(null);
   const [isGalleryProcessing, setIsGalleryProcessing] = useState(false);
@@ -625,37 +622,6 @@ function ReelsMakerInner() {
     MIN_TRIM_DURATION_SECONDS,
     trimSliderMax > 0 ? trimSliderMax : MIN_TRIM_DURATION_SECONDS
   );
-
-  const handleFixedVideoPlay = useCallback(async () => {
-    const video = fixedVideoRef.current;
-    if (!video || !isActiveCutFixed || !activeClip) return;
-
-    if (hasFixedVideoEnded || video.ended) {
-      video.currentTime = 0;
-      setHasFixedVideoEnded(false);
-    }
-
-    try {
-      await video.play();
-      setIsFixedVideoPlaying(true);
-    } catch {
-      setIsFixedVideoPlaying(false);
-    }
-  }, [activeClip, hasFixedVideoEnded, isActiveCutFixed]);
-
-  const handleFixedVideoPause = useCallback(() => {
-    const video = fixedVideoRef.current;
-    if (!video || video.paused) return;
-
-    video.pause();
-    setIsFixedVideoPlaying(false);
-    setHasFixedVideoEnded(false);
-  }, []);
-
-  const handleFixedVideoSurfaceClick = useCallback(() => {
-    if (!isFixedVideoPlaying) return;
-    handleFixedVideoPause();
-  }, [handleFixedVideoPause, isFixedVideoPlaying]);
 
   const handleGuideImageToggle = useCallback(() => {
     if (!guideImageSrc) return;
@@ -1299,9 +1265,6 @@ function ReelsMakerInner() {
   }, [isCaptureMenuOpen]);
 
   const stopCamera = useCallback(() => {
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
     setStream((current) => {
       if (current) {
         current.getTracks().forEach((track) => track.stop());
@@ -1485,24 +1448,6 @@ function ReelsMakerInner() {
       stopCamera();
     }
   }, [stage, setupCamera, stopCamera, stream, template]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (video.srcObject !== stream) {
-      video.srcObject = stream;
-    }
-
-    if (stream) {
-      const playPromise = video.play();
-      if (playPromise) {
-        playPromise.catch(() => {
-          // Autoplay can be blocked on some mobile browsers.
-        });
-      }
-    }
-  }, [activeCutIndex, isSessionLoading, shouldShowActiveClipPreview, stage, stream]);
 
   useEffect(() => {
     latestClipsRef.current = clips;
@@ -2846,16 +2791,6 @@ function ReelsMakerInner() {
   }, [activeCutIndex, resetCaptionGesture, setEditingCaptionId]);
 
   useEffect(() => {
-    const video = fixedVideoRef.current;
-    if (video) {
-      video.pause();
-      video.currentTime = 0;
-    }
-    setIsFixedVideoPlaying(false);
-    setHasFixedVideoEnded(false);
-  }, [activeClip?.url, activeCutIndex]);
-
-  useEffect(() => {
     const handleDeleteKey = (event: KeyboardEvent) => {
       if (event.key !== 'Delete' && event.key !== 'Backspace') return;
       const target = event.target as HTMLElement | null;
@@ -3448,50 +3383,12 @@ function ReelsMakerInner() {
                         </button>
                       </div>
                     ) : activeClip ? (
-                      <>
-                        <video
-                          ref={fixedVideoRef}
-                          src={activeClip.url}
-                          muted
-                          playsInline
-                          preload="metadata"
-                          poster={clipPosters[activeCutIndex] || undefined}
-                          onClick={handleFixedVideoSurfaceClick}
-                          onPlay={() => {
-                            setIsFixedVideoPlaying(true);
-                            setHasFixedVideoEnded(false);
-                          }}
-                          onPause={() => {
-                            setIsFixedVideoPlaying(false);
-                            if (!fixedVideoRef.current?.ended) {
-                              setHasFixedVideoEnded(false);
-                            }
-                          }}
-                          onEnded={() => {
-                            setIsFixedVideoPlaying(false);
-                            setHasFixedVideoEnded(true);
-                          }}
-                          className={`absolute inset-0 h-full w-full object-cover ${
-                            isFixedVideoPlaying ? 'cursor-pointer' : ''
-                          }`}
-                        />
-                        {!isFixedVideoPlaying && (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void handleFixedVideoPlay();
-                            }}
-                            className="absolute left-1/2 top-1/2 z-20 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-white transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-                            aria-label="고정 영상 재생"
-                          >
-                            <Play
-                              className="h-16 w-16 fill-white text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.55)]"
-                              strokeWidth={1.5}
-                            />
-                          </button>
-                        )}
-                      </>
+                      <FixedClipVideo
+                        key={activeClip.url}
+                        clipUrl={activeClip.url}
+                        posterUrl={clipPosters[activeCutIndex] || undefined}
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
                     ) : (
                       <div className="px-6 text-center text-sm text-white/70">
                         고정 영상을 불러오는 중입니다...
@@ -3518,11 +3415,8 @@ function ReelsMakerInner() {
                     <div className="px-6 text-center text-sm text-white/70">{cameraError}</div>
                   ) : (
                     <>
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
+                      <CameraPreviewVideo
+                        stream={stream}
                         className="absolute inset-0 h-full w-full object-cover"
                       />
                       {guideImageSrc && isGuideImageVisible && (
