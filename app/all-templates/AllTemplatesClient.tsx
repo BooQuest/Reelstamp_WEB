@@ -1,6 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { WebApiResponse } from '@/app/lib/api/auth';
@@ -67,6 +73,7 @@ export default function AllTemplatesClient() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [activeModalCategoryId, setActiveModalCategoryId] = useState<string | null>(null);
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const showSelectTemplateBanner = searchParams.get('reason') === 'select-template';
 
   const selectedCategory = useMemo(
@@ -240,9 +247,54 @@ export default function AllTemplatesClient() {
     });
   };
 
+  const handleCarouselPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    swipeStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+  };
+
+  const handleCarouselPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+
+    if (!start) {
+      return;
+    }
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    const isHorizontalSwipe = Math.abs(deltaX) > 44 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
+
+    if (!isHorizontalSwipe) {
+      return;
+    }
+
+    if (deltaX < 0) {
+      handleNext();
+      return;
+    }
+
+    handlePrev();
+  };
+
+  const handleCarouselPointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    swipeStartRef.current = null;
+  };
+
   const handleCloseModal = () => {
     setActiveIndex(null);
     setActiveModalCategoryId(null);
+    swipeStartRef.current = null;
     if (templateIdParam) {
       const params = new URLSearchParams(searchParams.toString());
       params.delete('templateId');
@@ -456,7 +508,10 @@ export default function AllTemplatesClient() {
 
             <div className="flex-1 overflow-hidden">
               <div
-                className="relative w-full flex items-center justify-center h-[520px] sm:h-[560px] md:h-[600px] pb-6 sm:pb-8"
+                className="relative flex h-[520px] w-full touch-pan-y select-none items-center justify-center overflow-hidden overscroll-x-none pb-6 sm:h-[560px] sm:pb-8 md:h-[600px]"
+                onPointerDown={handleCarouselPointerDown}
+                onPointerUp={handleCarouselPointerUp}
+                onPointerCancel={handleCarouselPointerCancel}
               >
                 {modalTemplates.map((template, index) => {
                   const isActive = index === activeIndex;
@@ -497,31 +552,6 @@ export default function AllTemplatesClient() {
                         />
                       </button>
 
-                      {isActive && (
-                        <>
-                          {activeIndex !== null && activeIndex > 0 && (
-                            <button
-                              type="button"
-                              onClick={handlePrev}
-                              aria-label="이전 템플릿"
-                              className="absolute left-4 top-1/2 z-40 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
-                            >
-                              <ChevronLeft className="w-5 h-5 text-white" />
-                            </button>
-                          )}
-                          {activeIndex !== null && activeIndex < modalTemplates.length - 1 && (
-                            <button
-                              type="button"
-                              onClick={handleNext}
-                              aria-label="다음 템플릿"
-                              className="absolute right-4 top-1/2 z-40 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
-                            >
-                              <ChevronRight className="w-5 h-5 text-white" />
-                            </button>
-                          )}
-                        </>
-                      )}
-
                       <div className="pointer-events-none absolute bottom-0 left-0 right-0 px-5 pb-6 pt-10">
                         <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 drop-shadow-lg">
                           {template.title}
@@ -543,6 +573,30 @@ export default function AllTemplatesClient() {
                     </div>
                   );
                 })}
+                {activeIndex !== null && modalTemplates.length > 1 && activeIndex > 0 && (
+                  <button
+                    type="button"
+                    onClick={handlePrev}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onPointerUp={(event) => event.stopPropagation()}
+                    aria-label="이전 템플릿"
+                    className="absolute left-4 top-1/2 z-50 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform sm:left-8"
+                  >
+                    <ChevronLeft className="w-5 h-5 text-white" />
+                  </button>
+                )}
+                {activeIndex !== null && modalTemplates.length > 1 && activeIndex < modalTemplates.length - 1 && (
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onPointerUp={(event) => event.stopPropagation()}
+                    aria-label="다음 템플릿"
+                    className="absolute right-4 top-1/2 z-50 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform sm:right-8"
+                  >
+                    <ChevronRight className="w-5 h-5 text-white" />
+                  </button>
+                )}
               </div>
             </div>
 
