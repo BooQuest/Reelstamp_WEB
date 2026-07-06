@@ -13,19 +13,5 @@
     "app/ai/revise-reel-script-full/route.ts": {
       "maxDuration": 300
     }
-  },
-  "redirects": [
-    {
-      "source": "/:path*",
-      "has": [{ "type": "host", "value": "reelstamp.co.kr" }],
-      "destination": "https://app.wadiz.kr/links/iVI7Zgn7Vj",
-      "permanent": false
-    },
-    {
-      "source": "/:path*",
-      "has": [{ "type": "host", "value": "www.reelstamp.co.kr" }],
-      "destination": "https://app.wadiz.kr/links/iVI7Zgn7Vj",
-      "permanent": false
-    }
-  ]
+  }
 }
