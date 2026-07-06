@@ -1,6 +1,14 @@
 /* 전역 CSS 파일: Tailwind CSS와 커스텀 CSS 변수 설정 */
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'ReelstampCaptionPretendard';
+  src: url('/fonts/ReelstampCaptionPretendard-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: block;
+}
+
 /* CSS 변수 정의: 라이트 모드용 색상 */
 :root {
   --background: #ffffff;
@@ -25,6 +33,17 @@ body {
   background: linear-gradient(to bottom right, rgba(253, 244, 255, 0.2), white, rgba(255, 237, 213, 0.2));
   color: var(--foreground);
   font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+button,
+a,
+[role='button'] {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
 }
 
 /* Instagram Embed 스타일 */
@@ -55,4 +74,3 @@ body {
 .instagram-media > div > a:last-child {
   display: none !important;
 }
-

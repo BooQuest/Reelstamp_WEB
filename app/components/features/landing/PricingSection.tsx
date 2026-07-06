@@ -31,7 +31,7 @@ export default function PricingSection() {
             eventBenefit={freePlanEventBenefit} buttonType="link" 
             buttonText="무료 플랜 시작하기"
             buttonHref={isAuthenticated ? '/contents/script-creation' : '/login'} 
-            hideButton={false}
+            hideButton={true}
             buttonClassName="bg-gray-700 text-white hover:bg-gray-800"
           />
           <PlanCard
@@ -42,6 +42,7 @@ export default function PricingSection() {
             buttonDisabled={true}
             isCurrentPlan={isAuthenticated && !isLoadingSubscription && currentPlanCode === 'basic' && isActive}
             buttonClassName="bg-gray-400 text-white cursor-not-allowed"
+            blurDetails={true}
           />
           <PlanCard
             planName="Pro" price="₩9,900" features={proPlanFeatures}
@@ -51,6 +52,7 @@ export default function PricingSection() {
             buttonDisabled={true}
             isCurrentPlan={isAuthenticated && !isLoadingSubscription && currentPlanCode === 'pro' && isActive}
             buttonClassName="bg-gray-400 text-white cursor-not-allowed"
+            blurDetails={true}
           />
           <PlanCard
             planName="Master" price="₩49,900" features={masterPlanFeatures}
@@ -60,6 +62,7 @@ export default function PricingSection() {
             buttonDisabled={true}
             isCurrentPlan={isAuthenticated && !isLoadingSubscription && currentPlanCode === 'master' && isActive}
             buttonClassName="bg-gray-400 text-white cursor-not-allowed"
+            blurDetails={true}
           />
         </div>
       </div>

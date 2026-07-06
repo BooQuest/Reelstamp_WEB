@@ -6,7 +6,6 @@ import { getSubscriptionStatusAction } from '@/app/actions/auth';
 import { freePlanFeatures, basicPlanFeatures, proPlanFeatures, masterPlanFeatures, freePlanEventBenefit, basicPlanEventBenefit } from '@/app/lib/constants/plans';
 import PlanCard from '@/app/components/ui/PlanCard';
 import PricingPlanCard from '@/app/components/ui/PricingPlanCard';
-import Link from 'next/link';
 
 export default async function PricingPage() {
   // 서버에서 인증 및 구독 정보 조회
@@ -14,7 +13,6 @@ export default async function PricingPage() {
   const isAuthenticated = !!user;
   
   let subscription = null;
-  let isLoadingSubscription = false;
   
   if (isAuthenticated) {
     const subscriptionResult = await getSubscriptionStatusAction();
@@ -36,9 +34,6 @@ export default async function PricingPage() {
           <h1 className="text-3xl sm:text-4xl font-extrabold text-[#373A46] mb-4">
             요금제 안내
           </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            현재 구독 서비스 준비 중입니다. 조만간 더 좋은 기능으로 찾아뵙겠습니다.
-          </p>
         </div>
 
         {/* 플랜 카드 컨테이너 */}
@@ -52,7 +47,7 @@ export default async function PricingPage() {
             buttonType="link"
             buttonText="무료 플랜 시작하기"
             buttonHref={isAuthenticated ? '/contents/script-creation' : '/login'}
-            hideButton={false}
+            hideButton={true}
             buttonClassName="bg-gray-700 text-white hover:bg-gray-800"
           />
 
@@ -71,6 +66,7 @@ export default async function PricingPage() {
             isAuthenticated={isAuthenticated}
             isCurrentPlan={isAuthenticated && currentPlanCode === 'basic' && isActive}
             isDisabled={true}
+            blurDetails={true}
             buttonText={
               isAuthenticated && currentPlanCode === 'basic' && isActive 
                 ? '현재 플랜' 
@@ -95,6 +91,7 @@ export default async function PricingPage() {
             isAuthenticated={isAuthenticated}
             isCurrentPlan={isAuthenticated && currentPlanCode === 'pro' && isActive}
             isDisabled={true}
+            blurDetails={true}
             buttonText={
               isAuthenticated && currentPlanCode === 'pro' && isActive 
                 ? '현재 플랜' 
@@ -118,6 +115,7 @@ export default async function PricingPage() {
             isAuthenticated={isAuthenticated}
             isCurrentPlan={isAuthenticated && currentPlanCode === 'master' && isActive}
             isDisabled={true}
+            blurDetails={true}
             buttonText={
               isAuthenticated && currentPlanCode === 'master' && isActive 
                 ? '현재 플랜' 
@@ -131,4 +129,3 @@ export default async function PricingPage() {
     </div>
   );
 }
-

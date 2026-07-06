@@ -4,15 +4,15 @@
 import { Check } from 'lucide-react';
 import Link from 'next/link';
 
-interface PlanFeature {
+export interface PlanFeature {
   main?: string;
   subItems?: string[];
 }
 
-interface EventBenefit {
+export interface EventBenefit {
   title: string;
-  mainItem: string;
-  subItems: string[];
+  mainItem?: string;
+  subItems?: string[];
 }
 
 interface PlanCardProps {
@@ -33,6 +33,8 @@ interface PlanCardProps {
   buttonDisabled?: boolean;
   hideButton?: boolean;
   buttonClassName?: string;
+  blurDetails?: boolean;
+  earlybirdHref?: string;
 }
 
 export default function PlanCard({
@@ -50,7 +52,12 @@ export default function PlanCard({
   buttonDisabled = false,
   hideButton = false,
   buttonClassName = '',
+  blurDetails = false,
+  earlybirdHref,
 }: PlanCardProps) {
+  const earlybirdButtonClassName =
+    'inline-flex items-center justify-center rounded-full bg-[#FF496D] px-5 py-3 text-sm font-extrabold text-white shadow-lg shadow-[#FF496D]/30 transition-colors hover:bg-[#E63E62]';
+
   return (
     <div 
       className={`flex flex-col justify-between items-start p-[25px] w-full lg:w-[326px] lg:min-h-[553px] rounded-[20px] transition-all ${
@@ -87,98 +94,108 @@ export default function PlanCard({
           </div>
         </div>
 
-        {/* 기능 리스트 */}
-        <div className="space-y-2 mb-6">
-          {features.map((feature, index) => {
-            // 객체 형태인 경우 (영상 분석 무제한)
-            if (typeof feature === 'object' && 'main' in feature) {
-              return (
-                <div key={index} className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-[#FF496D] flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <div className="text-base text-gray-700 leading-relaxed mb-1">{feature.main}</div>
-                    <div className="pl-0 space-y-0.5">
-                      {feature.subItems?.map((subItem, subIndex) => (
-                        <div key={subIndex} className="flex items-center">
-                          <span 
-                            className="sub-item-text"
-                            style={{
-                              fontStyle: 'normal',
-                              fontWeight: 400,
-                              fontSize: '14px',
-                              lineHeight: '150%',
-                              letterSpacing: '-0.03em',
-                              fontFeatureSettings: "'pnum' on, 'lnum' on",
-                              color: '#6C6E7F',
-                            }}
-                          >
-                            {subItem}
-                          </span>
+        <div className={`relative ${blurDetails ? 'mb-6 min-h-[260px]' : ''}`}>
+          <div className={blurDetails ? 'pointer-events-none select-none blur-[6px] opacity-[0.35]' : ''}>
+            {/* 기능 리스트 */}
+            <div className="space-y-2 mb-6">
+              {features.map((feature, index) => {
+                // 객체 형태인 경우 (영상 분석 무제한)
+                if (typeof feature === 'object' && 'main' in feature) {
+                  return (
+                    <div key={index} className="flex items-start gap-2">
+                      <Check className="w-5 h-5 text-[#FF496D] flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="text-base text-gray-700 leading-relaxed mb-1">{feature.main}</div>
+                        <div className="pl-0 space-y-0.5">
+                          {feature.subItems?.map((subItem, subIndex) => (
+                            <div key={subIndex} className="flex items-center">
+                              <span
+                                className="sub-item-text"
+                                style={{
+                                  fontStyle: 'normal',
+                                  fontWeight: 400,
+                                  fontSize: '14px',
+                                  lineHeight: '150%',
+                                  letterSpacing: '-0.03em',
+                                  fontFeatureSettings: "'pnum' on, 'lnum' on",
+                                  color: '#6C6E7F',
+                                }}
+                              >
+                                {subItem}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </div>
                     </div>
+                  );
+                }
+                // 일반 문자열인 경우
+                return (
+                  <div key={index} className="flex items-start gap-2">
+                    <Check className="w-5 h-5 text-[#FF496D] flex-shrink-0 mt-0.5" />
+                    <span className="text-base text-gray-700 leading-relaxed">{feature as string}</span>
                   </div>
-                </div>
-              );
-            }
-            // 일반 문자열인 경우
-            return (
-              <div key={index} className="flex items-start gap-2">
-                <Check className="w-5 h-5 text-[#FF496D] flex-shrink-0 mt-0.5" />
-                <span className="text-base text-gray-700 leading-relaxed">{feature as string}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* 오픈 이벤트 혜택 */}
-        {eventBenefit && (
-          <div className="mb-6">
-            <div className="text-base font-bold text-[#FF496D] mb-2 text-center">{eventBenefit.title}</div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-center gap-2">
-                <Check className="w-5 h-5 text-[#FF496D] flex-shrink-0" />
-                <span className="text-base text-gray-700 leading-relaxed text-center">{eventBenefit.mainItem}</span>
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex items-center justify-center">
-                  <span 
-                    className="sub-item-text"
-                    style={{
-                      fontStyle: 'normal',
-                      fontWeight: 400,
-                      fontSize: '14px',
-                      lineHeight: '150%',
-                      letterSpacing: '-0.03em',
-                      fontFeatureSettings: "'pnum' on, 'lnum' on",
-                      color: '#6C6E7F',
-                      textAlign: 'center',
-                    }}
-                  >
-                    {eventBenefit.subItems[0]}
-                  </span>
-                </div>
-                <div className="flex items-center justify-center">
-                  <span 
-                    className="sub-item-text"
-                    style={{
-                      fontStyle: 'normal',
-                      fontWeight: 400,
-                      fontSize: '14px',
-                      lineHeight: '150%',
-                      letterSpacing: '-0.03em',
-                      fontFeatureSettings: "'pnum' on, 'lnum' on",
-                      color: '#6C6E7F',
-                      textAlign: 'center',
-                    }}
-                  >
-                    {eventBenefit.subItems[1]}
-                  </span>
-                </div>
-              </div>
+                );
+              })}
             </div>
+
+            {/* 오픈 이벤트 혜택 */}
+            {eventBenefit && (
+              <div className="mb-6">
+                <div className="text-base font-bold text-[#FF496D] mb-2 text-center">{eventBenefit.title}</div>
+                {eventBenefit.mainItem && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-center gap-2">
+                      <Check className="w-5 h-5 text-[#FF496D] flex-shrink-0" />
+                      <span className="text-base text-gray-700 leading-relaxed text-center">{eventBenefit.mainItem}</span>
+                    </div>
+                    {eventBenefit.subItems && eventBenefit.subItems.length > 0 && (
+                      <div className="space-y-0.5">
+                        {eventBenefit.subItems.map((subItem, subIndex) => (
+                          <div key={subIndex} className="flex items-center justify-center">
+                            <span
+                              className="sub-item-text"
+                              style={{
+                                fontStyle: 'normal',
+                                fontWeight: 400,
+                                fontSize: '14px',
+                                lineHeight: '150%',
+                                letterSpacing: '-0.03em',
+                                fontFeatureSettings: "'pnum' on, 'lnum' on",
+                                color: '#6C6E7F',
+                                textAlign: 'center',
+                              }}
+                            >
+                              {subItem}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
+
+          {blurDetails && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center px-3 text-center">
+              {earlybirdHref ? (
+                <Link href={earlybirdHref} className={earlybirdButtonClassName}>
+                  얼리버드 참여하기
+                </Link>
+              ) : (
+                <button type="button" className={earlybirdButtonClassName}>
+                  얼리버드 참여하기
+                </button>
+              )}
+              <p className="mt-3 text-sm font-medium leading-5 text-gray-800">
+                정시 출시 전 특별가로 더 많은 템플릿과 AI 편집 기능을 이용해보세요
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 버튼 */}
@@ -207,4 +224,3 @@ export default function PlanCard({
     </div>
   );
 }
-

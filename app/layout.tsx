@@ -3,10 +3,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Praise } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
-import Script from "next/script";
 import "./globals.css";
 import Header from "@/app/components/ui/Header";
 import Footer from "@/app/components/ui/Footer";
+import GuestNoticeToast from "@/app/components/ui/GuestNoticeToast";
 import QueryProvider from "@/app/providers/QueryProvider";
 import { AuthProvider } from "@/app/components/providers/AuthProvider";
 import { getCurrentUser } from "@/app/lib/api/auth";
@@ -77,6 +77,7 @@ export default async function RootLayout({
               </main>
               <Footer />
             </div>
+            <GuestNoticeToast />
           </AuthProvider>
         </QueryProvider>
 
