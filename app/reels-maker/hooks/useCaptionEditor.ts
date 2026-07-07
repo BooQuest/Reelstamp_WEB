@@ -30,6 +30,10 @@ import {
   createCaptionId,
   normalizeCaptionStyle,
 } from '../utils/captions';
+import {
+  isAutoSpeechCaption,
+  promoteAutoSpeechCaptionForEdit,
+} from '../utils/autoCaptionChunks';
 
 type Props = {
   activeClipId: number | null;
@@ -183,12 +187,29 @@ export default function useCaptionEditor({
   const updateActiveCaptionText = useCallback(
     (text: string) => {
       if (!resolvedSelectedCaptionId) return;
-      updateCaptionById(resolvedSelectedCaptionId, (current) => ({
-        ...current,
-        text,
-      }));
+      let nextCaptionId: string | null = null;
+      updateCaptionById(resolvedSelectedCaptionId, (current) => {
+        const promoted = promoteAutoSpeechCaptionForEdit(current);
+        nextCaptionId = promoted.id;
+        return {
+          ...promoted,
+          text,
+        };
+      });
+      if (
+        nextCaptionId &&
+        nextCaptionId !== resolvedSelectedCaptionId &&
+        activeCaptions.some(
+          (caption) =>
+            caption.id === resolvedSelectedCaptionId &&
+            isAutoSpeechCaption(caption)
+        )
+      ) {
+        setSelectedCaptionId(nextCaptionId);
+        setEditingCaptionId(nextCaptionId);
+      }
     },
-    [resolvedSelectedCaptionId, updateCaptionById]
+    [activeCaptions, resolvedSelectedCaptionId, updateCaptionById]
   );
 
   const updateActiveCaptionStyle = useCallback(

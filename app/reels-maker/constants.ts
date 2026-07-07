@@ -21,6 +21,11 @@ export const MAX_CAPTION_SCALE = 2.2;
 export const MIN_CAPTION_MAX_WIDTH_RATIO = 0.5;
 export const MAX_CAPTION_MAX_WIDTH_RATIO = 0.95;
 export const MAX_CAPTIONS_PER_CLIP = 5;
+export const MAX_AUTO_CAPTION_CHUNKS_PER_CLIP = 60;
+export const AUTO_CAPTION_PAUSE_SPLIT_MS = 450;
+export const AUTO_CAPTION_MIN_DISPLAY_MS = 800;
+export const AUTO_CAPTION_MAX_LINES = 2;
+export const AUTO_CAPTION_WIDTH_SAFETY_RATIO = 0.97;
 export const MIN_TRIM_DURATION_SECONDS = 0.3;
 export const DEFAULT_GALLERY_CLIP_DURATION_SECONDS = 3;
 export const TIMELINE_THUMBNAIL_COUNT = 10;
@@ -88,4 +93,6 @@ export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
 export const AUTO_CAPTION_DEFAULT_STYLE: CaptionStyle = {
   ...DEFAULT_CAPTION_STYLE,
   yRatio: 0.82,
+  maxLines: AUTO_CAPTION_MAX_LINES,
+  anchorY: 'BOTTOM',
 };

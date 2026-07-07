@@ -89,6 +89,10 @@ export default function CaptionOverlayStage({
         const isEditing = !readOnly && caption.id === editingCaptionId;
         const hasText = caption.text.trim().length > 0;
         const style = caption.style;
+        const anchorTransform =
+          style.anchorY === 'BOTTOM'
+            ? 'translate(-50%, -100%)'
+            : 'translate(-50%, -50%)';
 
         return (
           <div
@@ -119,9 +123,9 @@ export default function CaptionOverlayStage({
             style={{
               left: `${style.xRatio * CAPTION_RENDER_WIDTH}px`,
               top: `${style.yRatio * CAPTION_RENDER_HEIGHT}px`,
-              transform: 'translate(-50%, -50%)',
+              transform: anchorTransform,
               zIndex: caption.zIndex,
-              maxWidth: `${CAPTION_MAX_WIDTH_PX}px`,
+              maxWidth: `${style.maxWidthPx ?? CAPTION_MAX_WIDTH_PX}px`,
               touchAction: 'none',
               cursor: readOnly ? 'default' : isEditing ? 'text' : 'move',
               color: CAPTION_TEXT_COLOR,

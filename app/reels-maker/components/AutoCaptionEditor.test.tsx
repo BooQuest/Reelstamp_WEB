@@ -146,4 +146,48 @@ describe('AutoCaptionEditor', () => {
     await waitFor(() => expect(props.onStartAutoCaption).toHaveBeenCalledTimes(1));
     confirmSpy.mockRestore();
   });
+
+  it('creates timed auto chunks from completed job words when saved auto captions are missing', async () => {
+    const props = {
+      ...baseProps(),
+      setCaptions: vi.fn(),
+      job: {
+        jobId: 'job-words',
+        status: 'COMPLETED' as const,
+        attemptNo: 1,
+        remainingAttempts: 2,
+        enabled: true,
+        staleClipIds: [],
+        clips: [
+          {
+            clipId: 10,
+            status: 'COMPLETED' as const,
+            text: '음성 자막입니다',
+            stale: false,
+            words: [
+              { text: '음성', startMs: 0, endMs: 200 },
+              { text: '자막입니다', startMs: 220, endMs: 700 },
+            ],
+          },
+        ],
+      },
+    };
+    render(<AutoCaptionEditor {...props} />);
+
+    await waitFor(() => expect(props.setCaptions).toHaveBeenCalled());
+    const generated = props.setCaptions.mock.calls
+      .filter((call) => typeof call[0] === 'function')
+      .flatMap((call) => {
+        const updater = call[0] as (current: CaptionItem[]) => CaptionItem[];
+        return updater([caption]).filter(
+          (item) => item.source === 'AUTO' && item.role === 'SPEECH'
+        );
+      });
+    expect(generated).toHaveLength(1);
+    expect(generated[0].placement).toMatchObject({
+      type: 'CLIP',
+      clipId: 10,
+      startMs: 0,
+    });
+  });
 });

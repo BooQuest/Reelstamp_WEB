@@ -78,6 +78,8 @@ export type ReelsMakerSessionResponse = {
   autoCaptionRemainingAttempts?: number;
   activeAutoCaptionJobId?: string | null;
   activeAutoCaptionStatus?: string | null;
+  latestAutoCaptionJobId?: string | null;
+  latestAutoCaptionStatus?: string | null;
   staleAutoCaptionClipIds?: number[];
   clips: ReelsMakerSessionClip[];
   captionItems?: CaptionItem[];
@@ -146,12 +148,15 @@ export type CaptionStyle = {
   overflowWrap?: 'break-word';
   wordBreak?: 'normal';
   lineBreak?: 'auto';
+  anchorY?: 'CENTER' | 'BOTTOM';
 };
 
 export type CaptionPlacement =
   | {
       type: 'CLIP';
       clipId: number;
+      startMs?: number | null;
+      endMs?: number | null;
     }
   | {
       type: 'TIMELINE';
@@ -173,9 +178,23 @@ export type AutoCaptionClipResult = {
   clipId: number;
   status: 'PROCESSING' | 'COMPLETED' | 'NO_SPEECH' | 'FAILED';
   text?: string | null;
+  utterances?: AutoCaptionUtterance[];
+  words?: AutoCaptionWord[];
   needsReview?: boolean | null;
   errorCode?: string | null;
   stale: boolean;
+};
+
+export type AutoCaptionUtterance = {
+  text?: string | null;
+  startMs?: number | null;
+  endMs?: number | null;
+};
+
+export type AutoCaptionWord = {
+  text?: string | null;
+  startMs?: number | null;
+  endMs?: number | null;
 };
 
 export type AutoCaptionJobResponse = {

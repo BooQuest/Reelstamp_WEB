@@ -21,6 +21,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import {
+  AUTO_CAPTION_DEFAULT_STYLE,
   DEFAULT_CAPTION_STYLE,
   MAX_CAPTIONS_PER_CLIP,
 } from '../constants';
@@ -30,6 +31,14 @@ import type {
   ClipInfo,
 } from '../types';
 import { createCaptionId } from '../utils/captions';
+import {
+  buildAutoCaptionChunks,
+  createCaptionTextMeasurer,
+  isAutoSpeechCaption,
+  isEditedAutoSpeechCaption,
+  promoteAutoSpeechCaptionForEdit,
+  waitForCaptionFontReady,
+} from '../utils/autoCaptionChunks';
 import CaptionOverlayStage from './CaptionOverlayStage';
 
 type Cut = {
@@ -38,8 +47,17 @@ type Cut = {
   isFixed: boolean;
 };
 
-const isAutoSpeechCaption = (caption: CaptionItem) =>
-  caption.source === 'AUTO' && caption.role === 'SPEECH';
+const TERMINAL_AUTO_CAPTION_STATUSES = new Set([
+  'COMPLETED',
+  'PARTIAL',
+  'FAILED',
+  'STALE',
+]);
+
+const formatTimeRangeMs = (startMs?: number | null, endMs?: number | null) => {
+  if (typeof startMs !== 'number' || typeof endMs !== 'number') return '';
+  return `${(startMs / 1000).toFixed(1)}s-${(endMs / 1000).toFixed(1)}s`;
+};
 
 type Props = {
   sessionId: number;
@@ -132,8 +150,16 @@ export default function AutoCaptionEditor({
   onToggleBox,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const autoCaptionRepackSignatureRef = useRef(new Map<number, string>());
+  const measureCaptionText = useMemo(() => createCaptionTextMeasurer(), []);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
+  const [playbackPosition, setPlaybackPosition] = useState({
+    cutIndex: activeCutIndex,
+    ms: 0,
+  });
+  const playbackMs =
+    playbackPosition.cutIndex === activeCutIndex ? playbackPosition.ms : 0;
   const activeClipId = sessionClipMap[cuts[activeCutIndex]?.order] ?? null;
   const activeCaptions = useMemo(
     () =>
@@ -148,13 +174,180 @@ export default function AutoCaptionEditor({
             .sort((a, b) => a.zIndex - b.zIndex),
     [activeClipId, captions]
   );
+  const visibleActiveCaptions = useMemo(
+    () =>
+      activeCaptions.filter((caption) => {
+        if (!isAutoSpeechCaption(caption)) return true;
+        if (caption.placement.type !== 'CLIP') return true;
+        const startMs = caption.placement.startMs;
+        const endMs = caption.placement.endMs;
+        if (typeof startMs !== 'number' || typeof endMs !== 'number') {
+          return true;
+        }
+        return playbackMs >= startMs && playbackMs < endMs;
+      }),
+    [activeCaptions, playbackMs]
+  );
   const resultByClip = useMemo(
     () => new Map((job?.clips ?? []).map((result) => [result.clipId, result])),
+    [job?.clips]
+  );
+  const jobWordsByClip = useMemo(
+    () =>
+      new Map(
+        (job?.clips ?? [])
+          .filter((result) => result.status === 'COMPLETED' && result.words)
+          .map((result) => [result.clipId, result.words!])
+      ),
     [job?.clips]
   );
   const unresolvedStaleIds = staleClipIds.filter(
     (clipId) => !acceptedStaleClipIds.includes(clipId)
   );
+
+  useEffect(() => {
+    if (!job || !TERMINAL_AUTO_CAPTION_STATUSES.has(job.status)) return;
+
+    let cancelled = false;
+    void waitForCaptionFontReady().then(() => {
+      if (cancelled) return;
+      setCaptions((current) => {
+        const next = [...current];
+        let changed = false;
+
+        (job.clips ?? []).forEach((result) => {
+          if (
+            result.status !== 'COMPLETED' ||
+            result.stale ||
+            !result.words ||
+            result.words.length === 0
+          ) {
+            return;
+          }
+
+          const existingClipCaptions = next.filter(
+            (caption) =>
+              caption.placement.type === 'CLIP' &&
+              caption.placement.clipId === result.clipId
+          );
+          if (existingClipCaptions.some(isAutoSpeechCaption)) return;
+
+          const nextZIndex =
+            existingClipCaptions.reduce(
+              (max, caption) => Math.max(max, caption.zIndex),
+              0
+            ) + 1;
+          const chunks = buildAutoCaptionChunks({
+            clipId: result.clipId,
+            words: result.words,
+            style: AUTO_CAPTION_DEFAULT_STYLE,
+            zIndex: nextZIndex,
+            measureText: measureCaptionText,
+          });
+          if (chunks.length === 0) return;
+          next.push(...chunks);
+          changed = true;
+        });
+
+        return changed ? next : current;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [captions, job, measureCaptionText, setCaptions]);
+
+  useEffect(() => {
+    if (!job || !TERMINAL_AUTO_CAPTION_STATUSES.has(job.status)) return;
+    if (jobWordsByClip.size === 0) return;
+
+    setCaptions((current) => {
+      let changed = false;
+      let next = current;
+      const clipIds = Array.from(
+        new Set(
+          current
+            .filter(
+              (caption) =>
+                caption.placement.type === 'CLIP' &&
+                isAutoSpeechCaption(caption)
+            )
+            .map((caption) =>
+              caption.placement.type === 'CLIP' ? caption.placement.clipId : -1
+            )
+            .filter((clipId) => clipId >= 0)
+        )
+      );
+
+      clipIds.forEach((clipId) => {
+        const words = jobWordsByClip.get(clipId);
+        if (!words || words.length === 0) return;
+        const autoCaptions = next.filter(
+          (caption) =>
+            caption.placement.type === 'CLIP' &&
+            caption.placement.clipId === clipId &&
+            isAutoSpeechCaption(caption)
+        );
+        if (autoCaptions.length === 0) return;
+        if (autoCaptions.some(isEditedAutoSpeechCaption)) return;
+
+        const base = autoCaptions[0];
+        const signature = JSON.stringify({
+          jobId: job.jobId,
+          clipId,
+          words: words.length,
+          xRatio: base.style.xRatio,
+          yRatio: base.style.yRatio,
+          scale: base.style.scale,
+          boxed: base.style.boxed,
+          maxWidthPx: base.style.maxWidthPx,
+          maxWidthRatio: base.style.maxWidthRatio,
+        });
+        if (autoCaptionRepackSignatureRef.current.get(clipId) === signature) {
+          return;
+        }
+
+        const minZIndex = autoCaptions.reduce(
+          (min, caption) => Math.min(min, caption.zIndex),
+          autoCaptions[0].zIndex
+        );
+        const rebuilt = buildAutoCaptionChunks({
+          clipId,
+          words,
+          style: base.style,
+          zIndex: minZIndex,
+          measureText: measureCaptionText,
+        });
+        const same =
+          rebuilt.length === autoCaptions.length &&
+          rebuilt.every((caption, index) => {
+            const currentCaption = autoCaptions[index];
+            return (
+              currentCaption.id === caption.id &&
+              currentCaption.text === caption.text &&
+              currentCaption.placement.type === 'CLIP' &&
+              caption.placement.type === 'CLIP' &&
+              currentCaption.placement.startMs === caption.placement.startMs &&
+              currentCaption.placement.endMs === caption.placement.endMs &&
+              currentCaption.style.scale === caption.style.scale &&
+              currentCaption.style.boxed === caption.style.boxed
+            );
+          });
+        autoCaptionRepackSignatureRef.current.set(clipId, signature);
+        if (same) return;
+
+        const rebuiltIds = new Set(autoCaptions.map((caption) => caption.id));
+        next = [
+          ...next.filter((caption) => !rebuiltIds.has(caption.id)),
+          ...rebuilt,
+        ].sort((a, b) => a.zIndex - b.zIndex);
+        changed = true;
+      });
+
+      return changed ? next : current;
+    });
+  }, [captions, job, jobWordsByClip, measureCaptionText, setCaptions]);
 
   useEffect(() => {
     const key = `reelstamp:auto-caption-prompt:${sessionId}`;
@@ -185,25 +378,98 @@ export default function AutoCaptionEditor({
   };
 
   const startAutoCaption = async (regenerate = false) => {
-    if (
-      regenerate &&
-      !window.confirm(
-        '기존 음성인식 자막만 새 결과로 교체합니다. 템플릿/사용자 자막은 유지됩니다.'
-      )
-    ) {
-      return;
+    if (regenerate) {
+      const hasEditedAutoCaptions = captions.some(isEditedAutoSpeechCaption);
+      const message = hasEditedAutoCaptions
+        ? '편집한 음성인식 자막이 새 결과로 교체됩니다. 템플릿/사용자 자막은 유지됩니다.'
+        : '기존 음성인식 자막만 새 결과로 교체합니다. 템플릿/사용자 자막은 유지됩니다.';
+      if (!window.confirm(message)) return;
     }
     markPromptSeen();
     await onStartAutoCaption();
+    if (regenerate) {
+      setCaptions((current) =>
+        current.filter((caption) => !isAutoSpeechCaption(caption))
+      );
+      if (
+        selectedCaptionId &&
+        captions.some(
+          (caption) =>
+            caption.id === selectedCaptionId && isAutoSpeechCaption(caption)
+        )
+      ) {
+        setSelectedCaptionId(null);
+      }
+      setEditingCaptionId(null);
+    }
   };
 
   const updateCaptionText = (captionId: string, text: string) => {
     if (isProcessing) return;
+    const target = captions.find((caption) => caption.id === captionId);
+    const promoted =
+      target && isAutoSpeechCaption(target)
+        ? promoteAutoSpeechCaptionForEdit(target)
+        : target;
+    const nextCaptionId = promoted?.id ?? captionId;
     setCaptions((current) =>
       current.map((caption) =>
-        caption.id === captionId ? { ...caption, text } : caption
+        caption.id === captionId
+          ? {
+              ...promoteAutoSpeechCaptionForEdit(caption),
+              text,
+            }
+          : caption
       )
     );
+    if (nextCaptionId !== captionId) {
+      if (selectedCaptionId === captionId) setSelectedCaptionId(nextCaptionId);
+      if (editingCaptionId === captionId) setEditingCaptionId(nextCaptionId);
+    }
+  };
+
+  const updateAutoCaptionTiming = (
+    captionId: string,
+    field: 'startMs' | 'endMs',
+    value: string
+  ) => {
+    if (isProcessing) return;
+    const parsedSeconds = Number(value);
+    if (!Number.isFinite(parsedSeconds)) return;
+    const parsedMs = Math.max(0, Math.round(parsedSeconds * 1000));
+    const target = captions.find((caption) => caption.id === captionId);
+    const promoted =
+      target && isAutoSpeechCaption(target)
+        ? promoteAutoSpeechCaptionForEdit(target)
+        : target;
+    const nextCaptionId = promoted?.id ?? captionId;
+
+    setCaptions((current) =>
+      current.map((caption) => {
+        if (caption.id !== captionId || caption.placement.type !== 'CLIP') {
+          return caption;
+        }
+        const nextCaption = promoteAutoSpeechCaptionForEdit(caption);
+        const currentStartMs = nextCaption.placement.startMs ?? 0;
+        const currentEndMs = nextCaption.placement.endMs ?? currentStartMs + 100;
+        const nextStartMs =
+          field === 'startMs' ? Math.min(parsedMs, currentEndMs - 100) : currentStartMs;
+        const nextEndMs =
+          field === 'endMs' ? Math.max(parsedMs, currentStartMs + 100) : currentEndMs;
+        return {
+          ...nextCaption,
+          placement: {
+            ...nextCaption.placement,
+            startMs: Math.max(0, nextStartMs),
+            endMs: Math.max(100, nextEndMs),
+          },
+        };
+      })
+    );
+    if (nextCaptionId !== captionId) {
+      if (selectedCaptionId === captionId) setSelectedCaptionId(nextCaptionId);
+      if (editingCaptionId === captionId) setEditingCaptionId(nextCaptionId);
+    }
   };
 
   const deleteCaption = (captionId: string) => {
@@ -307,6 +573,15 @@ export default function AutoCaptionEditor({
                 className="absolute inset-0 h-full w-full object-cover"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
+                onLoadedMetadata={() =>
+                  setPlaybackPosition({ cutIndex: activeCutIndex, ms: 0 })
+                }
+                onTimeUpdate={(event) =>
+                  setPlaybackPosition({
+                    cutIndex: activeCutIndex,
+                    ms: Math.round(event.currentTarget.currentTime * 1000),
+                  })
+                }
                 onEnded={handleEnded}
               />
             ) : (
@@ -314,9 +589,9 @@ export default function AutoCaptionEditor({
                 영상을 불러오는 중입니다.
               </div>
             )}
-            {captionsEnabled && activeCaptions.length > 0 && (
+            {captionsEnabled && visibleActiveCaptions.length > 0 && (
               <CaptionOverlayStage
-                captions={activeCaptions}
+                captions={visibleActiveCaptions}
                 selectedCaptionId={selectedCaptionId}
                 editingCaptionId={editingCaptionId}
                 previewScale={captionPreviewScale}
@@ -409,7 +684,9 @@ export default function AutoCaptionEditor({
               <button
                 type="button"
                 disabled={isProcessing || remainingAttempts <= 0}
-                onClick={() => void startAutoCaption(Boolean(job))}
+                onClick={() =>
+                  void startAutoCaption(Boolean(job) || captions.some(isAutoSpeechCaption))
+                }
                 className="flex items-center gap-2 rounded-full border border-blue-500 px-4 py-2 text-sm font-bold text-blue-600 disabled:opacity-40"
               >
                 {isProcessing ? (
@@ -417,7 +694,9 @@ export default function AutoCaptionEditor({
                 ) : (
                   <Mic className="h-4 w-4" />
                 )}
-                {job ? '다시 생성' : '음성으로 만들기'} ({remainingAttempts})
+                {job || captions.some(isAutoSpeechCaption)
+                  ? '다시 생성'
+                  : '음성으로 만들기'} ({remainingAttempts})
               </button>
             ) : (
               <a
@@ -463,9 +742,11 @@ export default function AutoCaptionEditor({
                     caption.placement.clipId === clipId
                 )
                 .sort((a, b) => a.zIndex - b.zIndex);
-              const overlayCaptionCount = clipCaptions.filter(
+              const autoCaptions = clipCaptions.filter(isAutoSpeechCaption);
+              const overlayCaptions = clipCaptions.filter(
                 (caption) => !isAutoSpeechCaption(caption)
-              ).length;
+              );
+              const overlayCaptionCount = overlayCaptions.length;
               const result = resultByClip.get(clipId);
               const stale = staleClipIds.includes(clipId);
               return (
@@ -526,52 +807,140 @@ export default function AutoCaptionEditor({
                           </button>
                         </div>
                       ) : (
-                        clipCaptions.map((caption) => (
-                          <div key={caption.id} className="flex items-start gap-2">
-                            <div className="min-w-0 flex-1">
-                              <div className="mb-1 flex items-center gap-1">
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                    isAutoSpeechCaption(caption)
-                                      ? 'bg-blue-50 text-blue-600'
-                                      : 'bg-slate-100 text-slate-500'
-                                  }`}
-                                >
-                                  {isAutoSpeechCaption(caption)
-                                    ? '음성인식'
-                                    : caption.source === 'TEMPLATE'
+                        <>
+                          {overlayCaptions.map((caption) => (
+                            <div key={caption.id} className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="mb-1 flex items-center gap-1">
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                                    {caption.source === 'TEMPLATE'
                                       ? '기본 자막'
                                       : '사용자 자막'}
-                                </span>
+                                  </span>
+                                </div>
+                                <textarea
+                                  value={caption.text}
+                                  onFocus={() => {
+                                    setActiveCutIndex(index);
+                                    setSelectedCaptionId(caption.id);
+                                  }}
+                                  onChange={(event) =>
+                                    updateCaptionText(caption.id, event.target.value)
+                                  }
+                                  disabled={isProcessing}
+                                  rows={Math.max(1, caption.text.split('\n').length)}
+                                  className="min-h-10 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50"
+                                />
                               </div>
-                              <textarea
-                                value={caption.text}
-                                onFocus={() => {
-                                  setActiveCutIndex(index);
-                                  setSelectedCaptionId(caption.id);
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  deleteCaption(caption.id);
                                 }}
-                                onChange={(event) =>
-                                  updateCaptionText(caption.id, event.target.value)
-                                }
                                 disabled={isProcessing}
-                                rows={Math.max(1, caption.text.split('\n').length)}
-                                className="min-h-10 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50"
-                              />
+                                className="p-2 text-slate-400 hover:text-rose-600 disabled:opacity-30"
+                                aria-label="자막 삭제"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                deleteCaption(caption.id);
-                              }}
-                              disabled={isProcessing}
-                              className="p-2 text-slate-400 hover:text-rose-600 disabled:opacity-30"
-                              aria-label="자막 삭제"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ))
+                          ))}
+                          {autoCaptions.length > 0 && (
+                            <details className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                              <summary className="cursor-pointer text-sm font-bold text-blue-700">
+                                음성인식 자막 {autoCaptions.length}개 청크
+                              </summary>
+                              <div className="mt-3 space-y-3">
+                                {autoCaptions.map((caption) => (
+                                  <div
+                                    key={caption.id}
+                                    className="rounded-xl bg-white p-2"
+                                  >
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">
+                                        음성인식
+                                      </span>
+                                      <span className="text-[11px] text-slate-400">
+                                        {caption.placement.type === 'CLIP'
+                                          ? formatTimeRangeMs(
+                                              caption.placement.startMs,
+                                              caption.placement.endMs
+                                            )
+                                          : ''}
+                                      </span>
+                                    </div>
+                                    <textarea
+                                      value={caption.text}
+                                      onFocus={() => {
+                                        setActiveCutIndex(index);
+                                        setSelectedCaptionId(caption.id);
+                                      }}
+                                      onChange={(event) =>
+                                        updateCaptionText(
+                                          caption.id,
+                                          event.target.value
+                                        )
+                                      }
+                                      disabled={isProcessing}
+                                      rows={Math.max(
+                                        1,
+                                        caption.text.split('\n').length
+                                      )}
+                                      className="min-h-10 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50"
+                                    />
+                                    {caption.placement.type === 'CLIP' && (
+                                      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-500">
+                                        <label>
+                                          시작(s)
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="0.1"
+                                            value={(
+                                              (caption.placement.startMs ?? 0) /
+                                              1000
+                                            ).toFixed(1)}
+                                            onChange={(event) =>
+                                              updateAutoCaptionTiming(
+                                                caption.id,
+                                                'startMs',
+                                                event.target.value
+                                              )
+                                            }
+                                            disabled={isProcessing}
+                                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 disabled:bg-slate-50"
+                                          />
+                                        </label>
+                                        <label>
+                                          종료(s)
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="0.1"
+                                            value={(
+                                              (caption.placement.endMs ?? 0) /
+                                              1000
+                                            ).toFixed(1)}
+                                            onChange={(event) =>
+                                              updateAutoCaptionTiming(
+                                                caption.id,
+                                                'endMs',
+                                                event.target.value
+                                              )
+                                            }
+                                            disabled={isProcessing}
+                                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 disabled:bg-slate-50"
+                                          />
+                                        </label>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+                        </>
                       )}
                       {clipCaptions.length > 0 &&
                         overlayCaptionCount < MAX_CAPTIONS_PER_CLIP && (

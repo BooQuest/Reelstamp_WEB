@@ -190,10 +190,9 @@ const normalizeSessionCaptions = (
       source,
       role,
       style: normalizeCaptionStyle(
-        caption.style ??
-          (source === 'AUTO'
-            ? AUTO_CAPTION_DEFAULT_STYLE
-            : DEFAULT_CAPTION_STYLE)
+        source === 'AUTO'
+          ? { ...AUTO_CAPTION_DEFAULT_STYLE, ...(caption.style ?? {}) }
+          : { ...DEFAULT_CAPTION_STYLE, ...(caption.style ?? {}) }
       ),
     };
   });
@@ -264,6 +263,9 @@ function ReelsMakerInner() {
   const [autoCaptionRemainingAttempts, setAutoCaptionRemainingAttempts] =
     useState(0);
   const [activeAutoCaptionJobId, setActiveAutoCaptionJobId] = useState<
+    string | null
+  >(null);
+  const [latestAutoCaptionJobId, setLatestAutoCaptionJobId] = useState<
     string | null
   >(null);
   const [staleAutoCaptionClipIds, setStaleAutoCaptionClipIds] = useState<
@@ -465,6 +467,7 @@ function ReelsMakerInner() {
         session.autoCaptionRemainingAttempts ?? 0
       );
       setActiveAutoCaptionJobId(session.activeAutoCaptionJobId ?? null);
+      setLatestAutoCaptionJobId(session.latestAutoCaptionJobId ?? null);
       setStaleAutoCaptionClipIds(session.staleAutoCaptionClipIds ?? []);
       setAcceptedStaleAutoCaptionClipIds((current) =>
         current.filter((clipId) =>
@@ -482,7 +485,7 @@ function ReelsMakerInner() {
     start: startAutoCaption,
   } = useAutoCaption({
     sessionId,
-    initialJobId: activeAutoCaptionJobId,
+    initialJobId: activeAutoCaptionJobId ?? latestAutoCaptionJobId,
     onSessionReloaded: applyCaptionSessionSnapshot,
   });
   const isRecordDisabled =
@@ -1037,6 +1040,7 @@ function ReelsMakerInner() {
         session.autoCaptionRemainingAttempts ?? 0
       );
       setActiveAutoCaptionJobId(session.activeAutoCaptionJobId ?? null);
+      setLatestAutoCaptionJobId(session.latestAutoCaptionJobId ?? null);
       setStaleAutoCaptionClipIds(session.staleAutoCaptionClipIds ?? []);
       setAcceptedStaleAutoCaptionClipIds([]);
       setSelectedCaptionId(restoredCaptions[0]?.id ?? null);
@@ -1177,6 +1181,7 @@ function ReelsMakerInner() {
     setAutoCaptionAvailable(false);
     setAutoCaptionRemainingAttempts(0);
     setActiveAutoCaptionJobId(null);
+    setLatestAutoCaptionJobId(null);
     setStaleAutoCaptionClipIds([]);
     setAcceptedStaleAutoCaptionClipIds([]);
     setSelectedCaptionId(null);
@@ -1857,6 +1862,9 @@ function ReelsMakerInner() {
         );
         setActiveAutoCaptionJobId(
           completePayload.data.activeAutoCaptionJobId ?? null
+        );
+        setLatestAutoCaptionJobId(
+          completePayload.data.latestAutoCaptionJobId ?? null
         );
         setStaleAutoCaptionClipIds(
           completePayload.data.staleAutoCaptionClipIds ?? []
