@@ -44,6 +44,7 @@ import CaptionOverlayStage from './CaptionOverlayStage';
 type Cut = {
   order: number;
   label: string;
+  durationSeconds: number;
   isFixed: boolean;
 };
 
@@ -58,6 +59,16 @@ const formatTimeRangeMs = (startMs?: number | null, endMs?: number | null) => {
   if (typeof startMs !== 'number' || typeof endMs !== 'number') return '';
   return `${(startMs / 1000).toFixed(1)}s-${(endMs / 1000).toFixed(1)}s`;
 };
+
+const formatTimelineMs = (valueMs: number) => {
+  const totalSeconds = Math.max(0, valueMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds - minutes * 60;
+  return `${minutes}:${seconds.toFixed(1).padStart(4, '0')}`;
+};
+
+const clampTimelineMs = (valueMs: number, totalDurationMs: number) =>
+  Math.max(0, Math.min(totalDurationMs, valueMs));
 
 type Props = {
   sessionId: number;
@@ -150,16 +161,75 @@ export default function AutoCaptionEditor({
   onToggleBox,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  const timelineScrubbingRef = useRef(false);
+  const pendingSeekRef = useRef<{
+    cutIndex: number;
+    localMs: number;
+    shouldPlay: boolean;
+  } | null>(null);
   const autoCaptionRepackSignatureRef = useRef(new Map<number, string>());
   const measureCaptionText = useMemo(() => createCaptionTextMeasurer(), []);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
+  const [isTimelineScrubbing, setIsTimelineScrubbing] = useState(false);
   const [playbackPosition, setPlaybackPosition] = useState({
     cutIndex: activeCutIndex,
     ms: 0,
   });
   const playbackMs =
     playbackPosition.cutIndex === activeCutIndex ? playbackPosition.ms : 0;
+  const clipDurationsMs = useMemo(
+    () =>
+      cuts.map((cut, index) => {
+        const clipDuration = clips[index]?.duration;
+        const durationSeconds =
+          typeof clipDuration === 'number' && Number.isFinite(clipDuration)
+            ? clipDuration
+            : cut.durationSeconds;
+        return Math.max(0, Math.round(durationSeconds * 1000));
+      }),
+    [clips, cuts]
+  );
+  const timelineSegments = useMemo(() => {
+    return clipDurationsMs.reduce<{
+      cursor: number;
+      segments: Array<{
+        index: number;
+        startMs: number;
+        endMs: number;
+        durationMs: number;
+      }>;
+    }>(
+      (acc, durationMs, index) => {
+        const startMs = acc.cursor;
+      const endMs = startMs + durationMs;
+        return {
+          cursor: endMs,
+          segments: [
+            ...acc.segments,
+            { index, startMs, endMs, durationMs },
+          ],
+        };
+      },
+      { cursor: 0, segments: [] }
+    ).segments;
+  }, [clipDurationsMs]);
+  const totalDurationMs = useMemo(
+    () =>
+      timelineSegments.reduce(
+        (total, segment) => Math.max(total, segment.endMs),
+        0
+      ),
+    [timelineSegments]
+  );
+  const activeSegment = timelineSegments[activeCutIndex] ?? null;
+  const globalPlaybackMs = clampTimelineMs(
+    (activeSegment?.startMs ?? 0) + playbackMs,
+    totalDurationMs
+  );
+  const timelineProgressPercent =
+    totalDurationMs > 0 ? (globalPlaybackMs / totalDurationMs) * 100 : 0;
   const activeClipId = sessionClipMap[cuts[activeCutIndex]?.order] ?? null;
   const activeCaptions = useMemo(
     () =>
@@ -368,9 +438,113 @@ export default function AutoCaptionEditor({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.currentTime = 0;
-    if (isPlaying) void video.play().catch(() => setIsPlaying(false));
-  }, [activeCutIndex, isPlaying]);
+    const pendingSeek = pendingSeekRef.current;
+    const targetMs =
+      pendingSeek && pendingSeek.cutIndex === activeCutIndex
+        ? pendingSeek.localMs
+        : 0;
+    video.currentTime = targetMs / 1000;
+    if (pendingSeek && pendingSeek.cutIndex === activeCutIndex) {
+      if (pendingSeek.shouldPlay) {
+        void video.play().catch(() => setIsPlaying(false));
+      }
+      pendingSeekRef.current = null;
+    }
+  }, [activeCutIndex]);
+
+  const resolveGlobalPlayback = (targetGlobalMs: number) => {
+    const clampedGlobalMs = clampTimelineMs(targetGlobalMs, totalDurationMs);
+    if (timelineSegments.length === 0) {
+      return { cutIndex: 0, localMs: 0 };
+    }
+
+    const segment =
+      timelineSegments.find(
+        (item) =>
+          clampedGlobalMs >= item.startMs && clampedGlobalMs < item.endMs
+      ) ?? timelineSegments.at(-1)!;
+    const localMs =
+      segment.durationMs <= 0
+        ? 0
+        : clampTimelineMs(clampedGlobalMs - segment.startMs, segment.durationMs);
+    return { cutIndex: segment.index, localMs };
+  };
+
+  const seekToCut = (
+    cutIndex: number,
+    localMs: number = 0,
+    shouldPlay: boolean = isPlaying
+  ) => {
+    const safeCutIndex = Math.max(0, Math.min(cuts.length - 1, cutIndex));
+    const durationMs = clipDurationsMs[safeCutIndex] ?? 0;
+    const safeLocalMs = clampTimelineMs(localMs, durationMs);
+    pendingSeekRef.current = {
+      cutIndex: safeCutIndex,
+      localMs: safeLocalMs,
+      shouldPlay,
+    };
+    setPlaybackPosition({ cutIndex: safeCutIndex, ms: safeLocalMs });
+    setActiveCutIndex(safeCutIndex);
+
+    const video = videoRef.current;
+    if (video && safeCutIndex === activeCutIndex) {
+      video.currentTime = safeLocalMs / 1000;
+      if (shouldPlay) {
+        void video.play().catch(() => setIsPlaying(false));
+      } else if (!video.paused) {
+        video.pause();
+      }
+      pendingSeekRef.current = null;
+    }
+  };
+
+  const seekToGlobalMs = (
+    targetGlobalMs: number,
+    shouldPlay: boolean = isPlaying
+  ) => {
+    const target = resolveGlobalPlayback(targetGlobalMs);
+    seekToCut(target.cutIndex, target.localMs, shouldPlay);
+  };
+
+  const getTimelinePointerMs = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    const rect = timelineRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || totalDurationMs <= 0) return null;
+    const ratio = (event.clientX - rect.left) / rect.width;
+    return clampTimelineMs(ratio * totalDurationMs, totalDurationMs);
+  };
+
+  const handleTimelinePointerDown = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    const targetMs = getTimelinePointerMs(event);
+    if (targetMs == null) return;
+    event.preventDefault();
+    timelineScrubbingRef.current = true;
+    setIsTimelineScrubbing(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    seekToGlobalMs(targetMs, isPlaying);
+  };
+
+  const handleTimelinePointerMove = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    if (!timelineScrubbingRef.current) return;
+    const targetMs = getTimelinePointerMs(event);
+    if (targetMs == null) return;
+    seekToGlobalMs(targetMs, isPlaying);
+  };
+
+  const stopTimelineScrubbing = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    timelineScrubbingRef.current = false;
+    setIsTimelineScrubbing(false);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
 
   const markPromptSeen = () => {
     sessionStorage.setItem(`reelstamp:auto-caption-prompt:${sessionId}`, 'seen');
@@ -514,16 +688,18 @@ export default function AutoCaptionEditor({
   };
 
   const movePlayback = (direction: -1 | 1) => {
-    setActiveCutIndex((current) =>
-      Math.max(0, Math.min(cuts.length - 1, current + direction))
-    );
+    seekToCut(activeCutIndex + direction, 0, isPlaying);
   };
 
   const handleEnded = () => {
     if (activeCutIndex < cuts.length - 1) {
-      setActiveCutIndex(activeCutIndex + 1);
+      seekToCut(activeCutIndex + 1, 0, true);
       return;
     }
+    setPlaybackPosition({
+      cutIndex: activeCutIndex,
+      ms: clipDurationsMs[activeCutIndex] ?? playbackMs,
+    });
     setIsPlaying(false);
   };
 
@@ -573,15 +749,35 @@ export default function AutoCaptionEditor({
                 className="absolute inset-0 h-full w-full object-cover"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
-                onLoadedMetadata={() =>
-                  setPlaybackPosition({ cutIndex: activeCutIndex, ms: 0 })
-                }
-                onTimeUpdate={(event) =>
+                onLoadedMetadata={(event) => {
+                  const pendingSeek = pendingSeekRef.current;
+                  const targetMs =
+                    pendingSeek && pendingSeek.cutIndex === activeCutIndex
+                      ? pendingSeek.localMs
+                      : playbackPosition.cutIndex === activeCutIndex
+                        ? playbackPosition.ms
+                        : 0;
+                  event.currentTarget.currentTime = targetMs / 1000;
+                  setPlaybackPosition({ cutIndex: activeCutIndex, ms: targetMs });
+                  if (pendingSeek && pendingSeek.cutIndex === activeCutIndex) {
+                    if (pendingSeek.shouldPlay) {
+                      void event.currentTarget
+                        .play()
+                        .catch(() => setIsPlaying(false));
+                    }
+                    pendingSeekRef.current = null;
+                  }
+                }}
+                onTimeUpdate={(event) => {
+                  const durationMs = clipDurationsMs[activeCutIndex] ?? 0;
                   setPlaybackPosition({
                     cutIndex: activeCutIndex,
-                    ms: Math.round(event.currentTarget.currentTime * 1000),
-                  })
-                }
+                    ms: clampTimelineMs(
+                      Math.round(event.currentTarget.currentTime * 1000),
+                      durationMs
+                    ),
+                  });
+                }}
                 onEnded={handleEnded}
               />
             ) : (
@@ -628,6 +824,55 @@ export default function AutoCaptionEditor({
                   }`}
                 />
               </button>
+            </div>
+          </div>
+
+          <div className="mx-auto mt-3 max-w-[390px] rounded-2xl bg-white px-4 py-3 shadow-sm">
+            <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-500">
+              <span>{formatTimelineMs(globalPlaybackMs)}</span>
+              <span>{formatTimelineMs(totalDurationMs)}</span>
+            </div>
+            <div
+              ref={timelineRef}
+              role="slider"
+              tabIndex={0}
+              aria-label="전체 미리보기 타임라인"
+              aria-valuemin={0}
+              aria-valuemax={Math.round(totalDurationMs)}
+              aria-valuenow={Math.round(globalPlaybackMs)}
+              onPointerDown={handleTimelinePointerDown}
+              onPointerMove={handleTimelinePointerMove}
+              onPointerUp={stopTimelineScrubbing}
+              onPointerCancel={stopTimelineScrubbing}
+              className={`relative h-6 cursor-pointer touch-none ${
+                totalDurationMs <= 0 ? 'pointer-events-none opacity-40' : ''
+              }`}
+            >
+              <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-blue-600"
+                  style={{ width: `${timelineProgressPercent}%` }}
+                />
+              </div>
+              {timelineSegments.slice(1).map((segment) => (
+                <span
+                  key={segment.index}
+                  className="absolute top-1/2 h-3 w-px -translate-y-1/2 bg-white/80"
+                  style={{
+                    left: `${
+                      totalDurationMs > 0
+                        ? (segment.startMs / totalDurationMs) * 100
+                        : 0
+                    }%`,
+                  }}
+                />
+              ))}
+              <span
+                className={`absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-600 shadow transition ${
+                  isTimelineScrubbing ? 'scale-110' : ''
+                }`}
+                style={{ left: `${timelineProgressPercent}%` }}
+              />
             </div>
           </div>
 
@@ -757,13 +1002,13 @@ export default function AutoCaptionEditor({
                       ? 'border-blue-500 ring-2 ring-blue-100'
                       : 'border-slate-200'
                   }`}
-                  onClick={() => setActiveCutIndex(index)}
+                  onClick={() => seekToCut(index, 0, isPlaying)}
                 >
                   <div className="flex gap-3">
                     <button
                       type="button"
                       className="h-20 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-200"
-                      onClick={() => setActiveCutIndex(index)}
+                      onClick={() => seekToCut(index, 0, isPlaying)}
                     >
                       {clipPosters[index] ? (
                         <img
@@ -821,7 +1066,7 @@ export default function AutoCaptionEditor({
                                 <textarea
                                   value={caption.text}
                                   onFocus={() => {
-                                    setActiveCutIndex(index);
+                                    seekToCut(index, 0, isPlaying);
                                     setSelectedCaptionId(caption.id);
                                   }}
                                   onChange={(event) =>
@@ -873,7 +1118,7 @@ export default function AutoCaptionEditor({
                                     <textarea
                                       value={caption.text}
                                       onFocus={() => {
-                                        setActiveCutIndex(index);
+                                        seekToCut(index, 0, isPlaying);
                                         setSelectedCaptionId(caption.id);
                                       }}
                                       onChange={(event) =>

@@ -26,7 +26,7 @@ const autoCaption: CaptionItem = {
 
 const baseProps = () => ({
   sessionId: 1,
-  cuts: [{ order: 1, label: '4초', isFixed: false }],
+  cuts: [{ order: 1, label: '4초', durationSeconds: 4, isFixed: false }],
   clips: [null],
   clipPosters: {},
   sessionClipMap: { 1: 10 },
@@ -71,6 +71,27 @@ const baseProps = () => ({
 describe('AutoCaptionEditor', () => {
   beforeEach(() => {
     sessionStorage.clear();
+    Object.defineProperty(window.HTMLMediaElement.prototype, 'play', {
+      configurable: true,
+      value: function play() {
+        Object.defineProperty(this, 'paused', {
+          configurable: true,
+          value: false,
+        });
+        this.dispatchEvent(new Event('play'));
+        return Promise.resolve();
+      },
+    });
+    Object.defineProperty(window.HTMLMediaElement.prototype, 'pause', {
+      configurable: true,
+      value: function pause() {
+        Object.defineProperty(this, 'paused', {
+          configurable: true,
+          value: true,
+        });
+        this.dispatchEvent(new Event('pause'));
+      },
+    });
   });
 
   afterEach(() => {
@@ -189,5 +210,77 @@ describe('AutoCaptionEditor', () => {
       clipId: 10,
       startMs: 0,
     });
+  });
+
+  it('pauses preview without resetting the current clip time', async () => {
+    const props = {
+      ...baseProps(),
+      clips: [
+        {
+          blob: new Blob(['video']),
+          url: 'blob:preview-1',
+          duration: 4,
+          mimeType: 'video/mp4',
+        },
+      ],
+    };
+    render(<AutoCaptionEditor {...props} />);
+
+    const video = document.querySelector('video') as HTMLVideoElement;
+    video.currentTime = 2.4;
+    fireEvent.timeUpdate(video);
+    fireEvent.play(video);
+
+    const pauseButton = await screen.findByRole('button', { name: '일시 정지' });
+    fireEvent.click(pauseButton);
+
+    await waitFor(() => expect(video.currentTime).toBeCloseTo(2.4));
+  });
+
+  it('seeks the global timeline to the matching clip', () => {
+    const props = {
+      ...baseProps(),
+      cuts: [
+        { order: 1, label: '4초', durationSeconds: 4, isFixed: false },
+        { order: 2, label: '6초', durationSeconds: 6, isFixed: false },
+      ],
+      clips: [
+        {
+          blob: new Blob(['one']),
+          url: 'blob:preview-1',
+          duration: 4,
+          mimeType: 'video/mp4',
+        },
+        {
+          blob: new Blob(['two']),
+          url: 'blob:preview-2',
+          duration: 6,
+          mimeType: 'video/mp4',
+        },
+      ],
+      sessionClipMap: { 1: 10, 2: 11 },
+    };
+    render(<AutoCaptionEditor {...props} />);
+
+    const slider = screen.getByRole('slider', {
+      name: '전체 미리보기 타임라인',
+    });
+    slider.getBoundingClientRect = vi.fn(
+      () =>
+        ({
+          left: 0,
+          right: 100,
+          top: 0,
+          bottom: 10,
+          width: 100,
+          height: 10,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        }) as DOMRect
+    );
+    fireEvent.pointerDown(slider, { clientX: 75, pointerId: 1 });
+
+    expect(props.setActiveCutIndex).toHaveBeenCalledWith(1);
   });
 });
