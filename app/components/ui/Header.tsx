@@ -43,7 +43,7 @@ const MENU_ITEMS: MenuItem[] = [
 const DESKTOP_MENU_ITEMS: MenuItem[] = [
   {
     href: '/templates',
-    label: '맞춤형 릴스 추천',
+    label: '오늘의 릴스 트렌드',
   },
   {
     href: '/all-templates',
@@ -68,7 +68,7 @@ const DESKTOP_MENU_ITEMS: MenuItem[] = [
 const MOBILE_PRIMARY_ITEMS: MobileMenuItem[] = [
   {
     href: '/templates',
-    label: '맞춤형 릴스 추천',
+    label: '오늘의 릴스 트렌드',
     icon: Sparkles,
   },
   {
@@ -480,7 +480,7 @@ export default function Header() {
                               className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
                             >
                               <Sparkles className="w-5 h-5 text-gray-400" />
-                              <span className="text-base font-medium">맞춤형 릴스 추천</span>
+                              <span className="text-base font-medium">오늘의 릴스 트렌드</span>
                             </Link>
                             <Link
                               href="/all-templates"

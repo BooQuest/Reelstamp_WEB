@@ -18,7 +18,7 @@ export type CaptureMenuItem = {
 export const CAPTURE_MENU_ITEMS: CaptureMenuItem[] = [
   {
     href: '/templates',
-    label: '맞춤형 릴스 추천',
+    label: '오늘의 릴스 트렌드',
     icon: Sparkles,
   },
   {
