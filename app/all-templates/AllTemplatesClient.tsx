@@ -348,7 +348,7 @@ export default function AllTemplatesClient() {
 
   return (
     <div className="min-h-[calc(100vh-80px)] bg-white">
-      <div className="max-w-6xl mx-auto px-4 py-8 sm:py-10">
+      <div className="max-w-6xl mx-auto px-4 py-5 sm:py-10">
         {showSelectTemplateBanner && (
           <div className="mb-6 rounded-2xl border border-rose-200/60 bg-white px-4 py-3 text-sm sm:text-base text-rose-500 shadow-sm">
             템플릿을 먼저 선택해주세요.
@@ -368,7 +368,7 @@ export default function AllTemplatesClient() {
         )}
 
         {!isLoading && !loadError && showCategoryHome && (
-          <div className="space-y-12">
+          <div className="space-y-8 sm:space-y-12">
             {categories.length === 0 && (
               <div className="py-20 text-center text-sm sm:text-base text-gray-500">
                 등록된 템플릿 카테고리가 없습니다.
@@ -377,7 +377,7 @@ export default function AllTemplatesClient() {
 
             {categories.map((category) => (
               <section key={category.id} className="min-w-0">
-                <div className="mb-5 flex items-center justify-between gap-4">
+                <div className="mb-3 flex items-center justify-between gap-4 sm:mb-5">
                   <button
                     type="button"
                     onClick={() => handleOpenCategory(category.id)}
@@ -395,15 +395,15 @@ export default function AllTemplatesClient() {
                     등록된 템플릿이 없습니다.
                   </div>
                 ) : (
-                  <div className="flex gap-5 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="flex gap-3 overflow-x-auto pb-2 sm:gap-5 sm:pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {category.templates.map((template) => (
                       <button
                         key={`${category.id}-${template.id}`}
                         type="button"
                         onClick={() => handleOpenTemplatePreview(category.id, template.id)}
-                        className="group w-[42vw] min-w-[156px] max-w-[220px] flex-none text-left sm:w-[210px] md:w-[230px]"
+                        className="group w-[31vw] min-w-[112px] max-w-[132px] flex-none text-left sm:w-[210px] sm:min-w-[210px] sm:max-w-[220px] md:w-[230px] md:max-w-[230px]"
                       >
-                        <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl bg-gray-100 ring-1 ring-black/5">
+                        <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100 ring-1 ring-black/5 sm:rounded-2xl">
                           <TemplateMediaPreview
                             title={template.title}
                             thumbnailUrl={template.thumbnailUrl}
@@ -412,7 +412,7 @@ export default function AllTemplatesClient() {
                             imageClassName="transition-transform duration-300 group-hover:scale-[1.03]"
                           />
                         </div>
-                        <h3 className="mt-3 truncate text-base font-bold text-gray-950 sm:text-lg">
+                        <h3 className="mt-2 truncate text-sm font-bold text-gray-950 sm:mt-3 sm:text-lg">
                           {template.title}
                         </h3>
                       </button>
