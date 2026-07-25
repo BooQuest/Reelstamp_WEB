@@ -232,7 +232,7 @@ export default function TemplatesClient() {
                 />
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/80" />
 
-                <div className="pointer-events-none absolute top-4 left-4 px-3 py-1 rounded-full bg-[#FF4D6D] text-xs font-semibold shadow-lg">
+                <div className="pointer-events-none absolute top-4 left-4 flex h-12 min-w-[98px] items-center justify-center rounded-full bg-[#FF4D6D] px-5 text-base font-extrabold leading-none shadow-lg sm:h-14 sm:min-w-[112px] sm:text-lg">
                   추천 {index + 1}
                 </div>
 
