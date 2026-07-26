@@ -492,23 +492,21 @@ export default function AllTemplatesClient() {
           onClick={handleCloseModal}
         >
           <div
-            className="absolute inset-0 flex flex-col"
+            className="absolute inset-0"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-end px-6 pt-6">
-              <button
-                type="button"
-                onClick={handleCloseModal}
-                className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white hover:bg-white/20 transition"
-                aria-label="닫기"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleCloseModal}
+              className="absolute right-5 top-5 z-[90] flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:right-6 sm:top-6"
+              aria-label="닫기"
+            >
+              <X className="w-5 h-5" />
+            </button>
 
-            <div className="flex-1 overflow-hidden">
+            <div className="flex h-full flex-col items-center justify-center overflow-hidden px-0 py-8 sm:py-10">
               <div
-                className="relative flex h-[520px] w-full touch-pan-y select-none items-center justify-center overflow-hidden overscroll-x-none pb-6 sm:h-[560px] sm:pb-8 md:h-[600px]"
+                className="relative flex h-[390px] max-h-[60vh] w-full touch-pan-y select-none items-center justify-center overflow-hidden overscroll-x-none pb-2 sm:h-[500px] sm:max-h-[62vh] sm:pb-3 md:h-[520px] lg:h-[540px]"
                 onPointerDown={handleCarouselPointerDown}
                 onPointerUp={handleCarouselPointerUp}
                 onPointerCancel={handleCarouselPointerCancel}
@@ -598,13 +596,11 @@ export default function AllTemplatesClient() {
                   </button>
                 )}
               </div>
-            </div>
 
-            <div className="px-6 pb-8">
               <button
                 type="button"
                 onClick={handleCreate}
-                className="w-full max-w-md mx-auto block rounded-full bg-[#FF4E73] text-white text-base sm:text-lg font-semibold py-4 shadow-lg shadow-pink-500/30 hover:brightness-105 transition"
+                className="mt-4 block w-[calc(100%-3rem)] max-w-md rounded-full bg-[#FF4E73] py-4 text-base font-semibold text-white shadow-lg shadow-pink-500/30 transition hover:brightness-105 sm:text-lg"
               >
                 3분 만에 만들기
               </button>
