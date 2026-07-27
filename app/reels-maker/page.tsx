@@ -35,7 +35,6 @@ import CaptionOverlayStage from '@/app/reels-maker/components/CaptionOverlayStag
 import CapturedClipPreview from '@/app/reels-maker/components/CapturedClipPreview';
 import CutMediaSourceModal from '@/app/reels-maker/components/CutMediaSourceModal';
 import CutExampleModal from '@/app/reels-maker/components/CutExampleModal';
-import ExampleReelsModal from '@/app/reels-maker/components/ExampleReelsModal';
 import ExitConfirmModal from '@/app/reels-maker/components/ExitConfirmModal';
 import FinalPreview from '@/app/reels-maker/components/FinalPreview';
 import FixedClipVideo from '@/app/reels-maker/components/FixedClipVideo';
@@ -319,7 +318,6 @@ function ReelsMakerInner() {
   const [cutGuideVisibility, setCutGuideVisibility] = useState<Record<number, boolean>>({});
   const [guideImageIndexByCut, setGuideImageIndexByCut] = useState<Record<number, number>>({});
   const [isExampleOpen, setIsExampleOpen] = useState(false);
-  const [isReelOpen, setIsReelOpen] = useState(false);
   const [exampleReelIndex, setExampleReelIndex] = useState(0);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
@@ -467,7 +465,8 @@ function ReelsMakerInner() {
   const activeClipId = activeCut ? sessionClipMap[activeCut.order] ?? null : null;
   const activeClipSource = clipSources[activeCutIndex] ?? null;
   const shouldConfirmActiveRetake = activeClipSource === 'recording';
-  const activeCutGuideText = activeCut?.guideText?.trim() || '등록된 컷 가이드가 없습니다.';
+  const activeCutGuideText = activeCut?.guideText?.trim() ?? '';
+  const hasActiveCutGuideText = activeCutGuideText.length > 0;
   const showCaptionStage =
     captionsEnabled &&
     !activeUploadError &&
@@ -665,6 +664,10 @@ function ReelsMakerInner() {
   const currentExampleReelUrl = exampleReelUrls[exampleReelIndex] ?? null;
   const isFirstExampleReel = exampleReelIndex <= 0;
   const isLastExampleReel = exampleReelIndex >= exampleReelUrls.length - 1;
+  const canOpenActiveCutExample =
+    shouldShowActiveCutExampleMedia || hasExampleReels || hasActiveCutGuideText;
+  const activeCutExampleButtonLabel =
+    shouldShowActiveCutExampleMedia || hasExampleReels ? '예시 보기' : '촬영 팁';
   const activeCutDurationMode = activeCut?.isFixed
     ? null
     : (activeCut?.durationMode ?? DURATION_MODE_RECOMMENDED);
@@ -1316,10 +1319,10 @@ function ReelsMakerInner() {
   }, [cuts.length, activeCutIndex]);
 
   useEffect(() => {
-    if (!isReelOpen) {
+    if (!isExampleOpen) {
       setExampleReelIndex(0);
     }
-  }, [isReelOpen]);
+  }, [isExampleOpen]);
 
   useEffect(() => {
     if (exampleReelUrls.length === 0) {
@@ -3318,7 +3321,6 @@ function ReelsMakerInner() {
     setFinalVideoMimeType('video/mp4');
     setIsPreviewOpen(false);
     setIsExampleOpen(false);
-    setIsReelOpen(false);
     setExampleReelIndex(0);
     setIsResetOpen(false);
     setDownloadToastMessage(null);
@@ -3707,13 +3709,15 @@ function ReelsMakerInner() {
                       </p>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsExampleOpen(true)}
-                    className="h-10 shrink-0 rounded-full bg-[#FF4D6D] px-4 text-xs font-semibold shadow-lg"
-                  >
-                    예시 보기
-                  </button>
+                  {canOpenActiveCutExample && (
+                    <button
+                      type="button"
+                      onClick={() => setIsExampleOpen(true)}
+                      className="h-10 shrink-0 rounded-full bg-[#FF4D6D] px-4 text-xs font-semibold shadow-lg"
+                    >
+                      {activeCutExampleButtonLabel}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setIsCaptureMenuOpen(true)}
@@ -4091,37 +4095,20 @@ function ReelsMakerInner() {
       {isExampleOpen && (
         <CutExampleModal
           media={visibleActiveCutExampleMedia}
-          shouldShowMedia={shouldShowActiveCutExampleMedia}
           isLoading={isActiveExampleMediaLoading}
           isLoaded={isActiveExampleMediaLoaded}
-          hasExampleReels={hasExampleReels}
           guideText={activeCutGuideText}
+          reelUrls={exampleReelUrls}
+          currentReelUrl={currentExampleReelUrl}
+          currentReelIndex={exampleReelIndex}
+          isFirstReel={isFirstExampleReel}
+          isLastReel={isLastExampleReel}
           onClose={() => setIsExampleOpen(false)}
           onMediaLoad={handleActiveExampleMediaLoad}
           onMediaError={handleActiveExampleMediaError}
-          onOpenReels={() => {
-            if (!hasExampleReels) return;
-            setIsExampleOpen(false);
-            setExampleReelIndex(0);
-            setIsReelOpen(true);
-          }}
-        />
-      )}
-
-      {isReelOpen && (
-        <ExampleReelsModal
-          urls={exampleReelUrls}
-          currentUrl={currentExampleReelUrl}
-          currentIndex={exampleReelIndex}
-          isFirst={isFirstExampleReel}
-          isLast={isLastExampleReel}
-          onClose={() => {
-            setIsReelOpen(false);
-            setExampleReelIndex(0);
-          }}
-          onPrevious={handlePrevExampleReel}
-          onNext={handleNextExampleReel}
-          onSelect={setExampleReelIndex}
+          onPreviousReel={handlePrevExampleReel}
+          onNextReel={handleNextExampleReel}
+          onSelectReel={setExampleReelIndex}
         />
       )}
 
