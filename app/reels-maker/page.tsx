@@ -600,6 +600,7 @@ function ReelsMakerInner() {
     activeGuideImageIndex >= 0 ? guideImageEntries[activeGuideImageIndex]?.url ?? null : null;
   const hasMultipleGuideImages = guideImageCount > 1;
   const isGuideImageNavigationDisabled = recordingStatus === 'recording' && hasTimedGuideImages;
+  const shouldShowGuideImageToggle = Boolean(guideImageSrc);
   const isGuideImageVisible =
     Boolean(guideImageSrc) && (cutGuideVisibility[activeCutIndex] ?? true);
   const activeCutKey = useMemo(() => {
@@ -3858,14 +3859,15 @@ function ReelsMakerInner() {
                   <div className="pointer-events-none absolute inset-x-0 top-0 z-30 space-y-2 bg-gradient-to-b from-black/35 via-black/10 to-transparent px-3 pb-6 pt-3">
                     <div className="pointer-events-auto">
                       <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={handleGuideImageToggle}
-                          disabled={!guideImageSrc}
-                          className="h-10 min-w-0 w-full rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          가이드 이미지 {isGuideImageVisible ? 'ON' : 'OFF'}
-                        </button>
+                        {shouldShowGuideImageToggle && (
+                          <button
+                            type="button"
+                            onClick={handleGuideImageToggle}
+                            className="h-10 min-w-0 w-full rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap"
+                          >
+                            가이드 이미지 {isGuideImageVisible ? 'ON' : 'OFF'}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={addCaptionToActiveClip}
@@ -3891,7 +3893,9 @@ function ReelsMakerInner() {
                           type="button"
                           onClick={deleteSelectedCaption}
                           disabled={!resolvedSelectedCaptionId}
-                          className="flex h-10 min-w-0 w-full items-center justify-center gap-1 rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40"
+                          className={`flex h-10 min-w-0 w-full items-center justify-center gap-1 rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40 ${
+                            shouldShowGuideImageToggle ? '' : 'col-span-2'
+                          }`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           선택 자막 삭제
