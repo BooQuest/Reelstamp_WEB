@@ -6,7 +6,7 @@ import type {
 } from 'react';
 import {
   CAPTION_BASE_FONT_SIZE_PX,
-  CAPTION_BOX_BACKGROUND_OPACITY,
+  CAPTION_BOX_BACKGROUND_COLOR,
   CAPTION_BOX_BORDER_RADIUS_PX,
   CAPTION_BOX_PADDING_X_PX,
   CAPTION_BOX_PADDING_Y_PX,
@@ -144,7 +144,7 @@ export default function CaptionOverlayStage({
                 : '0px',
               borderRadius: `${CAPTION_BOX_BORDER_RADIUS_PX * style.scale}px`,
               backgroundColor: style.boxed
-                ? `rgba(0, 0, 0, ${CAPTION_BOX_BACKGROUND_OPACITY})`
+                ? CAPTION_BOX_BACKGROUND_COLOR
                 : 'transparent',
               boxShadow: style.boxed
                 ? `0 ${CAPTION_SHADOW_OFFSET_Y_PX * style.scale}px ${
