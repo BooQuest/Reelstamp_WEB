@@ -45,6 +45,43 @@ type Props = {
   cameraFrameRef: MutableRefObject<HTMLDivElement | null>;
 };
 
+type PointerCaptureElement = Element & {
+  setPointerCapture?: (pointerId: number) => void;
+  releasePointerCapture?: (pointerId: number) => void;
+  hasPointerCapture?: (pointerId: number) => boolean;
+};
+
+const getVisibleElementRect = (element: Element | null) => {
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  return rect;
+};
+
+const setPointerCaptureSafely = (
+  target: PointerCaptureElement,
+  pointerId: number
+) => {
+  try {
+    target.setPointerCapture?.(pointerId);
+  } catch {
+    return;
+  }
+};
+
+const releasePointerCaptureSafely = (
+  target: PointerCaptureElement,
+  pointerId: number
+) => {
+  try {
+    if (target.hasPointerCapture?.(pointerId)) {
+      target.releasePointerCapture?.(pointerId);
+    }
+  } catch {
+    return;
+  }
+};
+
 export default function useCaptionEditor({
   activeClipId,
   showCaptionStage,
@@ -123,9 +160,8 @@ export default function useCaptionEditor({
 
   const getCaptionInteractionRect = useCallback(
     () =>
-      captionStageRef.current?.getBoundingClientRect() ??
-      cameraFrameRef.current?.getBoundingClientRect() ??
-      null,
+      getVisibleElementRect(captionStageRef.current) ??
+      getVisibleElementRect(cameraFrameRef.current),
     [cameraFrameRef]
   );
 
@@ -328,8 +364,9 @@ export default function useCaptionEditor({
           MIN_CAPTION_SCALE,
           MAX_CAPTION_SCALE
         );
+        const startStyle = gesture.startStyle;
         updateGestureCaptionStyle(() => ({
-          ...gesture.startStyle!,
+          ...startStyle,
           scale: nextScale,
         }));
         return;
@@ -351,12 +388,11 @@ export default function useCaptionEditor({
         }
         const deltaX = event.clientX - gesture.startPointer.x;
         const deltaY = event.clientY - gesture.startPointer.y;
+        const startStyle = gesture.startStyle;
         updateGestureCaptionStyle(() => ({
-          ...gesture.startStyle!,
-          xRatio:
-            gesture.startStyle!.xRatio + deltaX / interactionRect.width,
-          yRatio:
-            gesture.startStyle!.yRatio + deltaY / interactionRect.height,
+          ...startStyle,
+          xRatio: startStyle.xRatio + deltaX / interactionRect.width,
+          yRatio: startStyle.yRatio + deltaY / interactionRect.height,
         }));
       }
     },
@@ -371,10 +407,7 @@ export default function useCaptionEditor({
     (event: PointerEvent<HTMLDivElement>) => {
       const gesture = captionGestureRef.current;
       gesture.pointerMap.delete(event.pointerId);
-      const target = event.currentTarget;
-      if (target.hasPointerCapture(event.pointerId)) {
-        target.releasePointerCapture(event.pointerId);
-      }
+      releasePointerCaptureSafely(event.currentTarget, event.pointerId);
       if (gesture.pointerMap.size === 0) {
         resetCaptionGesture();
         return;
@@ -425,7 +458,7 @@ export default function useCaptionEditor({
         x: event.clientX,
         y: event.clientY,
       });
-      event.currentTarget.setPointerCapture(event.pointerId);
+      setPointerCaptureSafely(event.currentTarget, event.pointerId);
       if (gesture.pointerMap.size >= 2) {
         if (!gesture.startStyle) {
           gesture.startStyle = { ...caption.style };
@@ -487,8 +520,9 @@ export default function useCaptionEditor({
         MIN_CAPTION_SCALE,
         MAX_CAPTION_SCALE
       );
+      const startStyle = gesture.startStyle;
       updateGestureCaptionStyle(() => ({
-        ...gesture.startStyle!,
+        ...startStyle,
         scale: nextScale,
       }));
     },
@@ -503,10 +537,7 @@ export default function useCaptionEditor({
     (event: PointerEvent<HTMLButtonElement>) => {
       const gesture = captionGestureRef.current;
       if (gesture.dragPointerId !== event.pointerId) return;
-      const target = event.currentTarget;
-      if (target.hasPointerCapture(event.pointerId)) {
-        target.releasePointerCapture(event.pointerId);
-      }
+      releasePointerCaptureSafely(event.currentTarget, event.pointerId);
       resetCaptionGesture();
     },
     [resetCaptionGesture]
@@ -548,7 +579,7 @@ export default function useCaptionEditor({
         1,
         distanceBetweenPoints(center, startPoint)
       );
-      event.currentTarget.setPointerCapture(event.pointerId);
+      setPointerCaptureSafely(event.currentTarget, event.pointerId);
     },
     [
       activeCaptionItem,
@@ -648,9 +679,17 @@ export default function useCaptionEditor({
     }
     const input = captionInputRef.current;
     if (!input) return;
-    input.focus();
+    try {
+      input.focus({ preventScroll: true });
+    } catch {
+      input.focus();
+    }
     const valueLength = input.value.length;
-    input.setSelectionRange(valueLength, valueLength);
+    try {
+      input.setSelectionRange(valueLength, valueLength);
+    } catch {
+      return;
+    }
   }, [editingCaptionId, resolvedSelectedCaptionId]);
 
   return {

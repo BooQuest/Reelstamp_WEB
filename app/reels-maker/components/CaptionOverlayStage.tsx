@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import type {
   MutableRefObject,
   PointerEvent as ReactPointerEvent,
@@ -30,6 +31,15 @@ import {
   CAPTION_WORD_BREAK,
 } from '../constants';
 import type { CaptionItem } from '../types';
+
+const CAPTION_TAP_MOVE_TOLERANCE_PX = 6;
+
+type CaptionPointerIntent = {
+  captionId: string;
+  startX: number;
+  startY: number;
+  moved: boolean;
+};
 
 type Props = {
   captions: CaptionItem[];
@@ -73,6 +83,15 @@ export default function CaptionOverlayStage({
   onResizePointerMove,
   onResizePointerEnd,
 }: Props) {
+  const pointerIntentRef = useRef<CaptionPointerIntent | null>(null);
+  const suppressedClickCaptionIdRef = useRef<string | null>(null);
+
+  const shouldSuppressClick = (captionId: string) => {
+    if (suppressedClickCaptionIdRef.current !== captionId) return false;
+    suppressedClickCaptionIdRef.current = null;
+    return true;
+  };
+
   return (
     <div
       ref={stageRef}
@@ -101,6 +120,7 @@ export default function CaptionOverlayStage({
             onClick={(event) => {
               event.stopPropagation();
               if (readOnly) return;
+              if (shouldSuppressClick(caption.id)) return;
               if (isSelected) onEdit(caption.id);
               else {
                 onSelect(caption.id);
@@ -108,16 +128,48 @@ export default function CaptionOverlayStage({
               }
             }}
             onPointerDown={(event) => {
-              if (!readOnly) onCaptionPointerDown(event, caption);
+              if (readOnly) return;
+              suppressedClickCaptionIdRef.current = null;
+              pointerIntentRef.current = {
+                captionId: caption.id,
+                startX: event.clientX,
+                startY: event.clientY,
+                moved: false,
+              };
+              onCaptionPointerDown(event, caption);
             }}
             onPointerMove={(event) => {
-              if (!readOnly) onCaptionPointerMove(event);
+              if (readOnly) return;
+              const pointerIntent = pointerIntentRef.current;
+              if (pointerIntent) {
+                const distance = Math.hypot(
+                  event.clientX - pointerIntent.startX,
+                  event.clientY - pointerIntent.startY
+                );
+                if (distance > CAPTION_TAP_MOVE_TOLERANCE_PX) {
+                  pointerIntent.moved = true;
+                }
+              }
+              onCaptionPointerMove(event);
             }}
             onPointerUp={(event) => {
-              if (!readOnly) onCaptionPointerEnd(event);
+              if (readOnly) return;
+              const pointerIntent = pointerIntentRef.current;
+              if (pointerIntent) {
+                if (pointerIntent.moved) {
+                  suppressedClickCaptionIdRef.current = pointerIntent.captionId;
+                }
+                pointerIntentRef.current = null;
+              }
+              onCaptionPointerEnd(event);
             }}
             onPointerCancel={(event) => {
-              if (!readOnly) onCaptionPointerEnd(event);
+              if (readOnly) return;
+              const pointerIntent = pointerIntentRef.current;
+              if (pointerIntent) {
+                pointerIntentRef.current = null;
+              }
+              onCaptionPointerEnd(event);
             }}
             className="pointer-events-auto absolute select-none"
             style={{
