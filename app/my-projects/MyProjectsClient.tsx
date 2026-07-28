@@ -1,9 +1,9 @@
 'use client';
 
-import Image from 'next/image';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Clock3, Loader2, Trash2 } from 'lucide-react';
+import MyProjectThumbnail from '@/app/my-projects/MyProjectThumbnail';
 import type { DraftProjectItem } from '@/app/my-projects/types';
 
 type Props = {
@@ -37,6 +37,19 @@ const STATUS_TABS = [
   { status: 'COMPLETED', label: '제작 완료' },
 ] as const;
 
+const PROJECT_SUFFIX = ' 프로젝트';
+
+const resolveProjectDisplayTitle = (project: DraftProjectItem) => {
+  const projectName = project.projectName?.trim();
+  const templateTitle = project.templateTitle?.trim();
+  if (projectName) {
+    return templateTitle && projectName === `${templateTitle}${PROJECT_SUFFIX}`
+      ? templateTitle
+      : projectName;
+  }
+  return templateTitle || '릴스';
+};
+
 const buildReelsMakerHref = (
   templateId: string,
   sessionId: number,
@@ -64,7 +77,7 @@ export default function MyProjectsClient({
   );
 
   const deleteProject = async (project: DraftProjectItem) => {
-    if (!window.confirm(`"${project.projectName || project.templateTitle || '릴스 프로젝트'}"를 삭제할까요?`)) {
+    if (!window.confirm(`"${resolveProjectDisplayTitle(project)}"를 삭제할까요?`)) {
       return;
     }
     setDeletingId(project.sessionId);
@@ -146,28 +159,23 @@ export default function MyProjectsClient({
                 project.totalClipCount > 0
                   ? Math.round((project.completedClipCount / project.totalClipCount) * 100)
                   : 0;
+              const displayTitle = resolveProjectDisplayTitle(project);
               return (
                 <article
                   key={project.sessionId}
                   className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-lg"
                 >
                   <div className="relative aspect-[3/2] bg-black">
-                    {project.templateThumbnailUrl ? (
-                      <Image
-                        src={project.templateThumbnailUrl}
-                        alt=""
-                        fill
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-sm text-white/35">
-                        썸네일 없음
-                      </div>
-                    )}
+                    <MyProjectThumbnail
+                      projectThumbnailUrl={project.projectThumbnailUrl}
+                      projectThumbnailContentType={project.projectThumbnailContentType}
+                      templateThumbnailUrl={project.templateThumbnailUrl}
+                      alt={`${displayTitle} 썸네일`}
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                     <div className="absolute inset-x-4 bottom-4">
                       <h2 className="truncate text-lg font-bold">
-                        {project.projectName || `${project.templateTitle || '릴스'} 프로젝트`}
+                        {displayTitle}
                       </h2>
                       <p className="mt-1 truncate text-xs text-white/65">
                         {project.templateTitle || '템플릿'}

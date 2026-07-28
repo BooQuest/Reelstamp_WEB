@@ -5,6 +5,8 @@ export type DraftProjectItem = {
   templateId: string;
   templateTitle?: string | null;
   templateThumbnailUrl?: string | null;
+  projectThumbnailUrl?: string | null;
+  projectThumbnailContentType?: string | null;
   projectName?: string | null;
   status: string;
   finalVideoUrl?: string | null;
