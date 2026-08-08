@@ -15,8 +15,30 @@ import { useSavedTemplates, type TemplateSummary } from '@/app/hooks/useSavedTem
 import type { WebApiResponse } from '@/app/lib/api/auth';
 import TemplateMediaPreview from '@/app/components/ui/TemplateMediaPreview';
 
-type TemplateListResponse = {
-  templates: TemplateSummary[];
+type TodayTrendCardStatus = 'AVAILABLE' | 'REQUESTABLE' | 'REQUESTED' | 'COMING_SOON';
+
+type TodayTrendCard = {
+  id: string;
+  trendReelId: string;
+  templateId?: string | null;
+  title: string;
+  subtitle: string;
+  thumbnailUrl?: string | null;
+  embedUrl?: string | null;
+  tags: string[];
+  status: TodayTrendCardStatus;
+  requestCount: number;
+  requestedByMe: boolean;
+};
+
+type TodayTrendListResponse = {
+  cards: TodayTrendCard[];
+};
+
+type TemplateRequestResponse = {
+  trendReelId: string;
+  requested: boolean;
+  requestCount: number;
 };
 
 const getErrorMessage = (error: unknown, fallback: string) =>
@@ -25,13 +47,42 @@ const getErrorMessage = (error: unknown, fallback: string) =>
 const buildReelsMakerHref = (templateId: string) =>
   `/reels-maker?templateId=${encodeURIComponent(templateId)}&returnUrl=${encodeURIComponent('/templates')}`;
 
+const normalizeCard = (card: TodayTrendCard): TodayTrendCard => ({
+  ...card,
+  trendReelId: card.trendReelId || card.id,
+  subtitle: card.subtitle ?? '',
+  thumbnailUrl: card.thumbnailUrl?.trim() || null,
+  embedUrl: card.embedUrl ?? null,
+  tags: Array.isArray(card.tags) ? card.tags : [],
+  requestCount: Number(card.requestCount || 0),
+  requestedByMe: Boolean(card.requestedByMe),
+});
+
+const isAvailableCard = (card: TodayTrendCard | null) =>
+  Boolean(card?.templateId && card.status === 'AVAILABLE');
+
+const getCardStatusLabel = (card: TodayTrendCard) => {
+  switch (card.status) {
+    case 'REQUESTABLE':
+      return '요청 가능';
+    case 'REQUESTED':
+      return '요청 완료';
+    case 'COMING_SOON':
+      return '추가 예정';
+    default:
+      return '';
+  }
+};
+
 export default function TemplatesClient() {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const [activeIndex, setActiveIndex] = useState(0);
-  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  const [cards, setCards] = useState<TodayTrendCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [requestingTrendId, setRequestingTrendId] = useState<string | null>(null);
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const { savedSet, toggleSave } = useSavedTemplates({ returnUrl: '/templates' });
 
@@ -40,7 +91,7 @@ export default function TemplatesClient() {
   };
 
   const handleNext = () => {
-    const limit = Math.min(templates.length, 3);
+    const limit = Math.min(cards.length, 3);
     if (limit === 0) {
       return;
     }
@@ -91,15 +142,77 @@ export default function TemplatesClient() {
     swipeStartRef.current = null;
   };
 
-  const handleStart = () => {
-    if (!activeTemplate) {
+  const handleSaveCard = (card: TodayTrendCard) => {
+    if (!isAvailableCard(card) || !card.templateId) {
       return;
     }
+
+    const template: TemplateSummary = {
+      id: card.templateId,
+      title: card.title,
+      subtitle: card.subtitle,
+      thumbnailUrl: card.thumbnailUrl,
+      embedUrl: card.embedUrl,
+      tags: card.tags,
+    };
+    toggleSave(template);
+  };
+
+  const handlePrimaryAction = async () => {
+    if (!activeCard) {
+      return;
+    }
+
     if (!isAuthenticated) {
       router.push('/login?returnUrl=' + encodeURIComponent('/templates'));
       return;
     }
-    router.push(buildReelsMakerHref(activeTemplate.id));
+
+    if (isAvailableCard(activeCard) && activeCard.templateId) {
+      router.push(buildReelsMakerHref(activeCard.templateId));
+      return;
+    }
+
+    if (activeCard.status !== 'REQUESTABLE' || requestingTrendId) {
+      return;
+    }
+
+    try {
+      setRequestError(null);
+      setRequestingTrendId(activeCard.trendReelId);
+
+      const response = await fetch('/api/template-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ trendReelId: activeCard.trendReelId }),
+      });
+      const payload: WebApiResponse<TemplateRequestResponse> = await response.json();
+
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.message || '템플릿 요청에 실패했습니다.');
+      }
+
+      const requestedTrendReelId = payload.data?.trendReelId ?? activeCard.trendReelId;
+      const requestCount = payload.data?.requestCount ?? activeCard.requestCount + 1;
+      setCards((prev) =>
+        prev.map((card) =>
+          card.trendReelId === requestedTrendReelId
+            ? {
+                ...card,
+                status: 'REQUESTED',
+                requestedByMe: true,
+                requestCount,
+              }
+            : card
+        )
+      );
+    } catch (error: unknown) {
+      setRequestError(getErrorMessage(error, '템플릿 요청에 실패했습니다.'));
+    } finally {
+      setRequestingTrendId(null);
+    }
   };
 
   const getCardStyle = (index: number) => {
@@ -133,36 +246,31 @@ export default function TemplatesClient() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadTemplates = async () => {
+    const loadTodayTrends = async () => {
       setIsLoading(true);
       setLoadError(null);
+      setRequestError(null);
 
       try {
-        const response = await fetch('/api/templates', {
+        const response = await fetch('/api/templates/today-trends', {
           method: 'GET',
           cache: 'no-store',
         });
-        const payload: WebApiResponse<TemplateListResponse> = await response.json();
+        const payload: WebApiResponse<TodayTrendListResponse> = await response.json();
 
         if (!response.ok || !payload?.success) {
-          throw new Error(payload?.message || '템플릿 목록을 불러오지 못했습니다.');
+          throw new Error(payload?.message || '오늘의 릴스 트렌드를 불러오지 못했습니다.');
         }
 
-        const normalized = (payload.data?.templates ?? []).map((template) => ({
-          ...template,
-          subtitle: template.subtitle ?? '',
-          thumbnailUrl: template.thumbnailUrl?.trim() || null,
-          embedUrl: template.embedUrl ?? null,
-          tags: Array.isArray(template.tags) ? template.tags : [],
-        }));
+        const normalized = (payload.data?.cards ?? []).map(normalizeCard);
 
         if (isMounted) {
-          setTemplates(normalized);
+          setCards(normalized);
           setActiveIndex(0);
         }
       } catch (error: unknown) {
         if (isMounted) {
-          setLoadError(getErrorMessage(error, '템플릿 목록을 불러오지 못했습니다.'));
+          setLoadError(getErrorMessage(error, '오늘의 릴스 트렌드를 불러오지 못했습니다.'));
         }
       } finally {
         if (isMounted) {
@@ -171,18 +279,43 @@ export default function TemplatesClient() {
       }
     };
 
-    loadTemplates();
+    loadTodayTrends();
 
     return () => {
       isMounted = false;
     };
   }, []);
 
-  const recommendations = useMemo(() => templates.slice(0, 3), [templates]);
-  const activeTemplate = useMemo(
+  const recommendations = useMemo(() => cards.slice(0, 3), [cards]);
+  const activeCard = useMemo(
     () => recommendations[activeIndex] ?? null,
     [recommendations, activeIndex]
   );
+  const isRequestingActiveCard = Boolean(activeCard && requestingTrendId === activeCard.trendReelId);
+  const primaryButtonText = useMemo(() => {
+    if (!activeCard) {
+      return '3분 만에 만들기';
+    }
+    if (isRequestingActiveCard) {
+      return '요청 중...';
+    }
+    if (isAvailableCard(activeCard)) {
+      return '3분 만에 만들기';
+    }
+    if (activeCard.status === 'REQUESTABLE') {
+      return '템플릿 요청';
+    }
+    if (activeCard.status === 'REQUESTED') {
+      return '요청 완료';
+    }
+    return '추가 예정';
+  }, [activeCard, isRequestingActiveCard]);
+  const isPrimaryButtonDisabled =
+    !activeCard ||
+    isRequestingActiveCard ||
+    activeCard.status === 'REQUESTED' ||
+    activeCard.status === 'COMING_SOON' ||
+    (activeCard.status === 'AVAILABLE' && !activeCard.templateId);
 
   useEffect(() => {
     if (activeIndex >= recommendations.length) {
@@ -211,11 +344,13 @@ export default function TemplatesClient() {
             <div className="text-sm sm:text-base text-rose-300">{loadError}</div>
           )}
           {!isLoading && !loadError && recommendations.length === 0 && (
-            <div className="text-sm sm:text-base text-white/70">추천 템플릿이 없습니다.</div>
+            <div className="text-sm sm:text-base text-white/70">추천 릴스가 없습니다.</div>
           )}
           {!isLoading && !loadError && recommendations.map((card, index) => {
             const isActive = index === activeIndex;
-            const isSaved = savedSet.has(card.id);
+            const isAvailable = isAvailableCard(card);
+            const isSaved = Boolean(card.templateId && savedSet.has(card.templateId));
+            const statusLabel = getCardStatusLabel(card);
             return (
               <div
                 key={card.id}
@@ -236,17 +371,23 @@ export default function TemplatesClient() {
                   추천 {index + 1}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => toggleSave(card)}
-                  aria-pressed={isSaved}
-                  className="absolute top-4 right-4 z-40 w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center hover:bg-white/30 transition-colors"
-                >
-                  <Bookmark
-                    className={isSaved ? 'text-[#FF4D6D]' : 'text-white'}
-                    fill={isSaved ? '#FF4D6D' : 'none'}
-                  />
-                </button>
+                {isAvailable ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSaveCard(card)}
+                    aria-pressed={isSaved}
+                    className="absolute top-4 right-4 z-40 w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center hover:bg-white/30 transition-colors"
+                  >
+                    <Bookmark
+                      className={isSaved ? 'text-[#FF4D6D]' : 'text-white'}
+                      fill={isSaved ? '#FF4D6D' : 'none'}
+                    />
+                  </button>
+                ) : (
+                  <div className="pointer-events-none absolute top-4 right-4 z-40 min-h-10 rounded-full bg-white/20 backdrop-blur px-4 flex items-center justify-center text-xs font-extrabold text-white shadow-lg">
+                    {statusLabel}
+                  </div>
+                )}
 
                 <div className="pointer-events-none absolute bottom-0 left-0 right-0 px-5 pb-6 pt-12">
                   <h3 className="text-xl sm:text-2xl font-bold mb-2 drop-shadow-lg">
@@ -264,6 +405,11 @@ export default function TemplatesClient() {
                         #{tag}
                       </span>
                     ))}
+                    {!isAvailable && card.requestCount > 0 && (
+                      <span className="px-3 py-1 text-xs font-semibold rounded-full bg-[#FF4D6D]/90 text-white">
+                        요청 {card.requestCount}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -296,13 +442,18 @@ export default function TemplatesClient() {
         </div>
 
         <div className="mt-0 flex flex-col items-center gap-3 sm:gap-4">
+          {requestError && (
+            <p className="w-full max-w-md text-center text-sm font-semibold text-rose-300">
+              {requestError}
+            </p>
+          )}
           <button
             type="button"
-            onClick={handleStart}
-            className="w-full max-w-md py-4 text-base sm:text-lg font-semibold rounded-full bg-[#FF4D6D] hover:bg-[#FF5F7A] transition-colors shadow-lg"
-            disabled={!activeTemplate}
+            onClick={handlePrimaryAction}
+            className="w-full max-w-md py-4 text-base sm:text-lg font-semibold rounded-full bg-[#FF4D6D] hover:bg-[#FF5F7A] transition-colors shadow-lg disabled:cursor-not-allowed disabled:bg-white/20 disabled:text-white/50 disabled:shadow-none"
+            disabled={isPrimaryButtonDisabled}
           >
-            3분 만에 만들기
+            {primaryButtonText}
           </button>
           <Link
             href="/all-templates"

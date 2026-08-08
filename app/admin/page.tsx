@@ -1,7 +1,7 @@
 // 관리자 페이지: 대본 생성 내역 관리
 'use client';
 
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef, type ComponentType } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { Loader2, X, Calendar, Search, Filter, User, Tag, ChevronDown, RefreshCw, Archive } from 'lucide-react';
@@ -9,6 +9,7 @@ import { useAuth } from '@/app/components/providers/AuthProvider';
 import { useAdminRevisions } from '@/app/hooks/useAdminRevisions';
 import { USER_ROLES } from '@/app/lib/constants/auth';
 import ScriptTableRow from '@/app/components/features/script-creation/ScriptTableRow';
+import TemplateRequestStatsPanel from '@/app/components/features/admin/TemplateRequestStatsPanel';
 import { ScriptSegment } from '@/app/types/reels-creation';
 
 // ZIP 내보내기 로딩 오버레이 (지연 로드)
@@ -31,6 +32,8 @@ const USER_TYPE_OPTIONS = [
   { value: USER_ROLES.ADMIN, label: '관리자' },
   { value: USER_ROLES.USER, label: '일반 사용자' },
 ];
+
+type AdminTab = 'revisions' | 'templateRequests';
 
 // 헬퍼: 카테고리 라벨 가져오기
 const getCategoryLabel = (value: string) => 
@@ -126,7 +129,7 @@ const CustomSelect = ({
   options, 
   className = "" 
 }: { 
-  icon: any, 
+  icon: ComponentType<{ className?: string }>, 
   label: string,
   value: string, 
   onChange: (val: string) => void, 
@@ -161,6 +164,7 @@ export default function AdminPage() {
   const { data, isLoading, error, refetch } = useAdminRevisions();
 
   const isAdmin = isAuthenticated && user?.role?.toUpperCase() === USER_ROLES.ADMIN;
+  const [activeTab, setActiveTab] = useState<AdminTab>('revisions');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [userTypeFilter, setUserTypeFilter] = useState<string>('ALL');
@@ -306,14 +310,6 @@ export default function AdminPage() {
     };
   }, [visibleRevisions.length, filteredRevisions.length]);
 
-  if (!isAdmin) {
-    return (
-      <div className="admin-page-guard flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-      </div>
-    );
-  }
-
   // 결과 대본 팝업 열기
   const handleOpenResult = useCallback((revisionId: string, scriptText: string) => {
     setSelectedRevisionId(revisionId);
@@ -385,9 +381,12 @@ export default function AdminPage() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('ZIP export 실패:', error);
-      alert(error?.message || 'ZIP 내보내기 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      const message = error instanceof Error
+        ? error.message
+        : 'ZIP 내보내기 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      alert(message);
     } finally {
       setIsExporting(false);
     }
@@ -428,11 +427,19 @@ export default function AdminPage() {
   }, [selectedScriptText]);
 
   // Vercel Blob URL 구성
-  const getBlobUrl = (filename: any) => {
+  const getBlobUrl = (filename: unknown) => {
     if (!filename || typeof filename !== 'string') return '';
     if (filename.startsWith('http')) return filename;
     return `https://hjnzn0ds2q0s3fs2.public.blob.vercel-storage.com/${filename}`;
   };
+
+  if (!isAdmin) {
+    return (
+      <div className="admin-page-guard flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="admin-page-container bg-gradient-to-b from-white to-pink-50/30 min-h-screen">
@@ -445,37 +452,59 @@ export default function AdminPage() {
                 <h1 className="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">관리자 센터</h1>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => refetch()}
-                className="p-3 bg-white hover:bg-gray-50 text-gray-400 hover:text-gray-600 rounded-2xl border border-gray-100 shadow-sm transition-all active:scale-95"
-                title="새로고침"
-              >
-                <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-              </button>
-              <div className="bg-white/80 backdrop-blur px-5 py-3 rounded-2xl border border-pink-100 shadow-sm flex items-center gap-3">
-                <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
-                <span className="text-sm font-black text-gray-700">
-                  전체 {filteredRevisions.length}건 (표시: {visibleRevisions.length}건)
-                </span>
+            {activeTab === 'revisions' && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => refetch()}
+                  className="p-3 bg-white hover:bg-gray-50 text-gray-400 hover:text-gray-600 rounded-2xl border border-gray-100 shadow-sm transition-all active:scale-95"
+                  title="새로고침"
+                >
+                  <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                </button>
+                <div className="bg-white/80 backdrop-blur px-5 py-3 rounded-2xl border border-pink-100 shadow-sm flex items-center gap-3">
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
+                  <span className="text-sm font-black text-gray-700">
+                    전체 {filteredRevisions.length}건 (표시: {visibleRevisions.length}건)
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* 탭 */}
           <div className="admin-page-tab-wrapper px-4 sm:px-6 lg:px-8 mb-8">
             <div className="flex border-b-2 border-pink-100 bg-white/40 rounded-t-3xl p-1.5 pb-0">
               <button
-                className="admin-page-tab px-10 py-4 text-base font-black transition-all relative rounded-t-2xl whitespace-nowrap text-[#FF496D] bg-white shadow-[0_-4px_20px_rgba(255,73,109,0.08)] border-b-2 border-b-white"
-                style={{ marginBottom: '-2px', zIndex: 10 }}
+                type="button"
+                onClick={() => setActiveTab('revisions')}
+                className={`admin-page-tab px-10 py-4 text-base font-black transition-all relative rounded-t-2xl whitespace-nowrap ${
+                  activeTab === 'revisions'
+                    ? 'text-[#FF496D] bg-white shadow-[0_-4px_20px_rgba(255,73,109,0.08)] border-b-2 border-b-white'
+                    : 'text-gray-500 hover:text-gray-900 hover:bg-white/70'
+                }`}
+                style={activeTab === 'revisions' ? { marginBottom: '-2px', zIndex: 10 } : { zIndex: 1 }}
               >
                 대본 생성 이력
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('templateRequests')}
+                className={`admin-page-tab px-10 py-4 text-base font-black transition-all relative rounded-t-2xl whitespace-nowrap ${
+                  activeTab === 'templateRequests'
+                    ? 'text-[#FF496D] bg-white shadow-[0_-4px_20px_rgba(255,73,109,0.08)] border-b-2 border-b-white'
+                    : 'text-gray-500 hover:text-gray-900 hover:bg-white/70'
+                }`}
+                style={activeTab === 'templateRequests' ? { marginBottom: '-2px', zIndex: 10 } : { zIndex: 1 }}
+              >
+                템플릿 요청
               </button>
             </div>
           </div>
 
           {/* 콘텐츠 */}
           <div className="admin-page-content px-4 sm:px-6 lg:px-8">
+            {activeTab === 'revisions' && (
+              <>
             {isLoading && (
               <div className="admin-page-loading flex items-center justify-center py-32">
                 <div className="flex flex-col items-center gap-4">
@@ -757,6 +786,11 @@ export default function AdminPage() {
                 <p className="text-sm text-gray-400 font-bold">모든 데이터를 불러왔습니다.</p>
               </div>
             )}
+              </>
+            )}
+            {activeTab === 'templateRequests' && (
+              <TemplateRequestStatsPanel enabled={activeTab === 'templateRequests'} />
+            )}
           </div>
         </section>
       </div>
@@ -845,7 +879,7 @@ export default function AdminPage() {
                           <div className="border-t border-gray-50 pt-8">
                             <p className="text-[11px] font-black text-gray-300 uppercase tracking-[0.3em] mb-4">기획 및 설계 의도</p>
                             <div className="bg-gray-50/80 p-6 rounded-[30px] border border-gray-100">
-                              <p className="text-base text-gray-600 leading-relaxed font-bold italic">"{segment.designReason}"</p>
+                              <p className="text-base text-gray-600 leading-relaxed font-bold italic">{segment.designReason}</p>
                             </div>
                           </div>
                         )}
