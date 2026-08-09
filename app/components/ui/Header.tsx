@@ -9,7 +9,19 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
-import { User, Sparkles, LayoutTemplate, TrendingUp, Bookmark, CheckCircle, ChevronRight, ChevronLeft, Menu, FolderOpen } from 'lucide-react';
+import {
+  User,
+  Sparkles,
+  LayoutTemplate,
+  TrendingUp,
+  Bookmark,
+  CheckCircle,
+  ChevronRight,
+  ChevronLeft,
+  Menu,
+  FolderOpen,
+  Bell,
+} from 'lucide-react';
 
 // 메뉴 항목 타입 정의
 interface MenuItem {
@@ -73,6 +85,10 @@ const DESKTOP_MENU_ITEMS: MenuItem[] = [
     label: '인기 급상승 릴스',
     isDisabled: true,
   },
+  {
+    href: '/notice',
+    label: '공지사항',
+  },
 ];
 
 const MOBILE_PRIMARY_ITEMS: MobileMenuItem[] = [
@@ -111,6 +127,11 @@ const MOBILE_PRIMARY_ITEMS: MobileMenuItem[] = [
     icon: CheckCircle,
     requiresAuth: true,
   },
+  {
+    href: '/notice',
+    label: '공지사항',
+    icon: Bell,
+  },
 ];
 
 const SIMPLE_HEADER_CONFIG: Record<string, { title: string; backHref: string }> = {
@@ -145,6 +166,29 @@ export default function Header() {
   const buildLoginHref = (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`;
   const videoCreditLabel = 'free';
   const hasVisibleLegacyMenuItems = MENU_ITEMS.some(isNavItemVisible);
+  const renderMobilePrimaryMenuItems = (items: MobileMenuItem[]) =>
+    items.filter(isNavItemVisible).map((item) => {
+      const active = pathname === item.href;
+      const Icon = item.icon;
+      const targetHref =
+        !isAuthenticated && item.requiresAuth ? buildLoginHref(item.href) : item.href;
+
+      return (
+        <Link
+          key={item.href}
+          href={targetHref}
+          onClick={() => setIsMobileMenuOpen(false)}
+          className={`w-full flex items-center gap-3 px-5 py-3.5 text-lg rounded-xl transition-colors ${
+            active
+              ? 'text-[#FF496D] font-extrabold bg-[#FF496D]/10 shadow-sm'
+              : 'text-gray-900 font-medium hover:bg-gray-50'
+          }`}
+        >
+          <Icon className="w-5 h-5 text-gray-600" />
+          <span>{item.label}</span>
+        </Link>
+      );
+    });
 
   // 현재 경로가 메뉴와 일치하는지 확인하는 함수 (메모이제이션)
   const isActive = useCallback((item: MenuItem) => {
@@ -642,51 +686,15 @@ export default function Header() {
 
                     <div className="flex flex-col space-y-2">
                       {/* 신규 메뉴 */}
-                      {MOBILE_PRIMARY_ITEMS.slice(0, 3).filter(isNavItemVisible).map((item) => {
-                        const active = pathname === item.href;
-                        const Icon = item.icon;
-                        const targetHref =
-                          !isAuthenticated && item.requiresAuth ? buildLoginHref(item.href) : item.href;
-                        return (
-                          <Link
-                            key={item.href}
-                            href={targetHref}
-                            onClick={() => setIsMobileMenuOpen(false)}
-                            className={`w-full flex items-center gap-3 px-5 py-3.5 text-lg rounded-xl transition-colors ${
-                              active
-                                ? 'text-[#FF496D] font-extrabold bg-[#FF496D]/10 shadow-sm'
-                                : 'text-gray-900 font-medium hover:bg-gray-50'
-                            }`}
-                          >
-                            <Icon className="w-5 h-5 text-gray-600" />
-                            <span>{item.label}</span>
-                          </Link>
-                        );
-                      })}
+                      {renderMobilePrimaryMenuItems(MOBILE_PRIMARY_ITEMS.slice(0, 3))}
 
                       <div className="border-t border-gray-200 my-2"></div>
 
-                      {MOBILE_PRIMARY_ITEMS.slice(3).filter(isNavItemVisible).map((item) => {
-                        const active = pathname === item.href;
-                        const Icon = item.icon;
-                        const targetHref =
-                          !isAuthenticated && item.requiresAuth ? buildLoginHref(item.href) : item.href;
-                        return (
-                          <Link
-                            key={item.href}
-                            href={targetHref}
-                            onClick={() => setIsMobileMenuOpen(false)}
-                            className={`w-full flex items-center gap-3 px-5 py-3.5 text-lg rounded-xl transition-colors ${
-                              active
-                                ? 'text-[#FF496D] font-extrabold bg-[#FF496D]/10 shadow-sm'
-                                : 'text-gray-900 font-medium hover:bg-gray-50'
-                            }`}
-                          >
-                            <Icon className="w-5 h-5 text-gray-600" />
-                            <span>{item.label}</span>
-                          </Link>
-                        );
-                      })}
+                      {renderMobilePrimaryMenuItems(MOBILE_PRIMARY_ITEMS.slice(3, -1))}
+
+                      <div className="border-t border-gray-200 my-2"></div>
+
+                      {renderMobilePrimaryMenuItems(MOBILE_PRIMARY_ITEMS.slice(-1))}
 
                       {(hasVisibleLegacyMenuItems || (isAuthenticated && isAdmin)) && (
                         <div className="border-t border-gray-200 my-2"></div>
