@@ -9,13 +9,24 @@ import { loginAsGuestAction, loginWithSocialAction } from '@/app/actions/auth';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import LoadingOverlay from '@/app/components/ui/LoadingOverlay';
 import type { SocialAuthProvider } from '@/app/lib/api/auth';
+import {
+  buildLoginOauthState,
+  clearStoredLoginReturnUrl,
+  consumeStoredLoginReturnUrl,
+  getLoginReturnUrlFromSearchParams,
+  getStoredLoginReturnUrl,
+  LOGIN_HOME_PATH,
+  parseLoginOauthState,
+  storeLoginReturnUrl,
+  type LoginOAuthStatePrefix,
+} from '@/app/lib/auth/loginRedirect';
 
 // 카카오 SDK 타입 정의
 interface KakaoSdk {
   isInitialized: () => boolean;
   init: (key: string) => void;
   Auth: {
-    authorize: (options: { redirectUri: string }) => void;
+    authorize: (options: { redirectUri: string; state?: string }) => void;
   };
 }
 
@@ -29,12 +40,6 @@ type OAuthTokenResponse = {
   access_token?: string;
   error_description?: string;
   message?: string;
-};
-
-const getSafeReturnUrl = (value: string | null | undefined) => {
-  if (!value) return null;
-  if (!value.startsWith('/') || value.startsWith('//')) return null;
-  return value;
 };
 
 const TECHNICAL_ERROR_MESSAGES = new Set(['unknown error', 'unknown_error']);
@@ -102,12 +107,18 @@ export default function LoginClient() {
     }
   };
 
-  const buildOauthState = (prefix: 'naver' | 'google') => {
-    const randomPart =
+  const createOauthNonce = () => {
+    return (
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
-        : Math.random().toString(36).substring(2, 12);
-    return `${prefix}_${randomPart}`;
+        : Math.random().toString(36).substring(2, 12)
+    );
+  };
+
+  const prepareOauthState = (prefix: LoginOAuthStatePrefix) => {
+    const state = buildLoginOauthState(prefix, createOauthNonce(), getStoredLoginReturnUrl());
+    sessionStorage.setItem('oauth_state', state);
+    return state;
   };
 
   useEffect(() => {
@@ -121,12 +132,12 @@ export default function LoginClient() {
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
     const state = urlParams.get('state');
-    const returnUrlParam = getSafeReturnUrl(urlParams.get('returnUrl'));
+    const returnUrlParam = getLoginReturnUrlFromSearchParams(urlParams);
 
     if (returnUrlParam) {
-      sessionStorage.setItem('previousPath', returnUrlParam);
+      storeLoginReturnUrl(returnUrlParam);
     } else if (!returnUrlParam && !code) {
-      sessionStorage.removeItem('previousPath');
+      clearStoredLoginReturnUrl();
     }
 
     if (code && !isProcessing && !isSocialAuthenticated) {
@@ -135,6 +146,7 @@ export default function LoginClient() {
       const cleanUrl = window.location.pathname + (returnUrlParam ? `?returnUrl=${encodeURIComponent(returnUrlParam)}` : '');
       window.history.replaceState({}, '', cleanUrl);
 
+      const parsedState = parseLoginOauthState(state);
       const storedProvider = sessionStorage.getItem('oauth_provider') as
         | 'KAKAO'
         | 'NAVER'
@@ -144,11 +156,8 @@ export default function LoginClient() {
 
       const inferredProvider =
         storedProvider ||
-        (state?.startsWith('naver_')
-          ? 'NAVER'
-          : state?.startsWith('google_')
-            ? 'GOOGLE'
-            : 'KAKAO');
+        parsedState?.provider ||
+        'KAKAO';
 
       const requiresState = inferredProvider === 'NAVER' || inferredProvider === 'GOOGLE';
       if (requiresState) {
@@ -157,11 +166,15 @@ export default function LoginClient() {
           setIsProcessing(false);
           return;
         }
-        if (storedState && state !== storedState) {
-          setError('로그인 state 검증에 실패했습니다. 다시 시도해주세요.');
-          setIsProcessing(false);
-          return;
-        }
+      }
+      if (state && storedState && state !== storedState) {
+        setError('로그인 state 검증에 실패했습니다. 다시 시도해주세요.');
+        setIsProcessing(false);
+        return;
+      }
+
+      if (parsedState?.returnUrl) {
+        storeLoginReturnUrl(parsedState.returnUrl);
       }
 
       sessionStorage.removeItem('oauth_provider');
@@ -294,13 +307,7 @@ export default function LoginClient() {
       setLoading(false);
       
       try {
-        const storedPath = getSafeReturnUrl(sessionStorage.getItem('previousPath'));
-        if (storedPath) {
-          sessionStorage.removeItem('previousPath');
-          router.replace(storedPath);
-        } else {
-          router.replace('/templates');
-        }
+        router.replace(consumeStoredLoginReturnUrl() ?? LOGIN_HOME_PATH);
       } catch (pushError) {
         console.error('[processLogin] 리다이렉트 실패:', pushError);
       }
@@ -315,7 +322,7 @@ export default function LoginClient() {
 
   const handleStartGuestStep = () => {
     if (isGuestUser) {
-      router.replace('/templates');
+      router.replace(consumeStoredLoginReturnUrl() ?? LOGIN_HOME_PATH);
       return;
     }
 
@@ -347,8 +354,7 @@ export default function LoginClient() {
         setUser(result.userInfo);
       }
 
-      const redirectPath = getSafeReturnUrl(sessionStorage.getItem('previousPath')) ?? '/templates';
-      sessionStorage.removeItem('previousPath');
+      const redirectPath = consumeStoredLoginReturnUrl() ?? LOGIN_HOME_PATH;
       window.location.replace(redirectPath);
     } catch (err: unknown) {
       setError(getErrorMessage(err, '가입 없이 이용하기 처리 중 오류가 발생했습니다.'));
@@ -372,10 +378,11 @@ export default function LoginClient() {
     setLoadingText('카카오 로그인 중...');
     setError(null);
     sessionStorage.setItem('oauth_provider', 'KAKAO');
-    sessionStorage.removeItem('oauth_state');
+    const state = prepareOauthState('kakao');
 
     window.Kakao.Auth.authorize({
       redirectUri: `${window.location.origin}/login`,
+      state,
     });
   };
 
@@ -388,15 +395,14 @@ export default function LoginClient() {
     }
 
     const redirectUri = encodeURIComponent(`${window.location.origin}/login`);
-    const state = buildOauthState('naver');
+    const state = prepareOauthState('naver');
     
     setIsLoadingNaver(true);
     setLoadingText('네이버 로그인 중...');
     setError(null);
     sessionStorage.setItem('oauth_provider', 'NAVER');
-    sessionStorage.setItem('oauth_state', state);
 
-    const naverAuthUrl = `https://nid.naver.com/oauth2.0/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}`;
+    const naverAuthUrl = `https://nid.naver.com/oauth2.0/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}`;
     window.location.href = naverAuthUrl;
   };
 
@@ -409,14 +415,13 @@ export default function LoginClient() {
     }
 
     const redirectUri = `${window.location.origin}/login`;
-    const state = buildOauthState('google');
+    const state = prepareOauthState('google');
     const scope = encodeURIComponent('openid email profile');
 
     setIsLoadingGoogle(true);
     setLoadingText('구글 로그인 중...');
     setError(null);
     sessionStorage.setItem('oauth_provider', 'GOOGLE');
-    sessionStorage.setItem('oauth_state', state);
 
     const googleAuthUrl =
       `https://accounts.google.com/o/oauth2/v2/auth?response_type=code` +

@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, LockKeyhole, X } from 'lucide-react';
 import { APP_TOAST_EVENT, type AppToastPayload, type AppToastTone } from '@/app/lib/ui/toast';
 import { clsx } from '@/app/lib/utils/clsx';
 
 const DEFAULT_DURATION_MS = 2600;
+const EXIT_ANIMATION_MS = 220;
 
 type ActiveToast = {
   message: string;
@@ -14,16 +15,36 @@ type ActiveToast = {
 
 export default function AppToast() {
   const [toast, setToast] = useState<ActiveToast | null>(null);
+  const [isExiting, setIsExiting] = useState(false);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearDismissTimer = useCallback(() => {
+    if (dismissTimerRef.current) {
+      clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
+  }, []);
+
+  const clearExitTimer = useCallback(() => {
+    if (exitTimerRef.current) {
+      clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+  }, []);
+
+  const dismissToast = useCallback(() => {
+    clearDismissTimer();
+    clearExitTimer();
+    setIsExiting(true);
+    exitTimerRef.current = setTimeout(() => {
+      setToast(null);
+      setIsExiting(false);
+      exitTimerRef.current = null;
+    }, EXIT_ANIMATION_MS);
+  }, [clearDismissTimer, clearExitTimer]);
 
   useEffect(() => {
-    const clearDismissTimer = () => {
-      if (dismissTimerRef.current) {
-        clearTimeout(dismissTimerRef.current);
-        dismissTimerRef.current = null;
-      }
-    };
-
     const handleToast = (event: Event) => {
       const payload = (event as CustomEvent<AppToastPayload>).detail;
       const message = payload?.message?.trim();
@@ -32,14 +53,15 @@ export default function AppToast() {
       }
 
       clearDismissTimer();
+      clearExitTimer();
+      setIsExiting(false);
       setToast({
         message,
         tone: payload.tone ?? 'default',
       });
 
       dismissTimerRef.current = setTimeout(() => {
-        setToast(null);
-        dismissTimerRef.current = null;
+        dismissToast();
       }, payload.durationMs ?? DEFAULT_DURATION_MS);
     };
 
@@ -47,9 +69,10 @@ export default function AppToast() {
 
     return () => {
       clearDismissTimer();
+      clearExitTimer();
       window.removeEventListener(APP_TOAST_EVENT, handleToast);
     };
-  }, []);
+  }, [clearDismissTimer, clearExitTimer, dismissToast]);
 
   if (!toast) {
     return null;
@@ -61,7 +84,10 @@ export default function AppToast() {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed left-1/2 z-[10001] w-[calc(100vw-2rem)] max-w-[440px] -translate-x-1/2 px-0"
+      className={clsx(
+        'pointer-events-none fixed left-1/2 z-[10001] w-[calc(100vw-2rem)] max-w-[440px] -translate-x-1/2 px-0 transition-all duration-200 ease-out',
+        isExiting ? 'translate-y-[-4px] opacity-0' : 'translate-y-0 opacity-100'
+      )}
       style={{ top: 'calc(76px + env(safe-area-inset-top, 0px))' }}
     >
       <div
@@ -94,13 +120,7 @@ export default function AppToast() {
           </p>
           <button
             type="button"
-            onClick={() => {
-              if (dismissTimerRef.current) {
-                clearTimeout(dismissTimerRef.current);
-                dismissTimerRef.current = null;
-              }
-              setToast(null);
-            }}
+            onClick={dismissToast}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/55 transition-colors hover:bg-white/10 hover:text-white"
             aria-label="알림 닫기"
           >

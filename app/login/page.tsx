@@ -2,6 +2,7 @@
 import { redirect } from 'next/navigation';
 import LoginClient from './LoginClient';
 import { getCurrentUser } from '@/app/lib/api/auth';
+import { getSafeLoginReturnUrl, LOGIN_HOME_PATH } from '@/app/lib/auth/loginRedirect';
 
 // 캐시 방지 및 실시간 인증 상태 확인을 위해 강제 동적 렌더링 설정
 export const dynamic = 'force-dynamic';
@@ -12,12 +13,6 @@ interface LoginPageProps {
   }>;
 }
 
-const getSafeReturnUrl = (value?: string) => {
-  if (!value) return null;
-  if (!value.startsWith('/') || value.startsWith('//')) return null;
-  return value;
-};
-
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   // 서버 사이드에서 로그인 여부 확인
   const user = await getCurrentUser();
@@ -26,8 +21,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   if (user && !user.guest && user.provider !== 'GUEST') {
     console.log(`[LoginPage SSR] 이미 로그인된 사용자(${user.nickname}), 리다이렉트 수행`);
     const resolvedSearchParams = searchParams ? await searchParams : undefined;
-    const returnUrl = getSafeReturnUrl(resolvedSearchParams?.returnUrl);
-    redirect(returnUrl ?? '/templates');
+    const returnUrl = getSafeLoginReturnUrl(resolvedSearchParams?.returnUrl);
+    redirect(returnUrl ?? LOGIN_HOME_PATH);
   }
 
   return <LoginClient />;
