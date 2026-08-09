@@ -2,7 +2,11 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronRight, User, X } from 'lucide-react';
 import type { UserInfo } from '@/app/lib/api/auth';
-import { CAPTURE_MENU_ITEMS } from '../config';
+import {
+  CAPTURE_MENU_ITEMS,
+  SHOW_DISABLED_CAPTURE_MENU_ITEMS,
+  isCaptureMenuItemVisible,
+} from '../config';
 
 type Props = {
   user: UserInfo | null;
@@ -116,7 +120,7 @@ export default function CaptureMenu({
             </Link>
           )}
 
-          {CAPTURE_MENU_ITEMS.map((item) => {
+          {CAPTURE_MENU_ITEMS.filter(isCaptureMenuItemVisible).map((item) => {
             const Icon = item.icon;
             const targetHref =
               !isAuthenticated && item.requiresAuth
@@ -138,28 +142,34 @@ export default function CaptureMenu({
             );
           })}
 
-          <div className="my-2 border-t border-gray-200" />
+          {(SHOW_DISABLED_CAPTURE_MENU_ITEMS || (isAuthenticated && isAdmin)) && (
+            <div className="my-2 border-t border-gray-200" />
+          )}
 
-          <Link
-            href="/contents/script-creation"
-            onClick={(event) => {
-              event.preventDefault();
-              requestExit('/contents/script-creation');
-            }}
-            className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
-          >
-            릴스 제작
-          </Link>
-          <Link
-            href="/ranking"
-            onClick={(event) => {
-              event.preventDefault();
-              requestExit('/ranking');
-            }}
-            className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
-          >
-            인기 급상승 릴스
-          </Link>
+          {SHOW_DISABLED_CAPTURE_MENU_ITEMS && (
+            <>
+              <Link
+                href="/contents/script-creation"
+                onClick={(event) => {
+                  event.preventDefault();
+                  requestExit('/contents/script-creation');
+                }}
+                className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
+              >
+                릴스 제작
+              </Link>
+              <Link
+                href="/ranking"
+                onClick={(event) => {
+                  event.preventDefault();
+                  requestExit('/ranking');
+                }}
+                className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
+              >
+                인기 급상승 릴스
+              </Link>
+            </>
+          )}
 
           {isAuthenticated && isAdmin && (
             <Link

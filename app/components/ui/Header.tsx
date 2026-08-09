@@ -18,6 +18,7 @@ interface MenuItem {
   matchPattern?: (pathname: string) => boolean;
   isExternal?: boolean;
   requiresAuth?: boolean;
+  isDisabled?: boolean;
 }
 
 interface MobileMenuItem {
@@ -25,7 +26,11 @@ interface MobileMenuItem {
   label: string;
   icon: ComponentType<{ className?: string }>;
   requiresAuth?: boolean;
+  isDisabled?: boolean;
 }
+
+const SHOW_DISABLED_NAV_ITEMS = false;
+const isNavItemVisible = (item: { isDisabled?: boolean }) => !item.isDisabled || SHOW_DISABLED_NAV_ITEMS;
 
 // 메뉴 항목 상수
 const MENU_ITEMS: MenuItem[] = [
@@ -33,10 +38,12 @@ const MENU_ITEMS: MenuItem[] = [
     href: '/contents/script-creation',
     label: '릴스 제작',
     matchPattern: (pathname) => pathname.startsWith('/contents'),
+    isDisabled: true,
   },
   {
     href: '/ranking',
     label: '인기 급상승 릴스',
+    isDisabled: true,
   },
 ];
 
@@ -51,17 +58,20 @@ const DESKTOP_MENU_ITEMS: MenuItem[] = [
   },
   {
     href: '/trending-reels',
-    label: '오늘의 릴스 트렌드',
+    label: '(구)오늘의 릴스 트렌드',
     requiresAuth: true,
+    isDisabled: true,
   },
   {
     href: '/contents/script-creation',
     label: '릴스 제작',
     matchPattern: (pathname) => pathname.startsWith('/contents'),
+    isDisabled: true,
   },
   {
     href: '/ranking',
     label: '인기 급상승 릴스',
+    isDisabled: true,
   },
 ];
 
@@ -78,9 +88,10 @@ const MOBILE_PRIMARY_ITEMS: MobileMenuItem[] = [
   },
   {
     href: '/trending-reels',
-    label: '오늘의 릴스 트렌드',
+    label: '(구)오늘의 릴스 트렌드',
     icon: TrendingUp,
     requiresAuth: true,
+    isDisabled: true,
   },
   {
     href: '/saved-reels',
@@ -133,6 +144,7 @@ export default function Header() {
   const isDarkHeader = pathname === '/reels-maker';
   const buildLoginHref = (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`;
   const videoCreditLabel = 'free';
+  const hasVisibleLegacyMenuItems = MENU_ITEMS.some(isNavItemVisible);
 
   // 현재 경로가 메뉴와 일치하는지 확인하는 함수 (메모이제이션)
   const isActive = useCallback((item: MenuItem) => {
@@ -281,7 +293,7 @@ export default function Header() {
 
             {/* 중앙: 메뉴 영역 (PC) */}
             <nav className="hidden md:flex items-center gap-10">
-              {DESKTOP_MENU_ITEMS.map((item) => {
+              {DESKTOP_MENU_ITEMS.filter(isNavItemVisible).map((item) => {
                 const active = isActive(item);
                 const targetHref =
                   !isAuthenticated && item.requiresAuth && !item.isExternal
@@ -490,14 +502,16 @@ export default function Header() {
                               <LayoutTemplate className="w-5 h-5 text-gray-400" />
                               <span className="text-base font-medium">릴스 템플릿</span>
                             </Link>
-                            <Link
-                              href="/trending-reels"
-                              onClick={() => setIsProfileMenuOpen(false)}
-                              className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
-                            >
-                              <TrendingUp className="w-5 h-5 text-gray-400" />
-                              <span className="text-base font-medium">오늘의 릴스 트렌드</span>
-                            </Link>
+                            {SHOW_DISABLED_NAV_ITEMS && (
+                              <Link
+                                href="/trending-reels"
+                                onClick={() => setIsProfileMenuOpen(false)}
+                                className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                              >
+                                <TrendingUp className="w-5 h-5 text-gray-400" />
+                                <span className="text-base font-medium">(구)오늘의 릴스 트렌드</span>
+                              </Link>
+                            )}
 
                             <div className="border-t border-gray-200 my-1"></div>
 
@@ -628,7 +642,7 @@ export default function Header() {
 
                     <div className="flex flex-col space-y-2">
                       {/* 신규 메뉴 */}
-                      {MOBILE_PRIMARY_ITEMS.slice(0, 3).map((item) => {
+                      {MOBILE_PRIMARY_ITEMS.slice(0, 3).filter(isNavItemVisible).map((item) => {
                         const active = pathname === item.href;
                         const Icon = item.icon;
                         const targetHref =
@@ -652,7 +666,7 @@ export default function Header() {
 
                       <div className="border-t border-gray-200 my-2"></div>
 
-                      {MOBILE_PRIMARY_ITEMS.slice(3).map((item) => {
+                      {MOBILE_PRIMARY_ITEMS.slice(3).filter(isNavItemVisible).map((item) => {
                         const active = pathname === item.href;
                         const Icon = item.icon;
                         const targetHref =
@@ -674,10 +688,12 @@ export default function Header() {
                         );
                       })}
 
-                      <div className="border-t border-gray-200 my-2"></div>
+                      {(hasVisibleLegacyMenuItems || (isAuthenticated && isAdmin)) && (
+                        <div className="border-t border-gray-200 my-2"></div>
+                      )}
 
                       {/* 기존 메뉴 */}
-                      {MENU_ITEMS.map((item) => {
+                      {MENU_ITEMS.filter(isNavItemVisible).map((item) => {
                         const active = isActive(item);
                         return (
                           <Link

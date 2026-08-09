@@ -13,7 +13,12 @@ export type CaptureMenuItem = {
   label: string;
   icon: ComponentType<{ className?: string }>;
   requiresAuth?: boolean;
+  isDisabled?: boolean;
 };
+
+export const SHOW_DISABLED_CAPTURE_MENU_ITEMS = false;
+export const isCaptureMenuItemVisible = (item: { isDisabled?: boolean }) =>
+  !item.isDisabled || SHOW_DISABLED_CAPTURE_MENU_ITEMS;
 
 export const CAPTURE_MENU_ITEMS: CaptureMenuItem[] = [
   {
@@ -28,9 +33,10 @@ export const CAPTURE_MENU_ITEMS: CaptureMenuItem[] = [
   },
   {
     href: '/trending-reels',
-    label: '오늘의 릴스 트렌드',
+    label: '(구)오늘의 릴스 트렌드',
     icon: TrendingUp,
     requiresAuth: true,
+    isDisabled: true,
   },
   {
     href: '/saved-reels',
