@@ -45,6 +45,7 @@ export type TemplateDetailResponse = {
   embedUrl?: string | null;
   exampleReelUrls?: string[];
   tags?: string[];
+  accessType?: 'FREE' | 'PAID' | null;
   cuts: TemplateCut[];
 };
 

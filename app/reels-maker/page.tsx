@@ -88,6 +88,13 @@ import {
   normalizeCaptionStyle,
 } from '@/app/reels-maker/utils/captions';
 import { getErrorMessage } from '@/app/reels-maker/utils/errors';
+import {
+  buildTemplateLoginHref,
+  PAID_TEMPLATE_REQUIRED_ERROR_CODE,
+  TEMPLATE_LOGIN_REQUIRED_ERROR_CODE,
+  TEMPLATE_LOGIN_REQUIRED_MESSAGE,
+  TEMPLATE_PAYMENT_PATH,
+} from '@/app/lib/templates/access';
 
 const DEFAULT_COMPLETION_RETURN_URL = '/templates';
 
@@ -162,7 +169,7 @@ const GALLERY_FILE_PICKER_TYPES: FilePickerAcceptOption[] = [
 ];
 
 type SessionErrorState = {
-  type: 'auth' | 'generic';
+  type: 'auth' | 'template-login' | 'paid-template' | 'generic';
   message: string;
   status?: number;
   errorCode?: string | null;
@@ -204,6 +211,23 @@ const buildSessionErrorState = ({
   message?: string | null;
   fallbackMessage: string;
 }): SessionErrorState => {
+  if (errorCode === TEMPLATE_LOGIN_REQUIRED_ERROR_CODE) {
+    return {
+      type: 'template-login',
+      status,
+      errorCode,
+      message: TEMPLATE_LOGIN_REQUIRED_MESSAGE,
+    };
+  }
+  if (errorCode === PAID_TEMPLATE_REQUIRED_ERROR_CODE) {
+    return {
+      type: 'paid-template',
+      status,
+      errorCode,
+      message: message?.trim() || '유료 템플릿은 결제 후 이용할 수 있습니다.',
+    };
+  }
+
   const type = isSessionAuthError(status, errorCode) ? 'auth' : 'generic';
   return {
     type,
@@ -3403,13 +3427,27 @@ function ReelsMakerInner() {
         <div className="max-w-sm text-center space-y-4">
           <p className="text-sm leading-6 text-white/70">{sessionError.message}</p>
           <div className="space-y-3">
-            {sessionError.type === 'auth' ? (
+            {sessionError.type === 'auth' || sessionError.type === 'template-login' ? (
               <button
                 type="button"
-                onClick={() => router.push(buildLoginHref(currentReelsMakerHref))}
+                onClick={() =>
+                  router.push(
+                    sessionError.type === 'template-login'
+                      ? buildTemplateLoginHref()
+                      : buildLoginHref(currentReelsMakerHref)
+                  )
+                }
                 className="w-full rounded-full bg-[#FF4D6D] px-4 py-3 text-sm font-semibold text-white shadow-lg"
               >
                 로그인하기
+              </button>
+            ) : sessionError.type === 'paid-template' ? (
+              <button
+                type="button"
+                onClick={() => router.push(TEMPLATE_PAYMENT_PATH)}
+                className="w-full rounded-full bg-[#FF4D6D] px-4 py-3 text-sm font-semibold text-white shadow-lg"
+              >
+                결제 페이지로 이동
               </button>
             ) : (
               <button

@@ -14,6 +14,18 @@ import { useAuth } from '@/app/components/providers/AuthProvider';
 import { useSavedTemplates, type TemplateSummary } from '@/app/hooks/useSavedTemplates';
 import type { WebApiResponse } from '@/app/lib/api/auth';
 import TemplateMediaPreview from '@/app/components/ui/TemplateMediaPreview';
+import TemplateAccessBadge from '@/app/components/ui/TemplateAccessBadge';
+import {
+  buildTemplateLoginHref,
+  canUseTemplate,
+  isGuestTemplateUser,
+  isPaidTemplate,
+  resolveTemplateAccessType,
+  TEMPLATE_LOGIN_REQUIRED_MESSAGE,
+  TEMPLATE_PAYMENT_PATH,
+  type TemplateAccessType,
+} from '@/app/lib/templates/access';
+import { showAppToast } from '@/app/lib/ui/toast';
 
 type TodayTrendCardStatus = 'AVAILABLE' | 'REQUESTABLE' | 'REQUESTED' | 'COMING_SOON';
 
@@ -26,6 +38,7 @@ type TodayTrendCard = {
   thumbnailUrl?: string | null;
   embedUrl?: string | null;
   tags: string[];
+  accessType?: TemplateAccessType | null;
   status: TodayTrendCardStatus;
   requestCount: number;
   requestedByMe: boolean;
@@ -76,7 +89,7 @@ const getCardStatusLabel = (card: TodayTrendCard) => {
 
 export default function TemplatesClient() {
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user, subscription, isLoadingSubscription } = useAuth();
   const [activeIndex, setActiveIndex] = useState(0);
   const [cards, setCards] = useState<TodayTrendCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -84,6 +97,7 @@ export default function TemplatesClient() {
   const [requestError, setRequestError] = useState<string | null>(null);
   const [requestingTrendId, setRequestingTrendId] = useState<string | null>(null);
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const accessRedirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { savedSet, toggleSave } = useSavedTemplates({ returnUrl: '/templates' });
 
   const handlePrev = () => {
@@ -154,8 +168,31 @@ export default function TemplatesClient() {
       thumbnailUrl: card.thumbnailUrl,
       embedUrl: card.embedUrl,
       tags: card.tags,
+      accessType: card.accessType,
     };
     toggleSave(template);
+  };
+
+  const redirectToTemplateLogin = () => {
+    showAppToast({
+      message: TEMPLATE_LOGIN_REQUIRED_MESSAGE,
+      tone: 'error',
+    });
+    if (accessRedirectTimerRef.current) {
+      clearTimeout(accessRedirectTimerRef.current);
+    }
+    accessRedirectTimerRef.current = setTimeout(() => {
+      router.push(buildTemplateLoginHref());
+    }, 800);
+  };
+
+  const handleRestrictedPaidTemplate = () => {
+    if (!isAuthenticated || isGuestTemplateUser(user)) {
+      redirectToTemplateLogin();
+      return;
+    }
+
+    router.push(TEMPLATE_PAYMENT_PATH);
   };
 
   const handlePrimaryAction = async () => {
@@ -163,13 +200,27 @@ export default function TemplatesClient() {
       return;
     }
 
-    if (!isAuthenticated) {
-      router.push('/login?returnUrl=' + encodeURIComponent('/templates'));
+    if (isAvailableCard(activeCard) && activeCard.templateId) {
+      const destination = buildReelsMakerHref(activeCard.templateId);
+      if (isPaidTemplate(activeCard) && !canUseTemplate({
+        template: activeCard,
+        isAuthenticated,
+        user,
+        subscription,
+      })) {
+        handleRestrictedPaidTemplate();
+        return;
+      }
+      router.push(
+        isAuthenticated
+          ? destination
+          : `/login?returnUrl=${encodeURIComponent(destination)}`
+      );
       return;
     }
 
-    if (isAvailableCard(activeCard) && activeCard.templateId) {
-      router.push(buildReelsMakerHref(activeCard.templateId));
+    if (!isAuthenticated) {
+      router.push('/login?returnUrl=' + encodeURIComponent('/templates'));
       return;
     }
 
@@ -286,15 +337,34 @@ export default function TemplatesClient() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (accessRedirectTimerRef.current) {
+        clearTimeout(accessRedirectTimerRef.current);
+      }
+    };
+  }, []);
+
   const recommendations = useMemo(() => cards.slice(0, 3), [cards]);
   const activeCard = useMemo(
     () => recommendations[activeIndex] ?? null,
     [recommendations, activeIndex]
   );
   const isRequestingActiveCard = Boolean(activeCard && requestingTrendId === activeCard.trendReelId);
+  const isActiveCardAccessLoading = Boolean(
+    activeCard &&
+      isAvailableCard(activeCard) &&
+      isPaidTemplate(activeCard) &&
+      isAuthenticated &&
+      !isGuestTemplateUser(user) &&
+      isLoadingSubscription
+  );
   const primaryButtonText = useMemo(() => {
     if (!activeCard) {
       return '3분 만에 만들기';
+    }
+    if (isActiveCardAccessLoading) {
+      return '권한 확인 중...';
     }
     if (isRequestingActiveCard) {
       return '요청 중...';
@@ -309,9 +379,10 @@ export default function TemplatesClient() {
       return '요청 완료';
     }
     return '추가 예정';
-  }, [activeCard, isRequestingActiveCard]);
+  }, [activeCard, isActiveCardAccessLoading, isRequestingActiveCard]);
   const isPrimaryButtonDisabled =
     !activeCard ||
+    isActiveCardAccessLoading ||
     isRequestingActiveCard ||
     activeCard.status === 'REQUESTED' ||
     activeCard.status === 'COMING_SOON' ||
@@ -370,6 +441,10 @@ export default function TemplatesClient() {
                 <div className="pointer-events-none absolute top-4 left-4 flex h-12 min-w-[98px] items-center justify-center rounded-full bg-[#FF4D6D] px-5 text-base font-extrabold leading-none shadow-lg sm:h-14 sm:min-w-[112px] sm:text-lg">
                   추천 {index + 1}
                 </div>
+                <TemplateAccessBadge
+                  accessType={resolveTemplateAccessType(card)}
+                  className="pointer-events-none absolute left-4 top-[70px] z-40 sm:top-[82px]"
+                />
 
                 {isAvailable ? (
                   <button

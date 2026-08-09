@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { WebApiResponse } from '@/app/lib/api/auth';
+import type { TemplateAccessType } from '@/app/lib/templates/access';
 
 export type TemplateSummary = {
   id: string;
@@ -12,6 +13,7 @@ export type TemplateSummary = {
   thumbnailUrl?: string | null;
   embedUrl?: string | null;
   tags: string[];
+  accessType?: TemplateAccessType | null;
 };
 
 type TemplateListResponse = {

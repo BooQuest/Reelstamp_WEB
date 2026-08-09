@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -13,6 +14,18 @@ import type { WebApiResponse } from '@/app/lib/api/auth';
 import { Bookmark, ChevronLeft, ChevronRight, Play, X } from 'lucide-react';
 import { useSavedTemplates } from '@/app/hooks/useSavedTemplates';
 import TemplateMediaPreview from '@/app/components/ui/TemplateMediaPreview';
+import TemplateAccessBadge from '@/app/components/ui/TemplateAccessBadge';
+import {
+  buildTemplateLoginHref,
+  canUseTemplate,
+  isGuestTemplateUser,
+  isPaidTemplate,
+  resolveTemplateAccessType,
+  TEMPLATE_LOGIN_REQUIRED_MESSAGE,
+  TEMPLATE_PAYMENT_PATH,
+  type TemplateAccessType,
+} from '@/app/lib/templates/access';
+import { showAppToast } from '@/app/lib/ui/toast';
 
 type TemplateItem = {
   id: string;
@@ -21,6 +34,7 @@ type TemplateItem = {
   thumbnailUrl?: string | null;
   embedUrl?: string | null;
   tags: string[];
+  accessType?: TemplateAccessType | null;
 };
 
 type TemplateCategory = {
@@ -59,7 +73,7 @@ const buildReelsMakerHref = (templateId: string, returnUrl: string) =>
 export default function AllTemplatesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user, subscription, isLoadingSubscription } = useAuth();
   const selectedCategoryId = searchParams.get('category');
   const templateIdParam = searchParams.get('templateId');
   const returnUrl = templateIdParam
@@ -74,6 +88,7 @@ export default function AllTemplatesClient() {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [activeModalCategoryId, setActiveModalCategoryId] = useState<string | null>(null);
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const accessRedirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showSelectTemplateBanner = searchParams.get('reason') === 'select-template';
 
   const selectedCategory = useMemo(
@@ -117,6 +132,60 @@ export default function AllTemplatesClient() {
 
   const showCategoryHome = !selectedCategoryId && !templateIdParam;
   const showTemplateGrid = Boolean(selectedCategoryId) || Boolean(templateIdParam);
+  const isTemplateAccessLoading = useCallback(
+    (template: TemplateItem | null | undefined) =>
+      Boolean(
+        template &&
+          isPaidTemplate(template) &&
+          isAuthenticated &&
+          !isGuestTemplateUser(user) &&
+          isLoadingSubscription
+      ),
+    [isAuthenticated, isLoadingSubscription, user]
+  );
+
+  const redirectToTemplateLogin = useCallback(() => {
+    showAppToast({
+      message: TEMPLATE_LOGIN_REQUIRED_MESSAGE,
+      tone: 'error',
+    });
+    if (accessRedirectTimerRef.current) {
+      clearTimeout(accessRedirectTimerRef.current);
+    }
+    accessRedirectTimerRef.current = setTimeout(() => {
+      router.push(buildTemplateLoginHref());
+    }, 800);
+  }, [router]);
+
+  const handleRestrictedPaidTemplate = useCallback(() => {
+    if (!isAuthenticated || isGuestTemplateUser(user)) {
+      redirectToTemplateLogin();
+      return;
+    }
+
+    router.push(TEMPLATE_PAYMENT_PATH);
+  }, [isAuthenticated, redirectToTemplateLogin, router, user]);
+
+  const ensureTemplateAccess = useCallback((template: TemplateItem) => {
+    if (!isPaidTemplate(template)) {
+      return true;
+    }
+    if (isTemplateAccessLoading(template)) {
+      return false;
+    }
+    if (canUseTemplate({ template, isAuthenticated, user, subscription })) {
+      return true;
+    }
+
+    handleRestrictedPaidTemplate();
+    return false;
+  }, [
+    handleRestrictedPaidTemplate,
+    isAuthenticated,
+    isTemplateAccessLoading,
+    subscription,
+    user,
+  ]);
 
   useEffect(() => {
     let isMounted = true;
@@ -163,6 +232,14 @@ export default function AllTemplatesClient() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (accessRedirectTimerRef.current) {
+        clearTimeout(accessRedirectTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (activeIndex === null) {
       return;
     }
@@ -193,9 +270,13 @@ export default function AllTemplatesClient() {
 
     const index = visibleTemplates.findIndex((template) => template.id === templateIdParam);
     if (index >= 0) {
+      const template = visibleTemplates[index];
+      if (!ensureTemplateAccess(template)) {
+        return;
+      }
       setActiveIndex(index);
     }
-  }, [templateIdParam, visibleTemplates]);
+  }, [ensureTemplateAccess, templateIdParam, visibleTemplates]);
 
   useEffect(() => {
     if (!templateIdParam) {
@@ -213,6 +294,10 @@ export default function AllTemplatesClient() {
     if (!category || templateIndex < 0) {
       return;
     }
+    const template = category.templates[templateIndex];
+    if (!ensureTemplateAccess(template)) {
+      return;
+    }
 
     setActiveModalCategoryId(categoryId);
     setActiveIndex(templateIndex);
@@ -224,6 +309,9 @@ export default function AllTemplatesClient() {
     }
 
     const destination = buildReelsMakerHref(activeTemplate.id, returnUrl);
+    if (!ensureTemplateAccess(activeTemplate)) {
+      return;
+    }
     router.push(
       isAuthenticated ? destination : `/login?returnUrl=${encodeURIComponent(destination)}`
     );
@@ -404,6 +492,10 @@ export default function AllTemplatesClient() {
                         className="group w-[31vw] min-w-[112px] max-w-[132px] flex-none text-left sm:w-[210px] sm:min-w-[210px] sm:max-w-[220px] md:w-[230px] md:max-w-[230px]"
                       >
                         <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100 ring-1 ring-black/5 sm:rounded-2xl">
+                          <TemplateAccessBadge
+                            accessType={resolveTemplateAccessType(template)}
+                            className="absolute left-2 top-2 z-10"
+                          />
                           <TemplateMediaPreview
                             title={template.title}
                             thumbnailUrl={template.thumbnailUrl}
@@ -459,12 +551,19 @@ export default function AllTemplatesClient() {
                     key={template.id}
                     type="button"
                     onClick={() => {
+                      if (!ensureTemplateAccess(template)) {
+                        return;
+                      }
                       setActiveModalCategoryId(null);
                       setActiveIndex(index);
                     }}
                     className="group text-left"
                   >
                     <div className="relative w-full aspect-[3/4] rounded-2xl sm:rounded-[28px] overflow-hidden bg-white shadow-sm ring-1 ring-black/5">
+                      <TemplateAccessBadge
+                        accessType={resolveTemplateAccessType(template)}
+                        className="absolute left-2 top-2 z-10 sm:left-3 sm:top-3"
+                      />
                       <TemplateMediaPreview
                         title={template.title}
                         thumbnailUrl={template.thumbnailUrl}
@@ -528,6 +627,10 @@ export default function AllTemplatesClient() {
                         preferEmbed
                       />
                       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/10 via-black/25 to-black/80" />
+                      <TemplateAccessBadge
+                        accessType={resolveTemplateAccessType(template)}
+                        className="pointer-events-none absolute left-4 top-4 z-40"
+                      />
 
                       {!template.embedUrl && (
                         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-white">
@@ -600,9 +703,10 @@ export default function AllTemplatesClient() {
               <button
                 type="button"
                 onClick={handleCreate}
-                className="mt-4 block w-[calc(100%-3rem)] max-w-md rounded-full bg-[#FF4E73] py-4 text-base font-semibold text-white shadow-lg shadow-pink-500/30 transition hover:brightness-105 sm:text-lg"
+                disabled={isTemplateAccessLoading(activeTemplate)}
+                className="mt-4 block w-[calc(100%-3rem)] max-w-md rounded-full bg-[#FF4E73] py-4 text-base font-semibold text-white shadow-lg shadow-pink-500/30 transition hover:brightness-105 disabled:cursor-not-allowed disabled:bg-white/20 disabled:shadow-none sm:text-lg"
               >
-                3분 만에 만들기
+                {isTemplateAccessLoading(activeTemplate) ? '권한 확인 중...' : '3분 만에 만들기'}
               </button>
             </div>
           </div>
