@@ -21,6 +21,7 @@ import {
   Menu,
   FolderOpen,
   Bell,
+  CreditCard,
 } from 'lucide-react';
 
 // 메뉴 항목 타입 정의
@@ -67,6 +68,10 @@ const DESKTOP_MENU_ITEMS: MenuItem[] = [
   {
     href: '/all-templates',
     label: '릴스 템플릿',
+  },
+  {
+    href: '/pricing',
+    label: '요금제',
   },
   {
     href: '/trending-reels',
@@ -127,6 +132,14 @@ const MOBILE_PRIMARY_ITEMS: MobileMenuItem[] = [
     icon: CheckCircle,
     requiresAuth: true,
   },
+];
+
+const MOBILE_INFO_ITEMS: MobileMenuItem[] = [
+  {
+    href: '/pricing',
+    label: '요금제',
+    icon: CreditCard,
+  },
   {
     href: '/notice',
     label: '공지사항',
@@ -166,7 +179,7 @@ export default function Header() {
   const buildLoginHref = (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`;
   const videoCreditLabel = 'free';
   const hasVisibleLegacyMenuItems = MENU_ITEMS.some(isNavItemVisible);
-  const renderMobilePrimaryMenuItems = (items: MobileMenuItem[]) =>
+  const renderMobileMenuItems = (items: MobileMenuItem[]) =>
     items.filter(isNavItemVisible).map((item) => {
       const active = pathname === item.href;
       const Icon = item.icon;
@@ -686,15 +699,15 @@ export default function Header() {
 
                     <div className="flex flex-col space-y-2">
                       {/* 신규 메뉴 */}
-                      {renderMobilePrimaryMenuItems(MOBILE_PRIMARY_ITEMS.slice(0, 3))}
+                      {renderMobileMenuItems(MOBILE_PRIMARY_ITEMS.slice(0, 3))}
 
                       <div className="border-t border-gray-200 my-2"></div>
 
-                      {renderMobilePrimaryMenuItems(MOBILE_PRIMARY_ITEMS.slice(3, -1))}
+                      {renderMobileMenuItems(MOBILE_PRIMARY_ITEMS.slice(3))}
 
                       <div className="border-t border-gray-200 my-2"></div>
 
-                      {renderMobilePrimaryMenuItems(MOBILE_PRIMARY_ITEMS.slice(-1))}
+                      {renderMobileMenuItems(MOBILE_INFO_ITEMS)}
 
                       {(hasVisibleLegacyMenuItems || (isAuthenticated && isAdmin)) && (
                         <div className="border-t border-gray-200 my-2"></div>
