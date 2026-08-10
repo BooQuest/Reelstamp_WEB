@@ -141,6 +141,7 @@ export default function SavedReelsClient() {
                   title={template.title}
                   thumbnailUrl={template.thumbnailUrl}
                   embedUrl={template.embedUrl}
+                  instagramOnly={template.instagramOnly}
                   disableEmbedInteraction
                   imageClassName="transition-transform duration-300 group-hover:scale-[1.03]"
                 />

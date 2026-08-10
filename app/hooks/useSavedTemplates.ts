@@ -12,6 +12,7 @@ export type TemplateSummary = {
   subtitle: string;
   thumbnailUrl?: string | null;
   embedUrl?: string | null;
+  instagramOnly?: boolean;
   tags: string[];
   accessType?: TemplateAccessType | null;
 };
@@ -49,6 +50,7 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
       subtitle: template.subtitle ?? '',
       thumbnailUrl: template.thumbnailUrl?.trim() || null,
       embedUrl: template.embedUrl ?? null,
+      instagramOnly: Boolean(template.instagramOnly),
       tags: Array.isArray(template.tags) ? template.tags : [],
     }));
 
@@ -118,6 +120,7 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
                   ...template,
                   thumbnailUrl: template.thumbnailUrl?.trim() || null,
                   embedUrl: template.embedUrl ?? null,
+                  instagramOnly: Boolean(template.instagramOnly),
                   tags: Array.isArray(template.tags) ? template.tags : [],
                 } as TemplateSummary,
                 ...prev,

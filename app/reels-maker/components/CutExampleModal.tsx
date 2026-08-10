@@ -14,6 +14,7 @@ type Props = {
   guideText: string | null;
   reelUrls: string[];
   currentReelUrl: string | null;
+  currentReelInstagramOnly?: boolean;
   currentReelIndex: number;
   isFirstReel: boolean;
   isLastReel: boolean;
@@ -32,6 +33,7 @@ export default function CutExampleModal({
   guideText,
   reelUrls,
   currentReelUrl,
+  currentReelInstagramOnly = false,
   currentReelIndex,
   isFirstReel,
   isLastReel,
@@ -154,6 +156,7 @@ export default function CutExampleModal({
                   <InstagramEmbed
                     url={currentReelUrl}
                     className="absolute inset-0 h-full w-full rounded-none"
+                    instagramOnly={currentReelInstagramOnly}
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70">

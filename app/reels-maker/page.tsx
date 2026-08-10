@@ -74,6 +74,7 @@ import type {
   ReelsMakerStatusResponse,
   Stage,
   TemplateDetailResponse,
+  TemplateExampleReel,
   TrimDragMode,
   TrimDragStartState,
   VideoMetadata,
@@ -684,9 +685,18 @@ function ReelsMakerInner() {
       [activeCutKey]: false,
     }));
   }, [activeCutKey]);
-  const exampleReelUrls = template?.exampleReelUrls ?? [];
+  const exampleReels: TemplateExampleReel[] =
+    template?.exampleReels && template.exampleReels.length > 0
+      ? template.exampleReels
+      : (template?.exampleReelUrls ?? []).map((url) => ({
+          url,
+          instagramOnly: false,
+        }));
+  const exampleReelUrls = exampleReels.map((reel) => reel.url);
   const hasExampleReels = exampleReelUrls.length > 0;
-  const currentExampleReelUrl = exampleReelUrls[exampleReelIndex] ?? null;
+  const currentExampleReel = exampleReels[exampleReelIndex] ?? null;
+  const currentExampleReelUrl = currentExampleReel?.url ?? null;
+  const currentExampleReelInstagramOnly = Boolean(currentExampleReel?.instagramOnly);
   const isFirstExampleReel = exampleReelIndex <= 0;
   const isLastExampleReel = exampleReelIndex >= exampleReelUrls.length - 1;
   const canOpenActiveCutExample =
@@ -1030,16 +1040,33 @@ function ReelsMakerInner() {
         if (!data) {
           throw new Error(payload?.message || '템플릿 정보를 불러오지 못했습니다.');
         }
+        const normalizedExampleReels: TemplateExampleReel[] = Array.isArray(data?.exampleReels)
+          ? data.exampleReels
+              .filter((reel): reel is TemplateExampleReel => {
+                if (!reel || typeof reel.url !== 'string') return false;
+                return reel.url.trim().length > 0;
+              })
+              .map((reel) => ({
+                url: reel.url.trim(),
+                instagramOnly: Boolean(reel.instagramOnly),
+              }))
+          : Array.isArray(data?.exampleReelUrls)
+            ? data.exampleReelUrls
+                .filter((url): url is string => {
+                  if (typeof url !== 'string') return false;
+                  return url.trim().length > 0;
+                })
+                .map((url) => ({
+                  url: url.trim(),
+                  instagramOnly: false,
+                }))
+            : [];
         const normalized = {
           ...data,
           tags: Array.isArray(data?.tags) ? data.tags : [],
           cuts: Array.isArray(data?.cuts) ? data.cuts : [],
-          exampleReelUrls: Array.isArray(data?.exampleReelUrls)
-            ? data.exampleReelUrls.filter((url): url is string => {
-                if (typeof url !== 'string') return false;
-                return url.trim().length > 0;
-              })
-            : [],
+          exampleReels: normalizedExampleReels,
+          exampleReelUrls: normalizedExampleReels.map((reel) => reel.url),
         };
 
         if (!normalized.cuts || normalized.cuts.length === 0) {
@@ -4142,6 +4169,7 @@ function ReelsMakerInner() {
           guideText={activeCutGuideText}
           reelUrls={exampleReelUrls}
           currentReelUrl={currentExampleReelUrl}
+          currentReelInstagramOnly={currentExampleReelInstagramOnly}
           currentReelIndex={exampleReelIndex}
           isFirstReel={isFirstExampleReel}
           isLastReel={isLastExampleReel}

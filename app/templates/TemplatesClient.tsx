@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -15,6 +16,7 @@ import { useSavedTemplates, type TemplateSummary } from '@/app/hooks/useSavedTem
 import type { WebApiResponse } from '@/app/lib/api/auth';
 import TemplateMediaPreview from '@/app/components/ui/TemplateMediaPreview';
 import TemplateAccessBadge from '@/app/components/ui/TemplateAccessBadge';
+import { isInstagramPlaybackTriggerTarget } from '@/app/lib/ui/instagramPlaybackTrigger';
 import {
   buildTemplateLoginHref,
   canUseTemplate,
@@ -37,6 +39,7 @@ type TodayTrendCard = {
   subtitle: string;
   thumbnailUrl?: string | null;
   embedUrl?: string | null;
+  instagramOnly?: boolean;
   tags: string[];
   accessType?: TemplateAccessType | null;
   status: TodayTrendCardStatus;
@@ -66,6 +69,7 @@ const normalizeCard = (card: TodayTrendCard): TodayTrendCard => ({
   subtitle: card.subtitle ?? '',
   thumbnailUrl: card.thumbnailUrl?.trim() || null,
   embedUrl: card.embedUrl ?? null,
+  instagramOnly: Boolean(card.instagramOnly),
   tags: Array.isArray(card.tags) ? card.tags : [],
   requestCount: Number(card.requestCount || 0),
   requestedByMe: Boolean(card.requestedByMe),
@@ -96,15 +100,18 @@ export default function TemplatesClient() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [requestingTrendId, setRequestingTrendId] = useState<string | null>(null);
+  const [playbackFallbackCardId, setPlaybackFallbackCardId] = useState<string | null>(null);
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const accessRedirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { savedSet, toggleSave } = useSavedTemplates({ returnUrl: '/templates' });
 
   const handlePrev = () => {
+    setPlaybackFallbackCardId(null);
     setActiveIndex((prev) => Math.max(0, prev - 1));
   };
 
   const handleNext = () => {
+    setPlaybackFallbackCardId(null);
     const limit = Math.min(cards.length, 3);
     if (limit === 0) {
       return;
@@ -113,7 +120,10 @@ export default function TemplatesClient() {
   };
 
   const handleCarouselPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
+    if (!isInstagramPlaybackTriggerTarget(event.target)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
     swipeStartRef.current = {
       x: event.clientX,
       y: event.clientY,
@@ -156,6 +166,19 @@ export default function TemplatesClient() {
     swipeStartRef.current = null;
   };
 
+  const handlePlaybackFallbackVisibilityChange = useCallback(
+    (cardId: string, isVisible: boolean) => {
+      setPlaybackFallbackCardId((currentCardId) => {
+        if (isVisible) {
+          return cardId;
+        }
+
+        return currentCardId === cardId ? null : currentCardId;
+      });
+    },
+    []
+  );
+
   const handleSaveCard = (card: TodayTrendCard) => {
     if (!isAvailableCard(card) || !card.templateId) {
       return;
@@ -167,6 +190,7 @@ export default function TemplatesClient() {
       subtitle: card.subtitle,
       thumbnailUrl: card.thumbnailUrl,
       embedUrl: card.embedUrl,
+      instagramOnly: card.instagramOnly,
       tags: card.tags,
       accessType: card.accessType,
     };
@@ -270,7 +294,7 @@ export default function TemplatesClient() {
     const delta = index - activeIndex;
     if (delta === 0) {
       return {
-        zIndex: 30,
+        zIndex: isActivePlaybackFallbackVisible ? 80 : 30,
         opacity: 1,
         filter: 'brightness(1)',
         transform: 'translate(-50%, -50%) translateX(0%) translateY(0px) scale(1)',
@@ -349,6 +373,9 @@ export default function TemplatesClient() {
   const activeCard = useMemo(
     () => recommendations[activeIndex] ?? null,
     [recommendations, activeIndex]
+  );
+  const isActivePlaybackFallbackVisible = Boolean(
+    activeCard && playbackFallbackCardId === activeCard.id
   );
   const isRequestingActiveCard = Boolean(activeCard && requestingTrendId === activeCard.trendReelId);
   const isActiveCardAccessLoading = Boolean(
@@ -433,8 +460,12 @@ export default function TemplatesClient() {
                   title={card.title}
                   thumbnailUrl={card.thumbnailUrl}
                   embedUrl={card.embedUrl}
+                  instagramOnly={card.instagramOnly}
                   disableEmbedInteraction={!isActive}
                   preferEmbed
+                  onPlaybackFallbackVisibilityChange={(isVisible) =>
+                    handlePlaybackFallbackVisibilityChange(card.id, isVisible)
+                  }
                 />
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/80" />
 

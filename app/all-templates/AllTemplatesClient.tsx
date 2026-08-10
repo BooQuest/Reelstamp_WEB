@@ -15,6 +15,7 @@ import { Bookmark, ChevronLeft, ChevronRight, Play, X } from 'lucide-react';
 import { useSavedTemplates } from '@/app/hooks/useSavedTemplates';
 import TemplateMediaPreview from '@/app/components/ui/TemplateMediaPreview';
 import TemplateAccessBadge from '@/app/components/ui/TemplateAccessBadge';
+import { isInstagramPlaybackTriggerTarget } from '@/app/lib/ui/instagramPlaybackTrigger';
 import {
   buildTemplateLoginHref,
   canUseTemplate,
@@ -33,6 +34,7 @@ type TemplateItem = {
   subtitle: string;
   thumbnailUrl?: string | null;
   embedUrl?: string | null;
+  instagramOnly?: boolean;
   tags: string[];
   accessType?: TemplateAccessType | null;
 };
@@ -57,6 +59,7 @@ const normalizeTemplate = (template: TemplateItem): TemplateItem => ({
   subtitle: template.subtitle ?? '',
   thumbnailUrl: template.thumbnailUrl?.trim() || null,
   embedUrl: template.embedUrl ?? null,
+  instagramOnly: Boolean(template.instagramOnly),
   tags: Array.isArray(template.tags) ? template.tags : [],
 });
 
@@ -87,6 +90,7 @@ export default function AllTemplatesClient() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [activeModalCategoryId, setActiveModalCategoryId] = useState<string | null>(null);
+  const [playbackFallbackTemplateId, setPlaybackFallbackTemplateId] = useState<string | null>(null);
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const accessRedirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showSelectTemplateBanner = searchParams.get('reason') === 'select-template';
@@ -128,6 +132,9 @@ export default function AllTemplatesClient() {
   const activeTemplate = useMemo(
     () => (activeIndex === null ? null : modalTemplates[activeIndex] ?? null),
     [activeIndex, modalTemplates]
+  );
+  const isActivePlaybackFallbackVisible = Boolean(
+    activeTemplate && playbackFallbackTemplateId === activeTemplate.id
   );
 
   const showCategoryHome = !selectedCategoryId && !templateIdParam;
@@ -301,6 +308,7 @@ export default function AllTemplatesClient() {
 
     setActiveModalCategoryId(categoryId);
     setActiveIndex(templateIndex);
+    setPlaybackFallbackTemplateId(null);
   };
 
   const handleCreate = () => {
@@ -318,6 +326,7 @@ export default function AllTemplatesClient() {
   };
 
   const handlePrev = () => {
+    setPlaybackFallbackTemplateId(null);
     setActiveIndex((prev) => {
       if (prev === null) {
         return 0;
@@ -327,6 +336,7 @@ export default function AllTemplatesClient() {
   };
 
   const handleNext = () => {
+    setPlaybackFallbackTemplateId(null);
     setActiveIndex((prev) => {
       if (prev === null) {
         return 0;
@@ -336,7 +346,10 @@ export default function AllTemplatesClient() {
   };
 
   const handleCarouselPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
+    if (!isInstagramPlaybackTriggerTarget(event.target)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
     swipeStartRef.current = {
       x: event.clientX,
       y: event.clientY,
@@ -382,6 +395,7 @@ export default function AllTemplatesClient() {
   const handleCloseModal = () => {
     setActiveIndex(null);
     setActiveModalCategoryId(null);
+    setPlaybackFallbackTemplateId(null);
     swipeStartRef.current = null;
     if (templateIdParam) {
       const params = new URLSearchParams(searchParams.toString());
@@ -390,6 +404,19 @@ export default function AllTemplatesClient() {
       router.replace(query ? `/all-templates?${query}` : '/all-templates');
     }
   };
+
+  const handlePlaybackFallbackVisibilityChange = useCallback(
+    (templateId: string, isVisible: boolean) => {
+      setPlaybackFallbackTemplateId((currentTemplateId) => {
+        if (isVisible) {
+          return templateId;
+        }
+
+        return currentTemplateId === templateId ? null : currentTemplateId;
+      });
+    },
+    []
+  );
 
   const getCardStyle = (index: number) => {
     if (activeIndex === null) {
@@ -401,7 +428,7 @@ export default function AllTemplatesClient() {
 
     if (distance === 0) {
       return {
-        zIndex: 30,
+        zIndex: isActivePlaybackFallbackVisible ? 80 : 30,
         opacity: 1,
         filter: 'brightness(1)',
         transform: 'translate(-50%, -50%) translateX(0%) translateY(0px) scale(1)',
@@ -500,6 +527,7 @@ export default function AllTemplatesClient() {
                             title={template.title}
                             thumbnailUrl={template.thumbnailUrl}
                             embedUrl={template.embedUrl}
+                            instagramOnly={template.instagramOnly}
                             disableEmbedInteraction
                             imageClassName="transition-transform duration-300 group-hover:scale-[1.03]"
                           />
@@ -568,6 +596,7 @@ export default function AllTemplatesClient() {
                         title={template.title}
                         thumbnailUrl={template.thumbnailUrl}
                         embedUrl={template.embedUrl}
+                        instagramOnly={template.instagramOnly}
                         disableEmbedInteraction
                         imageClassName="transition-transform duration-300 group-hover:scale-[1.03]"
                       />
@@ -623,8 +652,12 @@ export default function AllTemplatesClient() {
                         title={template.title}
                         thumbnailUrl={template.thumbnailUrl}
                         embedUrl={template.embedUrl}
+                        instagramOnly={template.instagramOnly}
                         disableEmbedInteraction={!isActive}
                         preferEmbed
+                        onPlaybackFallbackVisibilityChange={(isVisible) =>
+                          handlePlaybackFallbackVisibilityChange(template.id, isVisible)
+                        }
                       />
                       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/10 via-black/25 to-black/80" />
                       <TemplateAccessBadge

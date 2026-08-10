@@ -3,6 +3,11 @@ export type ExampleMedia = {
   src: string;
 };
 
+export type TemplateExampleReel = {
+  url: string;
+  instagramOnly?: boolean;
+};
+
 export type GuideImageEntry = {
   url: string;
   startSecond: number | null;
@@ -43,7 +48,9 @@ export type TemplateDetailResponse = {
   subtitle?: string | null;
   thumbnailUrl?: string | null;
   embedUrl?: string | null;
+  instagramOnly?: boolean;
   exampleReelUrls?: string[];
+  exampleReels?: TemplateExampleReel[];
   tags?: string[];
   accessType?: 'FREE' | 'PAID' | null;
   cuts: TemplateCut[];
