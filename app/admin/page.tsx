@@ -34,6 +34,8 @@ const USER_TYPE_OPTIONS = [
 ];
 
 type AdminTab = 'revisions' | 'templateRequests';
+const ENABLE_REVISIONS_TAB = false;
+const DEFAULT_ADMIN_TAB: AdminTab = ENABLE_REVISIONS_TAB ? 'revisions' : 'templateRequests';
 
 // 헬퍼: 카테고리 라벨 가져오기
 const getCategoryLabel = (value: string) => 
@@ -161,10 +163,12 @@ const CustomSelect = ({
 export default function AdminPage() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
-  const { data, isLoading, error, refetch } = useAdminRevisions();
+  const [activeTab, setActiveTab] = useState<AdminTab>(DEFAULT_ADMIN_TAB);
+  const { data, isLoading, error, refetch } = useAdminRevisions({
+    enabled: activeTab === 'revisions' && ENABLE_REVISIONS_TAB,
+  });
 
   const isAdmin = isAuthenticated && user?.role?.toUpperCase() === USER_ROLES.ADMIN;
-  const [activeTab, setActiveTab] = useState<AdminTab>('revisions');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [userTypeFilter, setUserTypeFilter] = useState<string>('ALL');
@@ -474,18 +478,20 @@ export default function AdminPage() {
           {/* 탭 */}
           <div className="admin-page-tab-wrapper px-4 sm:px-6 lg:px-8 mb-8">
             <div className="flex border-b-2 border-pink-100 bg-white/40 rounded-t-3xl p-1.5 pb-0">
-              <button
-                type="button"
-                onClick={() => setActiveTab('revisions')}
-                className={`admin-page-tab px-10 py-4 text-base font-black transition-all relative rounded-t-2xl whitespace-nowrap ${
-                  activeTab === 'revisions'
-                    ? 'text-[#FF496D] bg-white shadow-[0_-4px_20px_rgba(255,73,109,0.08)] border-b-2 border-b-white'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-white/70'
-                }`}
-                style={activeTab === 'revisions' ? { marginBottom: '-2px', zIndex: 10 } : { zIndex: 1 }}
-              >
-                대본 생성 이력
-              </button>
+              {ENABLE_REVISIONS_TAB && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('revisions')}
+                  className={`admin-page-tab px-10 py-4 text-base font-black transition-all relative rounded-t-2xl whitespace-nowrap ${
+                    activeTab === 'revisions'
+                      ? 'text-[#FF496D] bg-white shadow-[0_-4px_20px_rgba(255,73,109,0.08)] border-b-2 border-b-white'
+                      : 'text-gray-500 hover:text-gray-900 hover:bg-white/70'
+                  }`}
+                  style={activeTab === 'revisions' ? { marginBottom: '-2px', zIndex: 10 } : { zIndex: 1 }}
+                >
+                  대본 생성 이력
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setActiveTab('templateRequests')}
@@ -503,7 +509,7 @@ export default function AdminPage() {
 
           {/* 콘텐츠 */}
           <div className="admin-page-content px-4 sm:px-6 lg:px-8">
-            {activeTab === 'revisions' && (
+            {ENABLE_REVISIONS_TAB && activeTab === 'revisions' && (
               <>
             {isLoading && (
               <div className="admin-page-loading flex items-center justify-center py-32">

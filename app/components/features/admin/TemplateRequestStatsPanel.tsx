@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Calendar, FileQuestion, Loader2, RefreshCw, Search, X } from 'lucide-react';
+import { Calendar, FileQuestion, Hash, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import {
   AdminTemplateRequest,
   AdminTemplateRequestStatus,
@@ -28,6 +28,10 @@ const formatDateTime = (value: string | null) => {
 export default function TemplateRequestStatsPanel({ enabled = true }: { enabled?: boolean }) {
   const { data, isLoading, error, refetch } = useAdminTemplateRequests({ enabled });
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [minRequestCount, setMinRequestCount] = useState('');
+  const [maxRequestCount, setMaxRequestCount] = useState('');
 
   const requests = useMemo(
     () => (data?.data?.requests ?? []).filter((item) => item.status === REQUESTABLE_STATUS),
@@ -35,11 +39,63 @@ export default function TemplateRequestStatsPanel({ enabled = true }: { enabled?
   );
   const filteredRequests = useMemo(() => {
     const keyword = searchKeyword.trim().toLowerCase();
-    if (!keyword) {
-      return requests;
-    }
+    const minRequestCountQuery = minRequestCount.trim();
+    const maxRequestCountQuery = maxRequestCount.trim();
+    const minRequestCountValue = Number(minRequestCountQuery);
+    const maxRequestCountValue = Number(maxRequestCountQuery);
 
     return requests.filter((item) => {
+      if (minRequestCountQuery) {
+        if (
+          !Number.isInteger(minRequestCountValue) ||
+          minRequestCountValue < 0 ||
+          item.requestCount < minRequestCountValue
+        ) {
+          return false;
+        }
+      }
+
+      if (maxRequestCountQuery) {
+        if (
+          !Number.isInteger(maxRequestCountValue) ||
+          maxRequestCountValue < 0 ||
+          item.requestCount > maxRequestCountValue
+        ) {
+          return false;
+        }
+      }
+
+      if (startDate || endDate) {
+        if (!item.latestRequestedAt) {
+          return false;
+        }
+
+        const requestedAt = new Date(item.latestRequestedAt);
+        if (Number.isNaN(requestedAt.getTime())) {
+          return false;
+        }
+
+        if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          if (requestedAt < start) {
+            return false;
+          }
+        }
+
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          if (requestedAt > end) {
+            return false;
+          }
+        }
+      }
+
+      if (!keyword) {
+        return true;
+      }
+
       const haystack = [
         item.trendReelId,
         item.templateId,
@@ -53,7 +109,7 @@ export default function TemplateRequestStatsPanel({ enabled = true }: { enabled?
 
       return haystack.includes(keyword);
     });
-  }, [requests, searchKeyword]);
+  }, [requests, searchKeyword, startDate, endDate, minRequestCount, maxRequestCount]);
 
   if (isLoading) {
     return (
@@ -108,6 +164,87 @@ export default function TemplateRequestStatsPanel({ enabled = true }: { enabled?
           </div>
         </div>
 
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(260px,360px)] gap-6">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Date Range</label>
+            <div className="flex items-center gap-3 bg-gray-50/80 p-1.5 rounded-[22px] border border-transparent focus-within:border-[#FF496D]/30 focus-within:bg-white focus-within:ring-4 focus-within:ring-pink-50 transition-all h-14 shadow-inner group">
+              <div className="flex items-center gap-3 px-4 flex-1">
+                <Calendar className="w-4 h-4 text-gray-400 group-focus-within:text-[#FF496D] transition-colors flex-shrink-0" />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(event) => setStartDate(event.target.value)}
+                  className="bg-transparent border-none text-sm font-black text-gray-700 focus:ring-0 p-0 w-full cursor-pointer"
+                />
+              </div>
+              <div className="w-px h-5 bg-gray-200"></div>
+              <div className="flex items-center gap-3 px-4 flex-1">
+                <Calendar className="w-4 h-4 text-gray-400 group-focus-within:text-[#FF496D] transition-colors flex-shrink-0" />
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(event) => setEndDate(event.target.value)}
+                  className="bg-transparent border-none text-sm font-black text-gray-700 focus:ring-0 p-0 w-full cursor-pointer"
+                />
+              </div>
+              {(startDate || endDate) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStartDate('');
+                    setEndDate('');
+                  }}
+                  className="p-2.5 text-gray-400 hover:text-[#FF496D] transition-all rounded-xl hover:bg-white shadow-sm mr-1.5"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] ml-2">Request Count Range</label>
+            <div className="flex items-center gap-3 bg-gray-50/80 p-1.5 rounded-[22px] border border-transparent focus-within:border-[#FF496D]/30 focus-within:bg-white focus-within:ring-4 focus-within:ring-pink-50 transition-all h-14 shadow-inner group">
+              <Hash className="ml-3 w-4 h-4 text-gray-400 group-focus-within:text-[#FF496D] transition-colors flex-shrink-0" />
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={minRequestCount}
+                onChange={(event) => setMinRequestCount(event.target.value)}
+                placeholder="0"
+                aria-label="요청 수 최소값"
+                className="w-12 bg-transparent border-none text-center text-sm font-black text-gray-700 placeholder:text-gray-400 focus:ring-0 p-0"
+              />
+              <span className="text-sm font-black text-gray-600 whitespace-nowrap">이상</span>
+              <span className="text-sm font-black text-gray-300">~</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={maxRequestCount}
+                onChange={(event) => setMaxRequestCount(event.target.value)}
+                placeholder="0"
+                aria-label="요청 수 최대값"
+                className="w-12 bg-transparent border-none text-center text-sm font-black text-gray-700 placeholder:text-gray-400 focus:ring-0 p-0"
+              />
+              <span className="text-sm font-black text-gray-600 whitespace-nowrap">이하</span>
+              {(minRequestCount || maxRequestCount) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMinRequestCount('');
+                    setMaxRequestCount('');
+                  }}
+                  className="p-2.5 text-gray-400 hover:text-[#FF496D] transition-all rounded-xl hover:bg-white shadow-sm mr-1.5"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="relative group">
           <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#FF496D] transition-all group-focus-within:scale-110">
             <Search className="w-6 h-6" />
@@ -136,10 +273,16 @@ export default function TemplateRequestStatsPanel({ enabled = true }: { enabled?
         <div className="bg-white rounded-[40px] p-20 shadow-sm text-center border border-gray-100">
           <p className="text-2xl font-black text-gray-900 mb-6">검색 결과가 없습니다.</p>
           <button
-            onClick={() => setSearchKeyword('')}
+            onClick={() => {
+              setSearchKeyword('');
+              setStartDate('');
+              setEndDate('');
+              setMinRequestCount('');
+              setMaxRequestCount('');
+            }}
             className="px-8 py-3 rounded-2xl bg-pink-50 text-[#FF496D] text-base font-black hover:bg-[#FF496D] hover:text-white transition-all active:scale-95"
           >
-            검색 초기화
+            필터 초기화
           </button>
         </div>
       )}

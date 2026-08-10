@@ -63,11 +63,11 @@ async function fetchAdminRevisions(): Promise<AdminRevisionsResponse> {
   return json;
 }
 
-export function useAdminRevisions() {
+export function useAdminRevisions(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['admin', 'revisions'],
     queryFn: fetchAdminRevisions,
     staleTime: 5 * 60 * 1000,
+    enabled: options?.enabled !== false,
   });
 }
-
