@@ -260,6 +260,50 @@ const normalizeSessionCaptions = (
   });
 };
 
+const RECORDER_VIDEO_BITS_PER_SECOND = 8_000_000;
+const RECORDER_AUDIO_BITS_PER_SECOND = 128_000;
+const RECORDER_PREFERRED_MIME_TYPES = [
+  'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
+  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+  'video/mp4',
+  'video/webm;codecs=vp9,opus',
+  'video/webm;codecs=vp8,opus',
+  'video/webm',
+];
+
+const isValidMediaDimension = (value: number) =>
+  Number.isFinite(value) && value > 0;
+
+const isValidMediaSize = (width: number, height: number) =>
+  isValidMediaDimension(width) && isValidMediaDimension(height);
+
+const getSupportedRecorderMimeType = () => {
+  if (typeof window === 'undefined' || !window.MediaRecorder) return null;
+  return (
+    RECORDER_PREFERRED_MIME_TYPES.find((type) =>
+      window.MediaRecorder.isTypeSupported(type)
+    ) || null
+  );
+};
+
+const buildRecorderOptions = (
+  mimeType: string | null,
+  stream: MediaStream
+): MediaRecorderOptions => {
+  const options: MediaRecorderOptions = {
+    videoBitsPerSecond: RECORDER_VIDEO_BITS_PER_SECOND,
+  };
+
+  if (mimeType) {
+    options.mimeType = mimeType;
+  }
+  if (stream.getAudioTracks().length > 0) {
+    options.audioBitsPerSecond = RECORDER_AUDIO_BITS_PER_SECOND;
+  }
+
+  return options;
+};
+
 function ReelsMakerInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -267,6 +311,7 @@ function ReelsMakerInner() {
   const templateId = searchParams.get('templateId');
   const requestedSessionId = searchParams.get('sessionId');
   const returnUrlParam = searchParams.get('returnUrl');
+  const isVideoDebugEnabled = searchParams.get('videoDebug') === '1';
   const completionReturnUrl = useMemo(
     () => normalizeCompletionReturnUrl(returnUrlParam),
     [returnUrlParam]
@@ -398,6 +443,13 @@ function ReelsMakerInner() {
   const buildLoginHref = useCallback(
     (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`,
     []
+  );
+  const logVideoDebug = useCallback(
+    (event: string, details?: unknown) => {
+      if (!isVideoDebugEnabled) return;
+      console.info(`[ReelsMaker videoDebug] ${event}`, details);
+    },
+    [isVideoDebugEnabled]
   );
 
   const cuts = useMemo(() => {
@@ -902,29 +954,42 @@ function ReelsMakerInner() {
     video.muted = true;
     video.src = url;
 
-    const metadata = await new Promise<VideoMetadata>((resolve, reject) => {
-      const onLoadedMetadata = () => {
-        cleanup();
-        const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
-        const width = video.videoWidth || 720;
-        const height = video.videoHeight || 1280;
-        resolve({ duration, width, height });
-      };
-      const onError = () => {
-        cleanup();
-        reject(new Error('영상 정보를 불러오지 못했습니다.'));
-      };
-      const cleanup = () => {
-        video.removeEventListener('loadedmetadata', onLoadedMetadata);
-        video.removeEventListener('error', onError);
-      };
-      video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
-      video.addEventListener('error', onError, { once: true });
-    });
-
-    video.src = '';
-    return metadata;
-  }, []);
+    try {
+      return await new Promise<VideoMetadata>((resolve, reject) => {
+        const onLoadedMetadata = () => {
+          cleanup();
+          const duration =
+            Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+          const width = video.videoWidth;
+          const height = video.videoHeight;
+          logVideoDebug('gallery metadata loaded', {
+            duration,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+            metadataWidth: width,
+            metadataHeight: height,
+          });
+          if (!isValidMediaSize(width, height)) {
+            reject(new Error('영상 해상도 정보를 확인하지 못했습니다.'));
+            return;
+          }
+          resolve({ duration, width, height });
+        };
+        const onError = () => {
+          cleanup();
+          reject(new Error('영상 정보를 불러오지 못했습니다.'));
+        };
+        const cleanup = () => {
+          video.removeEventListener('loadedmetadata', onLoadedMetadata);
+          video.removeEventListener('error', onError);
+        };
+        video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+        video.addEventListener('error', onError, { once: true });
+      });
+    } finally {
+      video.src = '';
+    }
+  }, [logVideoDebug]);
 
   const seekVideoTo = useCallback(async (video: HTMLVideoElement, time: number) => {
     if (Math.abs(video.currentTime - time) < 0.02) {
@@ -1515,6 +1580,7 @@ function ReelsMakerInner() {
 
       try {
         let mediaStream: MediaStream | null = null;
+        let usedFallbackConstraints = false;
         try {
           mediaStream = await navigator.mediaDevices.getUserMedia({
             video: {
@@ -1526,6 +1592,7 @@ function ReelsMakerInner() {
             audio: true,
           });
         } catch {
+          usedFallbackConstraints = true;
           mediaStream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: { ideal: targetFacingMode } },
             audio: true,
@@ -1541,6 +1608,24 @@ function ReelsMakerInner() {
           mediaStream.getTracks().forEach((track) => track.stop());
           return null;
         }
+        const videoTrack = mediaStream.getVideoTracks()[0];
+        let videoCapabilities: MediaTrackCapabilities | null = null;
+        try {
+          videoCapabilities =
+            videoTrack && typeof videoTrack.getCapabilities === 'function'
+              ? videoTrack.getCapabilities()
+              : null;
+        } catch {
+          videoCapabilities = null;
+        }
+        logVideoDebug('camera stream ready', {
+          requestedFacingMode: targetFacingMode,
+          usedFallbackConstraints,
+          settings: videoTrack?.getSettings() ?? null,
+          constraints: videoTrack?.getConstraints() ?? null,
+          capabilities: videoCapabilities,
+          audioTrackCount: mediaStream.getAudioTracks().length,
+        });
         setStream((current) => {
           if (current && current !== mediaStream) {
             current.getTracks().forEach((track) => track.stop());
@@ -1555,7 +1640,7 @@ function ReelsMakerInner() {
         cameraSetupInProgressRef.current = false;
       }
     },
-    [cameraFacingMode]
+    [cameraFacingMode, logVideoDebug]
   );
 
   const handleSwitchCamera = useCallback(async () => {
@@ -1615,27 +1700,44 @@ function ReelsMakerInner() {
     };
   }, [pauseTrimPlayback]);
 
-  const createRecorder = (recordingStream: MediaStream) => {
-    if (!window.MediaRecorder) return null;
+  const createConfiguredRecorder = useCallback(
+    (recordingStream: MediaStream, debugLabel: string) => {
+      if (!window.MediaRecorder) return null;
 
-    const preferredTypes = [
-      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-      'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
-      'video/mp4',
-      'video/webm;codecs=vp9,opus',
-      'video/webm;codecs=vp8,opus',
-      'video/webm',
-    ];
-    const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
-    const recorder = new MediaRecorder(recordingStream, mimeType ? { mimeType } : undefined);
-    recordingMimeTypeRef.current = recorder.mimeType || mimeType || 'video/webm';
-    return recorder;
-  };
+      const selectedMimeType = getSupportedRecorderMimeType();
+      const options = buildRecorderOptions(selectedMimeType, recordingStream);
+      const recorder = new MediaRecorder(recordingStream, options);
 
-  const getSupportedMimeType = useCallback((types: string[]) => {
-    if (!window.MediaRecorder) return null;
-    return types.find((type) => MediaRecorder.isTypeSupported(type)) || null;
-  }, []);
+      logVideoDebug(`${debugLabel} recorder created`, {
+        preferredMimeTypes: RECORDER_PREFERRED_MIME_TYPES,
+        selectedMimeType,
+        recorderMimeType: recorder.mimeType,
+        requestedVideoBitsPerSecond: options.videoBitsPerSecond,
+        requestedAudioBitsPerSecond: options.audioBitsPerSecond ?? null,
+        recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
+        recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
+        audioTrackCount: recordingStream.getAudioTracks().length,
+        videoTrackSettings: recordingStream
+          .getVideoTracks()
+          .map((track) => track.getSettings()),
+      });
+
+      return { recorder, selectedMimeType };
+    },
+    [logVideoDebug]
+  );
+
+  const createRecorder = useCallback(
+    (recordingStream: MediaStream) => {
+      const configured = createConfiguredRecorder(recordingStream, 'camera');
+      if (!configured) return null;
+
+      recordingMimeTypeRef.current =
+        configured.recorder.mimeType || configured.selectedMimeType || 'video/webm';
+      return configured.recorder;
+    },
+    [createConfiguredRecorder]
+  );
 
   const captureVideoSegmentToBlob = useCallback(
     async (
@@ -1645,14 +1747,6 @@ function ReelsMakerInner() {
       endSeconds: number
     ): Promise<{ blob: Blob; mimeType: string; duration: number }> => {
       const duration = Math.max(MIN_TRIM_DURATION_SECONDS, endSeconds - startSeconds);
-      const preferredTypes = [
-        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-        'video/mp4',
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
-      ];
-      const mimeType = getSupportedMimeType(preferredTypes);
 
       const video = document.createElement('video');
       video.src = sourceUrl;
@@ -1684,8 +1778,25 @@ function ReelsMakerInner() {
         throw new Error('이 브라우저에서는 영상 구간 편집을 지원하지 않습니다.');
       }
 
-      const width = metadata.width || video.videoWidth || 720;
-      const height = metadata.height || video.videoHeight || 1280;
+      const width = isValidMediaDimension(metadata.width)
+        ? metadata.width
+        : video.videoWidth;
+      const height = isValidMediaDimension(metadata.height)
+        ? metadata.height
+        : video.videoHeight;
+      logVideoDebug('gallery trim dimensions', {
+        metadataWidth: metadata.width,
+        metadataHeight: metadata.height,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        canvasWidth: width,
+        canvasHeight: height,
+        startSeconds,
+        endSeconds,
+      });
+      if (!isValidMediaSize(width, height)) {
+        throw new Error('영상 해상도 정보를 확인하지 못했습니다.');
+      }
       canvas.width = width;
       canvas.height = height;
 
@@ -1716,7 +1827,11 @@ function ReelsMakerInner() {
         ...(audioDestination?.stream.getAudioTracks() ?? []),
       ]);
 
-      const recorder = new MediaRecorder(combinedStream, mimeType ? { mimeType } : undefined);
+      const configuredRecorder = createConfiguredRecorder(combinedStream, 'gallery trim');
+      if (!configuredRecorder) {
+        throw new Error('이 브라우저에서는 영상 구간 편집을 지원하지 않습니다.');
+      }
+      const { recorder, selectedMimeType } = configuredRecorder;
       const chunks: BlobPart[] = [];
 
       const outputBlob = await new Promise<Blob>(async (resolve, reject) => {
@@ -1727,7 +1842,20 @@ function ReelsMakerInner() {
         };
         recorder.onerror = () => reject(new Error('영상 구간 처리 중 오류가 발생했습니다.'));
         recorder.onstop = () => {
-          resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || 'video/webm' }));
+          const blob = new Blob(chunks, {
+            type: recorder.mimeType || selectedMimeType || 'video/webm',
+          });
+          logVideoDebug('gallery trim output blob', {
+            type: blob.type,
+            size: blob.size,
+            duration,
+            canvasWidth: canvas.width,
+            canvasHeight: canvas.height,
+            recorderMimeType: recorder.mimeType,
+            recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
+            recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
+          });
+          resolve(blob);
         };
 
         const videoWithFrameCallback = video as HTMLVideoElement & {
@@ -1808,11 +1936,11 @@ function ReelsMakerInner() {
 
       return {
         blob: outputBlob,
-        mimeType: outputBlob.type || mimeType || 'video/webm',
+        mimeType: outputBlob.type || selectedMimeType || 'video/webm',
         duration,
       };
     },
-    [getSupportedMimeType, seekVideoTo]
+    [createConfiguredRecorder, logVideoDebug, seekVideoTo]
   );
 
   const imageToVideoBlob = useCallback(
@@ -1839,22 +1967,29 @@ function ReelsMakerInner() {
         throw new Error('이 브라우저에서는 사진 변환을 지원하지 않습니다.');
       }
 
-      const width = image.naturalWidth || 720;
-      const height = image.naturalHeight || 1280;
+      const width = image.naturalWidth;
+      const height = image.naturalHeight;
+      logVideoDebug('image conversion dimensions', {
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+        canvasWidth: width,
+        canvasHeight: height,
+      });
+      if (!isValidMediaSize(width, height)) {
+        URL.revokeObjectURL(objectUrl);
+        throw new Error('사진 해상도 정보를 확인하지 못했습니다.');
+      }
       canvas.width = width;
       canvas.height = height;
       context.drawImage(image, 0, 0, width, height);
 
-      const preferredTypes = [
-        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-        'video/mp4',
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
-      ];
-      const mimeType = getSupportedMimeType(preferredTypes);
       const streamFromCanvas = canvas.captureStream(30);
-      const recorder = new MediaRecorder(streamFromCanvas, mimeType ? { mimeType } : undefined);
+      const configuredRecorder = createConfiguredRecorder(streamFromCanvas, 'image conversion');
+      if (!configuredRecorder) {
+        URL.revokeObjectURL(objectUrl);
+        throw new Error('이 브라우저에서는 사진을 영상으로 변환할 수 없습니다.');
+      }
+      const { recorder, selectedMimeType } = configuredRecorder;
       const chunks: BlobPart[] = [];
       const outputBlob = await new Promise<Blob>((resolve, reject) => {
         recorder.ondataavailable = (event) => {
@@ -1862,7 +1997,20 @@ function ReelsMakerInner() {
         };
         recorder.onerror = () => reject(new Error('사진 변환 중 오류가 발생했습니다.'));
         recorder.onstop = () => {
-          resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || 'video/webm' }));
+          const blob = new Blob(chunks, {
+            type: recorder.mimeType || selectedMimeType || 'video/webm',
+          });
+          logVideoDebug('image conversion output blob', {
+            type: blob.type,
+            size: blob.size,
+            duration: Math.max(MIN_TRIM_DURATION_SECONDS, durationSeconds),
+            canvasWidth: canvas.width,
+            canvasHeight: canvas.height,
+            recorderMimeType: recorder.mimeType,
+            recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
+            recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
+          });
+          resolve(blob);
         };
         recorder.start();
         window.setTimeout(() => {
@@ -1874,11 +2022,11 @@ function ReelsMakerInner() {
       URL.revokeObjectURL(objectUrl);
       return {
         blob: outputBlob,
-        mimeType: outputBlob.type || mimeType || 'video/webm',
+        mimeType: outputBlob.type || selectedMimeType || 'video/webm',
         duration: Math.max(MIN_TRIM_DURATION_SECONDS, durationSeconds),
       };
     },
-    [getSupportedMimeType]
+    [createConfiguredRecorder, logVideoDebug]
   );
 
   const createPosterFromClip = useCallback(async (clip: ClipInfo) => {
@@ -2823,6 +2971,14 @@ function ReelsMakerInner() {
       const mimeType = recorder.mimeType || recordingMimeTypeRef.current || 'video/webm';
       const blob = new Blob(chunksRef.current, { type: mimeType });
       const recordedCut = cuts[recordedIndex];
+      logVideoDebug('camera output blob', {
+        type: blob.type,
+        size: blob.size,
+        duration: recordedCut?.durationSeconds ?? activeCut.durationSeconds,
+        recorderMimeType: recorder.mimeType,
+        recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
+        recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
+      });
       saveClipAtIndex(
         recordedIndex,
         {
