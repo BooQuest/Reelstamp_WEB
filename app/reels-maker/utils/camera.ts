@@ -5,6 +5,8 @@ export const CAMERA_RECORDING_HEIGHT = 1920;
 export const CAMERA_FRAME_RATE = 30;
 export const CAMERA_PREVIEW_CROP_SCALE_LIMIT = 1.35;
 export const CAMERA_TARGET_ZOOM = 1;
+export const CAMERA_TARGET_ASPECT_RATIO =
+  CAMERA_RECORDING_WIDTH / CAMERA_RECORDING_HEIGHT;
 
 type CameraVideoConstraints = MediaTrackConstraints & {
   resizeMode?: ConstrainDOMString;
@@ -38,15 +40,30 @@ export type CameraPreviewMetrics = {
   objectFit: CameraPreviewObjectFit;
 };
 
-export const buildCameraMediaConstraints = (
-  facingMode: CameraFacingMode,
-  deviceId?: string
-): MediaStreamConstraints => {
+export type CameraMediaConstraintCandidate = {
+  label: string;
+  constraints: MediaStreamConstraints;
+  acceptNonPortrait: boolean;
+  fallback: boolean;
+};
+
+type CameraResolutionConstraintMode = 'exact' | 'ideal';
+
+const buildVideoConstraints = ({
+  facingMode,
+  deviceId,
+  width,
+  height,
+  mode,
+}: {
+  facingMode: CameraFacingMode;
+  deviceId?: string;
+  width?: number;
+  height?: number;
+  mode?: CameraResolutionConstraintMode;
+}): CameraVideoConstraints => {
   const video: CameraVideoConstraints = {
     facingMode: { ideal: facingMode },
-    width: { ideal: CAMERA_RECORDING_WIDTH },
-    height: { ideal: CAMERA_RECORDING_HEIGHT },
-    aspectRatio: { ideal: CAMERA_RECORDING_WIDTH / CAMERA_RECORDING_HEIGHT },
     frameRate: { ideal: CAMERA_FRAME_RATE },
     resizeMode: { ideal: 'crop-and-scale' },
   };
@@ -54,9 +71,27 @@ export const buildCameraMediaConstraints = (
   if (deviceId) {
     video.deviceId = { exact: deviceId };
   }
+  if (width && height && mode) {
+    video.width = { [mode]: width };
+    video.height = { [mode]: height };
+    video.aspectRatio = { [mode]: width / height };
+  }
 
+  return video;
+};
+
+export const buildCameraMediaConstraints = (
+  facingMode: CameraFacingMode,
+  deviceId?: string
+): MediaStreamConstraints => {
   return {
-    video,
+    video: buildVideoConstraints({
+      facingMode,
+      deviceId,
+      width: CAMERA_RECORDING_WIDTH,
+      height: CAMERA_RECORDING_HEIGHT,
+      mode: 'ideal',
+    }),
     audio: true,
   };
 };
@@ -70,6 +105,98 @@ export const buildFallbackCameraMediaConstraints = (
     : { facingMode: { ideal: facingMode } },
   audio: true,
 });
+
+export const buildCameraMediaConstraintCandidates = (
+  facingMode: CameraFacingMode,
+  deviceId?: string
+): CameraMediaConstraintCandidate[] => {
+  const candidates: CameraMediaConstraintCandidate[] = [
+    {
+      label: 'portrait-1080x1920-exact',
+      constraints: {
+        video: buildVideoConstraints({
+          facingMode,
+          deviceId,
+          width: 1080,
+          height: 1920,
+          mode: 'exact',
+        }),
+        audio: true,
+      },
+      acceptNonPortrait: false,
+      fallback: false,
+    },
+    {
+      label: 'portrait-720x1280-exact',
+      constraints: {
+        video: buildVideoConstraints({
+          facingMode,
+          deviceId,
+          width: 720,
+          height: 1280,
+          mode: 'exact',
+        }),
+        audio: true,
+      },
+      acceptNonPortrait: false,
+      fallback: false,
+    },
+    {
+      label: 'photo-portrait-1080x1440-exact',
+      constraints: {
+        video: buildVideoConstraints({
+          facingMode,
+          deviceId,
+          width: 1080,
+          height: 1440,
+          mode: 'exact',
+        }),
+        audio: true,
+      },
+      acceptNonPortrait: false,
+      fallback: false,
+    },
+    {
+      label: 'photo-portrait-720x960-exact',
+      constraints: {
+        video: buildVideoConstraints({
+          facingMode,
+          deviceId,
+          width: 720,
+          height: 960,
+          mode: 'exact',
+        }),
+        audio: true,
+      },
+      acceptNonPortrait: false,
+      fallback: false,
+    },
+    {
+      label: 'portrait-1080x1920-ideal',
+      constraints: buildCameraMediaConstraints(facingMode, deviceId),
+      acceptNonPortrait: false,
+      fallback: false,
+    },
+  ];
+
+  if (deviceId) {
+    candidates.push({
+      label: 'selected-device-fallback',
+      constraints: buildFallbackCameraMediaConstraints(facingMode, deviceId),
+      acceptNonPortrait: true,
+      fallback: true,
+    });
+  }
+
+  candidates.push({
+    label: 'facing-mode-fallback',
+    constraints: buildFallbackCameraMediaConstraints(facingMode),
+    acceptNonPortrait: true,
+    fallback: true,
+  });
+
+  return candidates;
+};
 
 const includesAny = (value: string, terms: string[]) =>
   terms.some((term) => value.includes(term));
@@ -194,6 +321,26 @@ export const buildCameraEnhancementConstraints = (
 
 const isPositiveFinite = (value: number) =>
   Number.isFinite(value) && value > 0;
+
+export const getMediaTrackSettingsSize = (
+  settings: MediaTrackSettings | null | undefined
+) => ({
+  width:
+    typeof settings?.width === 'number' && Number.isFinite(settings.width)
+      ? settings.width
+      : 0,
+  height:
+    typeof settings?.height === 'number' && Number.isFinite(settings.height)
+      ? settings.height
+      : 0,
+});
+
+export const isPortraitMediaTrackSettings = (
+  settings: MediaTrackSettings | null | undefined
+) => {
+  const { width, height } = getMediaTrackSettingsSize(settings);
+  return isPositiveFinite(width) && isPositiveFinite(height) && height >= width;
+};
 
 export const getCameraPreviewObjectFit = ({
   videoWidth,

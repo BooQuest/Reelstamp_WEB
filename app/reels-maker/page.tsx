@@ -90,8 +90,9 @@ import {
 } from '@/app/reels-maker/utils/captions';
 import {
   buildCameraEnhancementConstraints,
-  buildCameraMediaConstraints,
+  buildCameraMediaConstraintCandidates,
   buildFallbackCameraMediaConstraints,
+  isPortraitMediaTrackSettings,
   selectPreferredRearCameraDevice,
   type CameraPreviewMetrics,
 } from '@/app/reels-maker/utils/camera';
@@ -1592,30 +1593,74 @@ function ReelsMakerInner() {
       }
 
       try {
-        const requestCameraStream = async (deviceId?: string) => {
-          try {
-            return {
-              mediaStream: await navigator.mediaDevices.getUserMedia(
-                buildCameraMediaConstraints(targetFacingMode, deviceId)
-              ),
-              usedFallbackConstraints: false,
-            };
-          } catch {
-            return {
-              mediaStream: await navigator.mediaDevices.getUserMedia(
-                buildFallbackCameraMediaConstraints(targetFacingMode, deviceId)
-              ),
-              usedFallbackConstraints: true,
-            };
-          }
+        type CameraConstraintAttemptDebug = {
+          label: string;
+          success: boolean;
+          accepted?: boolean;
+          portrait?: boolean;
+          fallback: boolean;
+          settings?: MediaTrackSettings | null;
+          errorName?: string | null;
+          errorMessage?: string;
         };
 
-        let {
-          mediaStream,
-          usedFallbackConstraints,
-        } = await requestCameraStream();
+        const requestBestCameraStream = async (deviceId?: string) => {
+          const cameraConstraintAttempts: CameraConstraintAttemptDebug[] = [];
+          const candidates = buildCameraMediaConstraintCandidates(
+            targetFacingMode,
+            deviceId
+          );
 
-        if (!mediaStream) {
+          for (const candidate of candidates) {
+            try {
+              const candidateStream = await navigator.mediaDevices.getUserMedia(
+                candidate.constraints
+              );
+              const candidateVideoTrack = candidateStream.getVideoTracks()[0];
+              const candidateSettings = candidateVideoTrack?.getSettings() ?? null;
+              const portrait = isPortraitMediaTrackSettings(candidateSettings);
+              const accepted = portrait || candidate.acceptNonPortrait;
+
+              cameraConstraintAttempts.push({
+                label: candidate.label,
+                success: true,
+                accepted,
+                portrait,
+                fallback: candidate.fallback,
+                settings: candidateSettings,
+              });
+
+              if (accepted) {
+                return {
+                  mediaStream: candidateStream,
+                  usedFallbackConstraints: candidate.fallback,
+                  selectedCameraConstraintLabel: candidate.label,
+                  cameraConstraintAttempts,
+                };
+              }
+
+              candidateStream.getTracks().forEach((track) => track.stop());
+            } catch (error) {
+              cameraConstraintAttempts.push({
+                label: candidate.label,
+                success: false,
+                fallback: candidate.fallback,
+                errorName: error instanceof Error ? error.name : null,
+                errorMessage: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+
+          throw new Error('카메라를 시작하지 못했습니다.');
+        };
+
+        const bootstrapStream = await navigator.mediaDevices.getUserMedia(
+          buildFallbackCameraMediaConstraints(targetFacingMode)
+        );
+        const bootstrapVideoTrack = bootstrapStream.getVideoTracks()[0];
+        const bootstrapVideoSettings = bootstrapVideoTrack?.getSettings() ?? null;
+
+        if (!bootstrapStream) {
           setCameraError('카메라를 시작하지 못했습니다.');
           return null;
         }
@@ -1624,10 +1669,10 @@ function ReelsMakerInner() {
         let preferredRearCameraLabel: string | null = null;
         let availableVideoInputLabels: string[] = [];
 
+        let selectedCameraDeviceId = bootstrapVideoSettings?.deviceId;
+
         if (targetFacingMode === 'environment' && navigator.mediaDevices.enumerateDevices) {
           try {
-            const initialVideoTrack = mediaStream.getVideoTracks()[0];
-            const initialVideoSettings = initialVideoTrack?.getSettings();
             const devices = await navigator.mediaDevices.enumerateDevices();
             availableVideoInputLabels = devices
               .filter((device) => device.kind === 'videoinput')
@@ -1635,36 +1680,34 @@ function ReelsMakerInner() {
               .filter(Boolean);
             const preferredRearCamera = selectPreferredRearCameraDevice(
               devices,
-              initialVideoSettings?.deviceId
+              bootstrapVideoSettings?.deviceId
             );
             preferredRearCameraLabel = preferredRearCamera?.label || null;
-
-            if (
+            selectedCameraDeviceId =
+              preferredRearCamera?.deviceId || selectedCameraDeviceId;
+            selectedPreferredRearCamera = Boolean(
               preferredRearCamera?.deviceId &&
-              preferredRearCamera.deviceId !== initialVideoSettings?.deviceId
-            ) {
-              try {
-                const replacement = await requestCameraStream(preferredRearCamera.deviceId);
-                if (replacement.mediaStream.getVideoTracks().length > 0) {
-                  mediaStream.getTracks().forEach((track) => track.stop());
-                  mediaStream = replacement.mediaStream;
-                  usedFallbackConstraints = replacement.usedFallbackConstraints;
-                  selectedPreferredRearCamera = true;
-                } else {
-                  replacement.mediaStream.getTracks().forEach((track) => track.stop());
-                }
-              } catch (error) {
-                logVideoDebug('preferred rear camera selection failed', {
-                  preferredRearCameraLabel,
-                  error: error instanceof Error ? error.message : String(error),
-                });
-              }
-            }
+                preferredRearCamera.deviceId !== bootstrapVideoSettings?.deviceId
+            );
           } catch (error) {
             logVideoDebug('camera device enumeration failed', {
               error: error instanceof Error ? error.message : String(error),
             });
           }
+        }
+
+        bootstrapStream.getTracks().forEach((track) => track.stop());
+
+        const {
+          mediaStream,
+          usedFallbackConstraints,
+          selectedCameraConstraintLabel,
+          cameraConstraintAttempts,
+        } = await requestBestCameraStream(selectedCameraDeviceId);
+
+        if (!mediaStream) {
+          setCameraError('카메라를 시작하지 못했습니다.');
+          return null;
         }
 
         if (mediaStream.getAudioTracks().length === 0) {
@@ -1702,7 +1745,11 @@ function ReelsMakerInner() {
           usedFallbackConstraints,
           selectedPreferredRearCamera,
           preferredRearCameraLabel,
+          selectedCameraConstraintLabel,
+          selectedCameraDeviceId,
           availableVideoInputLabels,
+          bootstrapSettings: bootstrapVideoSettings,
+          cameraConstraintAttempts,
           settings: videoTrack?.getSettings() ?? null,
           constraints: videoTrack?.getConstraints() ?? null,
           capabilities: videoCapabilities,

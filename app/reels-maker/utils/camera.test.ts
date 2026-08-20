@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCameraEnhancementConstraints,
+  buildCameraMediaConstraintCandidates,
+  CAMERA_TARGET_ASPECT_RATIO,
   getCameraPreviewObjectFit,
   getPreferredCameraZoomValue,
+  isPortraitMediaTrackSettings,
   selectPreferredRearCameraDevice,
 } from './camera';
 
@@ -70,6 +73,32 @@ describe('camera utilities', () => {
         { exposureMode: 'continuous' },
       ],
     });
+  });
+
+  it('starts camera constraint candidates with mandatory portrait video modes', () => {
+    const candidates = buildCameraMediaConstraintCandidates('environment', 'rear-wide');
+
+    expect(candidates[0]).toMatchObject({
+      label: 'portrait-1080x1920-exact',
+      acceptNonPortrait: false,
+      fallback: false,
+    });
+    expect(candidates[0].constraints.video).toMatchObject({
+      deviceId: { exact: 'rear-wide' },
+      width: { exact: 1080 },
+      height: { exact: 1920 },
+      aspectRatio: { exact: CAMERA_TARGET_ASPECT_RATIO },
+    });
+    expect(candidates.at(-1)).toMatchObject({
+      label: 'facing-mode-fallback',
+      acceptNonPortrait: true,
+      fallback: true,
+    });
+  });
+
+  it('recognizes portrait track settings', () => {
+    expect(isPortraitMediaTrackSettings({ width: 1080, height: 1920 })).toBe(true);
+    expect(isPortraitMediaTrackSettings({ width: 1920, height: 1080 })).toBe(false);
   });
 
   it('contains a wide landscape stream instead of cropping it into a portrait frame', () => {
