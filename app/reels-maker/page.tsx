@@ -88,6 +88,13 @@ import {
   clampValue,
   normalizeCaptionStyle,
 } from '@/app/reels-maker/utils/captions';
+import {
+  buildCameraEnhancementConstraints,
+  buildCameraMediaConstraints,
+  buildFallbackCameraMediaConstraints,
+  selectPreferredRearCameraDevice,
+  type CameraPreviewMetrics,
+} from '@/app/reels-maker/utils/camera';
 import { getErrorMessage } from '@/app/reels-maker/utils/errors';
 import {
   buildTemplateLoginHref,
@@ -260,8 +267,8 @@ const normalizeSessionCaptions = (
   });
 };
 
-const RECORDER_VIDEO_BITS_PER_SECOND = 8_000_000;
-const RECORDER_AUDIO_BITS_PER_SECOND = 128_000;
+const RECORDER_VIDEO_BITS_PER_SECOND = 12_000_000;
+const RECORDER_AUDIO_BITS_PER_SECOND = 192_000;
 const RECORDER_PREFERRED_MIME_TYPES = [
   'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
   'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
@@ -450,6 +457,12 @@ function ReelsMakerInner() {
       console.info(`[ReelsMaker videoDebug] ${event}`, details);
     },
     [isVideoDebugEnabled]
+  );
+  const handleCameraPreviewMetrics = useCallback(
+    (metrics: CameraPreviewMetrics) => {
+      logVideoDebug('camera preview metrics', metrics);
+    },
+    [logVideoDebug]
   );
 
   const cuts = useMemo(() => {
@@ -1579,30 +1592,81 @@ function ReelsMakerInner() {
       }
 
       try {
-        let mediaStream: MediaStream | null = null;
-        let usedFallbackConstraints = false;
-        try {
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: targetFacingMode },
-              aspectRatio: 9 / 16,
-              width: { ideal: 1080 },
-              height: { ideal: 1920 },
-            },
-            audio: true,
-          });
-        } catch {
-          usedFallbackConstraints = true;
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: targetFacingMode } },
-            audio: true,
-          });
-        }
+        const requestCameraStream = async (deviceId?: string) => {
+          try {
+            return {
+              mediaStream: await navigator.mediaDevices.getUserMedia(
+                buildCameraMediaConstraints(targetFacingMode, deviceId)
+              ),
+              usedFallbackConstraints: false,
+            };
+          } catch {
+            return {
+              mediaStream: await navigator.mediaDevices.getUserMedia(
+                buildFallbackCameraMediaConstraints(targetFacingMode, deviceId)
+              ),
+              usedFallbackConstraints: true,
+            };
+          }
+        };
+
+        let {
+          mediaStream,
+          usedFallbackConstraints,
+        } = await requestCameraStream();
 
         if (!mediaStream) {
           setCameraError('카메라를 시작하지 못했습니다.');
           return null;
         }
+
+        let selectedPreferredRearCamera = false;
+        let preferredRearCameraLabel: string | null = null;
+        let availableVideoInputLabels: string[] = [];
+
+        if (targetFacingMode === 'environment' && navigator.mediaDevices.enumerateDevices) {
+          try {
+            const initialVideoTrack = mediaStream.getVideoTracks()[0];
+            const initialVideoSettings = initialVideoTrack?.getSettings();
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            availableVideoInputLabels = devices
+              .filter((device) => device.kind === 'videoinput')
+              .map((device) => device.label)
+              .filter(Boolean);
+            const preferredRearCamera = selectPreferredRearCameraDevice(
+              devices,
+              initialVideoSettings?.deviceId
+            );
+            preferredRearCameraLabel = preferredRearCamera?.label || null;
+
+            if (
+              preferredRearCamera?.deviceId &&
+              preferredRearCamera.deviceId !== initialVideoSettings?.deviceId
+            ) {
+              try {
+                const replacement = await requestCameraStream(preferredRearCamera.deviceId);
+                if (replacement.mediaStream.getVideoTracks().length > 0) {
+                  mediaStream.getTracks().forEach((track) => track.stop());
+                  mediaStream = replacement.mediaStream;
+                  usedFallbackConstraints = replacement.usedFallbackConstraints;
+                  selectedPreferredRearCamera = true;
+                } else {
+                  replacement.mediaStream.getTracks().forEach((track) => track.stop());
+                }
+              } catch (error) {
+                logVideoDebug('preferred rear camera selection failed', {
+                  preferredRearCameraLabel,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              }
+            }
+          } catch (error) {
+            logVideoDebug('camera device enumeration failed', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
         if (mediaStream.getAudioTracks().length === 0) {
           setCameraError('마이크 접근이 필요합니다. 권한을 허용해주세요.');
           mediaStream.getTracks().forEach((track) => track.stop());
@@ -1610,6 +1674,9 @@ function ReelsMakerInner() {
         }
         const videoTrack = mediaStream.getVideoTracks()[0];
         let videoCapabilities: MediaTrackCapabilities | null = null;
+        let enhancementConstraints: MediaTrackConstraints | null = null;
+        let appliedCameraEnhancements = false;
+        let cameraEnhancementError: string | null = null;
         try {
           videoCapabilities =
             videoTrack && typeof videoTrack.getCapabilities === 'function'
@@ -1618,12 +1685,30 @@ function ReelsMakerInner() {
         } catch {
           videoCapabilities = null;
         }
+        if (videoTrack && typeof videoTrack.applyConstraints === 'function') {
+          enhancementConstraints = buildCameraEnhancementConstraints(videoCapabilities);
+          if (enhancementConstraints) {
+            try {
+              await videoTrack.applyConstraints(enhancementConstraints);
+              appliedCameraEnhancements = true;
+            } catch (error) {
+              cameraEnhancementError =
+                error instanceof Error ? error.message : String(error);
+            }
+          }
+        }
         logVideoDebug('camera stream ready', {
           requestedFacingMode: targetFacingMode,
           usedFallbackConstraints,
+          selectedPreferredRearCamera,
+          preferredRearCameraLabel,
+          availableVideoInputLabels,
           settings: videoTrack?.getSettings() ?? null,
           constraints: videoTrack?.getConstraints() ?? null,
           capabilities: videoCapabilities,
+          enhancementConstraints,
+          appliedCameraEnhancements,
+          cameraEnhancementError,
           audioTrackCount: mediaStream.getAudioTracks().length,
         });
         setStream((current) => {
@@ -4007,7 +4092,8 @@ function ReelsMakerInner() {
                     <>
                       <CameraPreviewVideo
                         stream={stream}
-                        className="absolute inset-0 h-full w-full object-cover"
+                        className="absolute inset-0 h-full w-full"
+                        onPreviewMetrics={handleCameraPreviewMetrics}
                       />
                       {guideImageSrc && isGuideImageVisible && (
                         <>
@@ -4047,12 +4133,14 @@ function ReelsMakerInner() {
                           )}
                         </>
                       )}
-                      <div className="relative text-center text-white/40">
-                        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-white/20">
-                          <Camera className="h-6 w-6 text-white/60" />
+                      {!stream && (
+                        <div className="relative text-center text-white/40">
+                          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-white/20">
+                            <Camera className="h-6 w-6 text-white/60" />
+                          </div>
+                          카메라 뷰
                         </div>
-                        카메라 뷰
-                      </div>
+                      )}
                     </>
                   )}
 
