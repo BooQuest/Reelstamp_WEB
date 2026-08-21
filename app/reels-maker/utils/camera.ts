@@ -3,7 +3,6 @@ import type { CameraFacingMode } from '../types';
 export const CAMERA_RECORDING_WIDTH = 1080;
 export const CAMERA_RECORDING_HEIGHT = 1920;
 export const CAMERA_FRAME_RATE = 30;
-export const CAMERA_PREVIEW_CROP_SCALE_LIMIT = 1.35;
 export const CAMERA_TARGET_ZOOM = 1;
 export const CAMERA_TARGET_ASPECT_RATIO =
   CAMERA_RECORDING_WIDTH / CAMERA_RECORDING_HEIGHT;
@@ -30,14 +29,14 @@ type CameraTrackConstraintSet = MediaTrackConstraintSet & {
   whiteBalanceMode?: string;
 };
 
-export type CameraPreviewObjectFit = 'cover' | 'contain';
-
 export type CameraPreviewMetrics = {
+  reason: string;
   videoWidth: number;
   videoHeight: number;
   frameWidth: number;
   frameHeight: number;
-  objectFit: CameraPreviewObjectFit;
+  objectFit: 'cover';
+  trackSettings: MediaTrackSettings[];
 };
 
 export type CameraMediaConstraintCandidate = {
@@ -55,26 +54,34 @@ const buildVideoConstraints = ({
   width,
   height,
   mode,
+  includeAspectRatio = true,
+  includeResizeMode = true,
 }: {
   facingMode: CameraFacingMode;
   deviceId?: string;
   width?: number;
   height?: number;
   mode?: CameraResolutionConstraintMode;
+  includeAspectRatio?: boolean;
+  includeResizeMode?: boolean;
 }): CameraVideoConstraints => {
   const video: CameraVideoConstraints = {
     facingMode: { ideal: facingMode },
     frameRate: { ideal: CAMERA_FRAME_RATE },
-    resizeMode: { ideal: 'crop-and-scale' },
   };
 
+  if (includeResizeMode) {
+    video.resizeMode = { ideal: 'crop-and-scale' };
+  }
   if (deviceId) {
     video.deviceId = { exact: deviceId };
   }
   if (width && height && mode) {
     video.width = { [mode]: width };
     video.height = { [mode]: height };
-    video.aspectRatio = { [mode]: width / height };
+    if (includeAspectRatio) {
+      video.aspectRatio = { [mode]: width / height };
+    }
   }
 
   return video;
@@ -111,6 +118,40 @@ export const buildCameraMediaConstraintCandidates = (
   deviceId?: string
 ): CameraMediaConstraintCandidate[] => {
   const candidates: CameraMediaConstraintCandidate[] = [
+    {
+      label: 'portrait-1080x1920-ideal-no-aspect',
+      constraints: {
+        video: buildVideoConstraints({
+          facingMode,
+          deviceId,
+          width: 1080,
+          height: 1920,
+          mode: 'ideal',
+          includeAspectRatio: false,
+          includeResizeMode: false,
+        }),
+        audio: true,
+      },
+      acceptNonPortrait: false,
+      fallback: false,
+    },
+    {
+      label: 'portrait-720x1280-ideal-no-aspect',
+      constraints: {
+        video: buildVideoConstraints({
+          facingMode,
+          deviceId,
+          width: 720,
+          height: 1280,
+          mode: 'ideal',
+          includeAspectRatio: false,
+          includeResizeMode: false,
+        }),
+        audio: true,
+      },
+      acceptNonPortrait: false,
+      fallback: false,
+    },
     {
       label: 'portrait-1080x1920-exact',
       constraints: {
@@ -340,33 +381,4 @@ export const isPortraitMediaTrackSettings = (
 ) => {
   const { width, height } = getMediaTrackSettingsSize(settings);
   return isPositiveFinite(width) && isPositiveFinite(height) && height >= width;
-};
-
-export const getCameraPreviewObjectFit = ({
-  videoWidth,
-  videoHeight,
-  frameWidth,
-  frameHeight,
-  cropScaleLimit = CAMERA_PREVIEW_CROP_SCALE_LIMIT,
-}: {
-  videoWidth: number;
-  videoHeight: number;
-  frameWidth: number;
-  frameHeight: number;
-  cropScaleLimit?: number;
-}): CameraPreviewObjectFit => {
-  if (
-    !isPositiveFinite(videoWidth) ||
-    !isPositiveFinite(videoHeight) ||
-    !isPositiveFinite(frameWidth) ||
-    !isPositiveFinite(frameHeight)
-  ) {
-    return 'cover';
-  }
-
-  const coverScale = Math.max(frameWidth / videoWidth, frameHeight / videoHeight);
-  const containScale = Math.min(frameWidth / videoWidth, frameHeight / videoHeight);
-  const cropScale = coverScale / containScale;
-
-  return cropScale > cropScaleLimit ? 'contain' : 'cover';
 };

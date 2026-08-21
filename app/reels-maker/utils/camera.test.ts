@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCameraEnhancementConstraints,
   buildCameraMediaConstraintCandidates,
-  CAMERA_TARGET_ASPECT_RATIO,
-  getCameraPreviewObjectFit,
   getPreferredCameraZoomValue,
   isPortraitMediaTrackSettings,
   selectPreferredRearCameraDevice,
@@ -75,20 +73,21 @@ describe('camera utilities', () => {
     });
   });
 
-  it('starts camera constraint candidates with mandatory portrait video modes', () => {
+  it('starts camera constraint candidates with a simple portrait ideal request', () => {
     const candidates = buildCameraMediaConstraintCandidates('environment', 'rear-wide');
 
     expect(candidates[0]).toMatchObject({
-      label: 'portrait-1080x1920-exact',
+      label: 'portrait-1080x1920-ideal-no-aspect',
       acceptNonPortrait: false,
       fallback: false,
     });
     expect(candidates[0].constraints.video).toMatchObject({
       deviceId: { exact: 'rear-wide' },
-      width: { exact: 1080 },
-      height: { exact: 1920 },
-      aspectRatio: { exact: CAMERA_TARGET_ASPECT_RATIO },
+      width: { ideal: 1080 },
+      height: { ideal: 1920 },
+      frameRate: { ideal: 30 },
     });
+    expect(candidates[0].constraints.video).not.toHaveProperty('aspectRatio');
     expect(candidates.at(-1)).toMatchObject({
       label: 'facing-mode-fallback',
       acceptNonPortrait: true,
@@ -99,27 +98,5 @@ describe('camera utilities', () => {
   it('recognizes portrait track settings', () => {
     expect(isPortraitMediaTrackSettings({ width: 1080, height: 1920 })).toBe(true);
     expect(isPortraitMediaTrackSettings({ width: 1920, height: 1080 })).toBe(false);
-  });
-
-  it('contains a wide landscape stream instead of cropping it into a portrait frame', () => {
-    expect(
-      getCameraPreviewObjectFit({
-        videoWidth: 1920,
-        videoHeight: 1080,
-        frameWidth: 390,
-        frameHeight: 690,
-      })
-    ).toBe('contain');
-  });
-
-  it('covers the frame when the camera stream already matches the portrait preview', () => {
-    expect(
-      getCameraPreviewObjectFit({
-        videoWidth: 1080,
-        videoHeight: 1920,
-        frameWidth: 390,
-        frameHeight: 690,
-      })
-    ).toBe('cover');
   });
 });

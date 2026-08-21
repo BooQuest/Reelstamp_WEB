@@ -1,11 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  getCameraPreviewObjectFit,
-  type CameraPreviewMetrics,
-  type CameraPreviewObjectFit,
-} from '@/app/reels-maker/utils/camera';
+import { useCallback, useEffect, useRef } from 'react';
+import type { CameraPreviewMetrics } from '@/app/reels-maker/utils/camera';
 
 type CameraPreviewVideoProps = {
   stream: MediaStream | null;
@@ -19,11 +15,9 @@ export default function CameraPreviewVideo({
   onPreviewMetrics,
 }: CameraPreviewVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const objectFitRef = useRef<CameraPreviewObjectFit>('cover');
   const lastMetricsSignatureRef = useRef('');
-  const [objectFit, setObjectFit] = useState<CameraPreviewObjectFit>('cover');
 
-  const updatePreviewMetrics = useCallback(() => {
+  const updatePreviewMetrics = useCallback((reason: string) => {
     const video = videoRef.current;
     const frame = video?.parentElement;
     if (!video || !frame) return;
@@ -33,30 +27,22 @@ export default function CameraPreviewVideo({
     const videoHeight = video.videoHeight;
     const frameWidth = Math.round(rect.width);
     const frameHeight = Math.round(rect.height);
-    const objectFit = getCameraPreviewObjectFit({
-      videoWidth,
-      videoHeight,
-      frameWidth,
-      frameHeight,
-    });
+    const trackSettings =
+      stream?.getVideoTracks().map((track) => track.getSettings()) ?? [];
 
-    if (objectFitRef.current !== objectFit) {
-      objectFitRef.current = objectFit;
-      setObjectFit(objectFit);
-      video.style.objectFit = objectFit;
-    }
-
-    const signature = `${videoWidth}x${videoHeight}:${frameWidth}x${frameHeight}:${objectFit}`;
+    const signature = `${reason}:${videoWidth}x${videoHeight}:${frameWidth}x${frameHeight}:${JSON.stringify(trackSettings)}`;
     if (lastMetricsSignatureRef.current === signature) return;
     lastMetricsSignatureRef.current = signature;
     onPreviewMetrics?.({
+      reason,
       videoWidth,
       videoHeight,
       frameWidth,
       frameHeight,
-      objectFit,
+      objectFit: 'cover',
+      trackSettings,
     });
-  }, [onPreviewMetrics]);
+  }, [onPreviewMetrics, stream]);
 
   const attachStream = useCallback(
     (video: HTMLVideoElement | null) => {
@@ -74,7 +60,7 @@ export default function CameraPreviewVideo({
           });
         }
       }
-      updatePreviewMetrics();
+      updatePreviewMetrics('attachStream');
     },
     [stream, updatePreviewMetrics]
   );
@@ -97,7 +83,6 @@ export default function CameraPreviewVideo({
   }, [attachStream]);
 
   useEffect(() => {
-    objectFitRef.current = 'cover';
     lastMetricsSignatureRef.current = '';
     if (videoRef.current) {
       videoRef.current.style.objectFit = 'cover';
@@ -115,7 +100,7 @@ export default function CameraPreviewVideo({
       }
       frameId = window.requestAnimationFrame(() => {
         frameId = null;
-        updatePreviewMetrics();
+        updatePreviewMetrics('scheduled');
       });
     };
 
@@ -132,8 +117,10 @@ export default function CameraPreviewVideo({
     }
 
     const visualViewport = window.visualViewport;
-    video.addEventListener('loadedmetadata', scheduleUpdate);
-    video.addEventListener('resize', scheduleUpdate);
+    const handleLoadedMetadata = () => updatePreviewMetrics('loadedmetadata');
+    const handleVideoResize = () => updatePreviewMetrics('video-resize');
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    video.addEventListener('resize', handleVideoResize);
     window.addEventListener('resize', scheduleUpdate);
     window.addEventListener('orientationchange', scheduleUpdate);
     visualViewport?.addEventListener('resize', scheduleUpdate);
@@ -144,8 +131,8 @@ export default function CameraPreviewVideo({
       }
       window.clearTimeout(settleTimeoutId);
       window.clearTimeout(lateSettleTimeoutId);
-      video.removeEventListener('loadedmetadata', scheduleUpdate);
-      video.removeEventListener('resize', scheduleUpdate);
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      video.removeEventListener('resize', handleVideoResize);
       window.removeEventListener('resize', scheduleUpdate);
       window.removeEventListener('orientationchange', scheduleUpdate);
       visualViewport?.removeEventListener('resize', scheduleUpdate);
@@ -169,7 +156,7 @@ export default function CameraPreviewVideo({
       playsInline
       muted
       className={className}
-      style={{ objectFit, objectPosition: 'center center' }}
+      style={{ objectFit: 'cover', objectPosition: 'center center' }}
     />
   );
 }

@@ -1716,6 +1716,13 @@ function ReelsMakerInner() {
           return null;
         }
         const videoTrack = mediaStream.getVideoTracks()[0];
+        const logCameraTrackSnapshot = (tag: string) => {
+          logVideoDebug('camera track snapshot', {
+            tag,
+            settings: videoTrack?.getSettings() ?? null,
+          });
+        };
+        logCameraTrackSnapshot('acquired');
         let videoCapabilities: MediaTrackCapabilities | null = null;
         let enhancementConstraints: MediaTrackConstraints | null = null;
         let appliedCameraEnhancements = false;
@@ -1739,6 +1746,14 @@ function ReelsMakerInner() {
                 error instanceof Error ? error.message : String(error);
             }
           }
+        }
+        logCameraTrackSnapshot('after-enhancements');
+        if (videoTrack) {
+          const handleTrackResize = () => logCameraTrackSnapshot('track-resize');
+          videoTrack.addEventListener('resize', handleTrackResize);
+          window.setTimeout(() => {
+            logCameraTrackSnapshot('t+2000');
+          }, 2000);
         }
         logVideoDebug('camera stream ready', {
           requestedFacingMode: targetFacingMode,
@@ -3103,6 +3118,13 @@ function ReelsMakerInner() {
       const mimeType = recorder.mimeType || recordingMimeTypeRef.current || 'video/webm';
       const blob = new Blob(chunksRef.current, { type: mimeType });
       const recordedCut = cuts[recordedIndex];
+      const outputVideoTrackSettings = recordingStream
+        .getVideoTracks()
+        .map((track) => track.getSettings());
+      logVideoDebug('camera track snapshot', {
+        tag: 'after-record',
+        settings: outputVideoTrackSettings[0] ?? null,
+      });
       logVideoDebug('camera output blob', {
         type: blob.type,
         size: blob.size,
@@ -3110,6 +3132,7 @@ function ReelsMakerInner() {
         recorderMimeType: recorder.mimeType,
         recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
         recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
+        videoTrackSettings: outputVideoTrackSettings,
       });
       saveClipAtIndex(
         recordedIndex,
