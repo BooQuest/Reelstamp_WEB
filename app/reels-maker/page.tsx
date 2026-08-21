@@ -34,7 +34,6 @@ import CameraPreviewVideo from '@/app/reels-maker/components/CameraPreviewVideo'
 import CaptionOverlayStage from '@/app/reels-maker/components/CaptionOverlayStage';
 import CapturedClipPreview from '@/app/reels-maker/components/CapturedClipPreview';
 import CutMediaSourceModal from '@/app/reels-maker/components/CutMediaSourceModal';
-import CutExampleModal from '@/app/reels-maker/components/CutExampleModal';
 import ExitConfirmModal from '@/app/reels-maker/components/ExitConfirmModal';
 import FinalPreview from '@/app/reels-maker/components/FinalPreview';
 import FixedClipVideo from '@/app/reels-maker/components/FixedClipVideo';
@@ -43,6 +42,9 @@ import GuestDraftNotice from '@/app/reels-maker/components/GuestDraftNotice';
 import ProcessingView from '@/app/reels-maker/components/ProcessingView';
 import ResetCutModal from '@/app/reels-maker/components/ResetCutModal';
 import RetakeConfirmModal from '@/app/reels-maker/components/RetakeConfirmModal';
+import TemplateGuideModal, {
+  type TemplateGuideStep,
+} from '@/app/reels-maker/components/TemplateGuideModal';
 import TrimModal from '@/app/reels-maker/components/TrimModal';
 import useCaptionEditor from '@/app/reels-maker/hooks/useCaptionEditor';
 import useAutoCaption from '@/app/reels-maker/hooks/useAutoCaption';
@@ -66,7 +68,6 @@ import type {
   CameraFacingMode,
   CaptionItem,
   ClipInfo,
-  ExampleMedia,
   RecorderStatus,
   ReelsMakerClipPresignResponse,
   ReelsMakerErrorResponse,
@@ -80,7 +81,6 @@ import type {
   VideoMetadata,
 } from '@/app/reels-maker/types';
 import {
-  isVideoAssetUrl,
   parseGuideImageEntries,
 } from '@/app/reels-maker/utils/assets';
 import {
@@ -395,7 +395,9 @@ function ReelsMakerInner() {
     useState<number[]>([]);
   const [cutGuideVisibility, setCutGuideVisibility] = useState<Record<number, boolean>>({});
   const [guideImageIndexByCut, setGuideImageIndexByCut] = useState<Record<number, number>>({});
-  const [isExampleOpen, setIsExampleOpen] = useState(false);
+  const [isTemplateGuideOpen, setIsTemplateGuideOpen] = useState(false);
+  const [templateGuideStep, setTemplateGuideStep] =
+    useState<TemplateGuideStep>('overview');
   const [exampleReelIndex, setExampleReelIndex] = useState(0);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
@@ -429,12 +431,6 @@ function ReelsMakerInner() {
   const [trimThumbnails, setTrimThumbnails] = useState<string[]>([]);
   const [isTrimPreparing, setIsTrimPreparing] = useState(false);
   const [trimError, setTrimError] = useState<string | null>(null);
-  const [exampleMediaLoadedByCutKey, setExampleMediaLoadedByCutKey] = useState<Record<string, boolean>>(
-    {}
-  );
-  const [exampleMediaFailedByCutKey, setExampleMediaFailedByCutKey] = useState<Record<string, boolean>>(
-    {}
-  );
   const [captureScale, setCaptureScale] = useState(1);
   const [isCaptureMenuOpen, setIsCaptureMenuOpen] = useState(false);
 
@@ -556,8 +552,6 @@ function ReelsMakerInner() {
   const activeClipId = activeCut ? sessionClipMap[activeCut.order] ?? null : null;
   const activeClipSource = clipSources[activeCutIndex] ?? null;
   const shouldConfirmActiveRetake = activeClipSource === 'recording';
-  const activeCutGuideText = activeCut?.guideText?.trim() ?? '';
-  const hasActiveCutGuideText = activeCutGuideText.length > 0;
   const showCaptionStage =
     captionsEnabled &&
     !activeUploadError &&
@@ -656,7 +650,13 @@ function ReelsMakerInner() {
     isTrimOpen ||
     isMediaPickerActive;
   const isCaptureCameraPaused =
-    isMediaPickerActive || isGalleryProcessing || isTrimPreparing || isTrimOpen;
+    !sessionId ||
+    isSessionLoading ||
+    isTemplateGuideOpen ||
+    isMediaPickerActive ||
+    isGalleryProcessing ||
+    isTrimPreparing ||
+    isTrimOpen;
   const guideImageEntries = useMemo(
     () => parseGuideImageEntries(activeCut?.guideImageUrl),
     [activeCut?.guideImageUrl]
@@ -694,63 +694,6 @@ function ReelsMakerInner() {
   const shouldShowGuideImageToggle = Boolean(guideImageSrc);
   const isGuideImageVisible =
     Boolean(guideImageSrc) && (cutGuideVisibility[activeCutIndex] ?? true);
-  const activeCutKey = useMemo(() => {
-    if (!template?.id || activeCut?.order == null) return null;
-    return `${template.id}:${activeCut.order}`;
-  }, [template?.id, activeCut?.order]);
-  const activeCutExampleMedia = useMemo<ExampleMedia | null>(() => {
-    const exampleImageUrl = activeCut?.exampleImageUrl?.trim();
-    if (exampleImageUrl) {
-      return {
-        type: isVideoAssetUrl(exampleImageUrl) ? 'video' : 'image',
-        src: exampleImageUrl,
-      };
-    }
-    const exampleVideoUrl = activeCut?.exampleVideoUrl?.trim();
-    if (exampleVideoUrl) {
-      return {
-        type: 'video',
-        src: exampleVideoUrl,
-      };
-    }
-    return null;
-  }, [activeCut?.exampleImageUrl, activeCut?.exampleVideoUrl]);
-  const isActiveExampleMediaLoaded = Boolean(
-    activeCutKey && exampleMediaLoadedByCutKey[activeCutKey]
-  );
-  const isActiveExampleMediaFailed = Boolean(
-    activeCutKey && exampleMediaFailedByCutKey[activeCutKey]
-  );
-  const visibleActiveCutExampleMedia =
-    activeCutExampleMedia && !isActiveExampleMediaFailed ? activeCutExampleMedia : null;
-  const shouldShowActiveCutExampleMedia = visibleActiveCutExampleMedia !== null;
-  const isActiveExampleMediaLoading = Boolean(
-    isExampleOpen &&
-      visibleActiveCutExampleMedia &&
-      !isActiveExampleMediaLoaded
-  );
-  const handleActiveExampleMediaLoad = useCallback(() => {
-    if (!activeCutKey) return;
-    setExampleMediaLoadedByCutKey((prev) => ({
-      ...prev,
-      [activeCutKey]: true,
-    }));
-    setExampleMediaFailedByCutKey((prev) => ({
-      ...prev,
-      [activeCutKey]: false,
-    }));
-  }, [activeCutKey]);
-  const handleActiveExampleMediaError = useCallback(() => {
-    if (!activeCutKey) return;
-    setExampleMediaFailedByCutKey((prev) => ({
-      ...prev,
-      [activeCutKey]: true,
-    }));
-    setExampleMediaLoadedByCutKey((prev) => ({
-      ...prev,
-      [activeCutKey]: false,
-    }));
-  }, [activeCutKey]);
   const exampleReels: TemplateExampleReel[] =
     template?.exampleReels && template.exampleReels.length > 0
       ? template.exampleReels
@@ -759,16 +702,7 @@ function ReelsMakerInner() {
           instagramOnly: false,
         }));
   const exampleReelUrls = exampleReels.map((reel) => reel.url);
-  const hasExampleReels = exampleReelUrls.length > 0;
-  const currentExampleReel = exampleReels[exampleReelIndex] ?? null;
-  const currentExampleReelUrl = currentExampleReel?.url ?? null;
-  const currentExampleReelInstagramOnly = Boolean(currentExampleReel?.instagramOnly);
-  const isFirstExampleReel = exampleReelIndex <= 0;
-  const isLastExampleReel = exampleReelIndex >= exampleReelUrls.length - 1;
-  const canOpenActiveCutExample =
-    shouldShowActiveCutExampleMedia || hasExampleReels || hasActiveCutGuideText;
-  const activeCutExampleButtonLabel =
-    shouldShowActiveCutExampleMedia || hasExampleReels ? '예시 보기' : '촬영 팁';
+  const canOpenActiveCutGuide = Boolean(template && cuts.length > 0 && activeCut);
   const activeCutDurationMode = activeCut?.isFixed
     ? null
     : (activeCut?.durationMode ?? DURATION_MODE_RECOMMENDED);
@@ -825,13 +759,36 @@ function ReelsMakerInner() {
     });
   }, [activeCutIndex, activeGuideImageIndex, guideImageCount, isGuideImageNavigationDisabled]);
 
-  const handlePrevExampleReel = useCallback(() => {
-    setExampleReelIndex((prev) => Math.max(0, prev - 1));
-  }, []);
+  const findNextCaptureCutIndex = useCallback(
+    (fromIndex: number) =>
+      cuts.findIndex((cut, cutIndex) => cutIndex > fromIndex && !cut.isFixed),
+    [cuts]
+  );
 
-  const handleNextExampleReel = useCallback(() => {
-    setExampleReelIndex((prev) => Math.min(exampleReelUrls.length - 1, prev + 1));
-  }, [exampleReelUrls.length]);
+  const handleTemplateGuidePrimaryAction = useCallback(() => {
+    if (templateGuideStep === 'overview') {
+      setTemplateGuideStep(0);
+      return;
+    }
+
+    const cutIndex = templateGuideStep;
+    const guideCut = cuts[cutIndex];
+    if (!guideCut) {
+      setIsTemplateGuideOpen(false);
+      return;
+    }
+
+    if (guideCut.isFixed) {
+      const nextCaptureIndex = findNextCaptureCutIndex(cutIndex);
+      if (nextCaptureIndex >= 0) {
+        setTemplateGuideStep(nextCaptureIndex);
+        return;
+      }
+    }
+
+    setActiveCutIndex(cutIndex);
+    setIsTemplateGuideOpen(false);
+  }, [cuts, findNextCaptureCutIndex, templateGuideStep]);
 
   const pauseTrimPlayback = useCallback(() => {
     if (trimPlaybackRafRef.current !== null) {
@@ -1260,6 +1217,11 @@ function ReelsMakerInner() {
         setStage('caption-edit');
       }
 
+      if (!requestedSessionId && session.status === 'CAPTURE') {
+        setTemplateGuideStep('overview');
+        setIsTemplateGuideOpen(true);
+      }
+
       const restoredUploadedCuts: Record<number, boolean> = {};
       const restoredClips: Array<ClipInfo | null> = Array(cuts.length).fill(null);
       await Promise.all(
@@ -1410,8 +1372,6 @@ function ReelsMakerInner() {
     setFinalPosterUrl(null);
     setFinalVideoMimeType('video/mp4');
     setIsPreviewOpen(false);
-    setExampleMediaLoadedByCutKey({});
-    setExampleMediaFailedByCutKey({});
     setGalleryError(null);
     setIsGalleryProcessing(false);
     setIsMediaSourceOpen(false);
@@ -1420,6 +1380,8 @@ function ReelsMakerInner() {
     setTrimTargetCutIndex(null);
     setReplacementConfirm(null);
     setIsTrimOpen(false);
+    setIsTemplateGuideOpen(false);
+    setTemplateGuideStep('overview');
     resetTrimState();
   }, [
     template?.id,
@@ -1450,10 +1412,16 @@ function ReelsMakerInner() {
   }, [cuts.length, activeCutIndex]);
 
   useEffect(() => {
-    if (!isExampleOpen) {
+    if (typeof templateGuideStep === 'number' && templateGuideStep >= cuts.length) {
+      setTemplateGuideStep('overview');
+    }
+  }, [cuts.length, templateGuideStep]);
+
+  useEffect(() => {
+    if (!isTemplateGuideOpen) {
       setExampleReelIndex(0);
     }
-  }, [isExampleOpen]);
+  }, [isTemplateGuideOpen]);
 
   useEffect(() => {
     if (exampleReelUrls.length === 0) {
@@ -2381,14 +2349,16 @@ function ReelsMakerInner() {
       if (!shouldAdvanceToNextCut) return;
       if (index >= cuts.length - 1) return;
 
-      const nextCaptureIndex = cuts.findIndex((cut, cutIndex) => cutIndex > index && !cut.isFixed);
+      const nextCaptureIndex = findNextCaptureCutIndex(index);
       if (nextCaptureIndex !== -1) {
         setActiveCutIndex(nextCaptureIndex);
+        setTemplateGuideStep(nextCaptureIndex);
+        setIsTemplateGuideOpen(true);
       } else {
         setActiveCutIndex(index + 1);
       }
     },
-    [createPosterFromClip, cuts, uploadRecordedClip]
+    [createPosterFromClip, cuts.length, findNextCaptureCutIndex, uploadRecordedClip]
   );
 
   const finishMediaPicker = useCallback(() => {
@@ -3241,6 +3211,7 @@ function ReelsMakerInner() {
       setEditingCaptionId(null);
       resetCaptionGesture();
       setIsMediaSourceOpen(false);
+      setIsTemplateGuideOpen(false);
       setReplacementConfirm(null);
       if (isTrimOpen) {
         closeTrimModal();
@@ -3683,7 +3654,8 @@ function ReelsMakerInner() {
     }
     setFinalVideoMimeType('video/mp4');
     setIsPreviewOpen(false);
-    setIsExampleOpen(false);
+    setIsTemplateGuideOpen(false);
+    setTemplateGuideStep('overview');
     setExampleReelIndex(0);
     setIsResetOpen(false);
     setDownloadToastMessage(null);
@@ -3696,7 +3668,6 @@ function ReelsMakerInner() {
     setReplacementConfirm(null);
     setIsTrimOpen(false);
     resetTrimState();
-    void setupCamera();
     if (templateId && requestedSessionId) {
       router.replace(
         buildReelsMakerHref({
@@ -4086,13 +4057,16 @@ function ReelsMakerInner() {
                       </p>
                     )}
                   </div>
-                  {canOpenActiveCutExample && (
+                  {canOpenActiveCutGuide && (
                     <button
                       type="button"
-                      onClick={() => setIsExampleOpen(true)}
+                      onClick={() => {
+                        setTemplateGuideStep(activeCutIndex);
+                        setIsTemplateGuideOpen(true);
+                      }}
                       className="h-10 shrink-0 rounded-full bg-[#FF4D6D] px-4 text-xs font-semibold shadow-lg"
                     >
-                      {activeCutExampleButtonLabel}
+                      가이드 보기
                     </button>
                   )}
                   <button
@@ -4475,23 +4449,17 @@ function ReelsMakerInner() {
         </div>
       </div>
 
-      {isExampleOpen && (
-        <CutExampleModal
-          media={visibleActiveCutExampleMedia}
-          isLoading={isActiveExampleMediaLoading}
-          isLoaded={isActiveExampleMediaLoaded}
-          guideText={activeCutGuideText}
-          reelUrls={exampleReelUrls}
-          currentReelUrl={currentExampleReelUrl}
-          currentReelInstagramOnly={currentExampleReelInstagramOnly}
+      {isTemplateGuideOpen && template && (
+        <TemplateGuideModal
+          templateTitle={template.title}
+          templateOverview={template.subtitle}
+          cuts={cuts}
+          step={templateGuideStep}
+          exampleReels={exampleReels}
           currentReelIndex={exampleReelIndex}
-          isFirstReel={isFirstExampleReel}
-          isLastReel={isLastExampleReel}
-          onClose={() => setIsExampleOpen(false)}
-          onMediaLoad={handleActiveExampleMediaLoad}
-          onMediaError={handleActiveExampleMediaError}
-          onPreviousReel={handlePrevExampleReel}
-          onNextReel={handleNextExampleReel}
+          onClose={() => setIsTemplateGuideOpen(false)}
+          onSelectStep={setTemplateGuideStep}
+          onPrimaryAction={handleTemplateGuidePrimaryAction}
           onSelectReel={setExampleReelIndex}
         />
       )}
