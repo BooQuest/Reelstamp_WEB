@@ -54,6 +54,7 @@ describe('TemplateGuideModal', () => {
       'true'
     );
     expect(screen.getByText('콘서트장 후기 템플릿')).toBeInTheDocument();
+    expect(screen.queryByText('템플릿 개요')).not.toBeInTheDocument();
     expect(screen.getByText('전체 분위기를 빠르게 보여주는 템플릿입니다.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '다음' })).toBeInTheDocument();
   });
@@ -73,7 +74,7 @@ describe('TemplateGuideModal', () => {
     expect(firstCutStep).toHaveAttribute('aria-current', 'true');
     expect(firstCutStep).toHaveTextContent('1');
     expect(screen.queryByText('컷1')).not.toBeInTheDocument();
-    expect(screen.getByText('첫 장면')).toBeInTheDocument();
+    expect(screen.queryByText('첫 장면')).not.toBeInTheDocument();
     expect(screen.getByText('이 컷의 포인트')).toBeInTheDocument();
     expect(screen.getByText('입구가 잘 보이게 천천히 움직입니다.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '1컷 촬영하기' })).toBeInTheDocument();

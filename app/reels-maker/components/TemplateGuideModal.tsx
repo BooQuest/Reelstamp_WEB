@@ -132,12 +132,11 @@ export default function TemplateGuideModal({
   const title =
     step === 'overview'
       ? templateTitle
-      : getTrimmedText(activeCut?.title) || `${(activeCutIndex ?? 0) + 1}컷`;
+      : '이 컷의 포인트';
   const body =
     step === 'overview'
       ? getTrimmedText(templateOverview) || FALLBACK_OVERVIEW
       : getTrimmedText(activeCut?.guideText) || FALLBACK_CUT_GUIDE;
-  const bodyHeading = step === 'overview' ? '템플릿 개요' : '이 컷의 포인트';
 
   const nextCaptureCutIndex =
     activeCutIndex === null
@@ -325,7 +324,6 @@ export default function TemplateGuideModal({
 
           <div className="mt-5">
             <h3 className="text-base font-bold text-white">{title}</h3>
-            <p className="mt-3 text-sm font-semibold text-white/85">{bodyHeading}</p>
             <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-white/65">
               {body}
             </p>

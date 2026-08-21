@@ -21,13 +21,13 @@ import {
   Loader2,
   Menu,
   Plus,
-  RotateCcw,
-  SwitchCamera,
-  Trash2,
 } from 'lucide-react';
 import type { WebApiResponse } from '@/app/lib/api/auth';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
+import CaptureActionControls from '@/app/reels-maker/components/CaptureActionControls';
+import CaptureCaptionMenu from '@/app/reels-maker/components/CaptureCaptionMenu';
+import CaptureFlowAction from '@/app/reels-maker/components/CaptureFlowAction';
 import CaptureMenu from '@/app/reels-maker/components/CaptureMenu';
 import AutoCaptionEditor from '@/app/reels-maker/components/AutoCaptionEditor';
 import CameraPreviewVideo from '@/app/reels-maker/components/CameraPreviewVideo';
@@ -344,7 +344,6 @@ function ReelsMakerInner() {
   const recordTimeoutRef = useRef<number | null>(null);
   const countdownTimerRef = useRef<number | null>(null);
   const recordingCutRef = useRef<number>(0);
-  const recordingShouldAdvanceRef = useRef(true);
   const recordingMimeTypeRef = useRef<string>('video/webm');
   const cameraSetupInProgressRef = useRef(false);
   const switchCameraInProgressRef = useRef(false);
@@ -649,6 +648,44 @@ function ReelsMakerInner() {
     isTrimPreparing ||
     isTrimOpen ||
     isMediaPickerActive;
+  const hasUploadingCut = Object.values(uploadingCuts).some(Boolean);
+  const isActiveCutComplete = Boolean(
+    activeCut &&
+      (activeCut.isFixed
+        ? activeClip && !activeFixedError
+        : uploadedCuts[activeCutIndex])
+  );
+  const nextIncompleteCaptureCutIndex = useMemo(() => {
+    if (!isActiveCutComplete || allDone) return -1;
+
+    const nextAfterActive = cuts.findIndex(
+      (cut, index) => index > activeCutIndex && !cut.isFixed && !uploadedCuts[index]
+    );
+    if (nextAfterActive >= 0) return nextAfterActive;
+
+    return cuts.findIndex((cut, index) => !cut.isFixed && !uploadedCuts[index]);
+  }, [activeCutIndex, allDone, cuts, isActiveCutComplete, uploadedCuts]);
+  const captureFlowAction: 'next' | 'complete' | null = allDone
+    ? 'complete'
+    : isActiveCutComplete && nextIncompleteCaptureCutIndex >= 0
+      ? 'next'
+      : null;
+  const isCaptureFlowActionDisabled =
+    recordingStatus === 'recording' ||
+    isSessionLoading ||
+    !sessionId ||
+    hasUploadingCut ||
+    isGalleryProcessing ||
+    isTrimPreparing ||
+    isTrimOpen ||
+    isMediaPickerActive;
+  const isGalleryButtonDisabled =
+    !activeCut ||
+    isActiveCutFixed ||
+    isMediaImportBlocked ||
+    Boolean(uploadingCuts[activeCutIndex]);
+  const canRetakeActiveCut =
+    !isActiveCutFixed && Boolean(activeClip) && recordingStatus !== 'recording';
   const isCaptureCameraPaused =
     !sessionId ||
     isSessionLoading ||
@@ -2283,8 +2320,7 @@ function ReelsMakerInner() {
     async (
       index: number,
       clipPayload: { blob: Blob; mimeType: string; duration: number },
-      clipSource: ClipSource,
-      shouldAdvanceToNextCut: boolean = true
+      clipSource: ClipSource
     ) => {
       const { blob, mimeType, duration } = clipPayload;
       const previousUploaded = uploadedCutsRef.current[index] ?? false;
@@ -2345,20 +2381,8 @@ function ReelsMakerInner() {
       setRecordingStatus('done');
       setGalleryError(null);
       setCameraError(null);
-
-      if (!shouldAdvanceToNextCut) return;
-      if (index >= cuts.length - 1) return;
-
-      const nextCaptureIndex = findNextCaptureCutIndex(index);
-      if (nextCaptureIndex !== -1) {
-        setActiveCutIndex(nextCaptureIndex);
-        setTemplateGuideStep(nextCaptureIndex);
-        setIsTemplateGuideOpen(true);
-      } else {
-        setActiveCutIndex(index + 1);
-      }
     },
-    [createPosterFromClip, cuts.length, findNextCaptureCutIndex, uploadRecordedClip]
+    [createPosterFromClip, uploadRecordedClip]
   );
 
   const finishMediaPicker = useCallback(() => {
@@ -2394,12 +2418,7 @@ function ReelsMakerInner() {
               ? targetCutDurationSeconds
               : DEFAULT_GALLERY_CLIP_DURATION_SECONDS;
           const converted = await imageToVideoBlob(file, targetDuration);
-          await saveClipAtIndex(
-            targetIndex,
-            converted,
-            'file',
-            !latestClipsRef.current[targetIndex] && !uploadedCutsRef.current[targetIndex]
-          );
+          await saveClipAtIndex(targetIndex, converted, 'file');
         } catch (error: unknown) {
           const message = getErrorMessage(error, '사진을 영상으로 변환하지 못했습니다.');
           setGalleryError(message);
@@ -2659,12 +2678,7 @@ function ReelsMakerInner() {
         trimStartSeconds,
         trimEndSeconds
       );
-      await saveClipAtIndex(
-        targetIndex,
-        converted,
-        'file',
-        !latestClipsRef.current[targetIndex] && !uploadedCutsRef.current[targetIndex]
-      );
+      await saveClipAtIndex(targetIndex, converted, 'file');
       closeTrimModal();
     } catch (error: unknown) {
       const message = getErrorMessage(error, '영상 구간을 처리하지 못했습니다.');
@@ -3074,8 +3088,6 @@ function ReelsMakerInner() {
     recorderRef.current = recorder;
     chunksRef.current = [];
     recordingCutRef.current = activeCutIndex;
-    recordingShouldAdvanceRef.current =
-      !latestClipsRef.current[activeCutIndex] && !uploadedCutsRef.current[activeCutIndex];
 
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
@@ -3111,17 +3123,12 @@ function ReelsMakerInner() {
           duration: recordedCut?.durationSeconds ?? activeCut.durationSeconds,
           mimeType,
         },
-        'recording',
-        recordingShouldAdvanceRef.current
+        'recording'
       ).catch((error: unknown) => {
         const message = getErrorMessage(error, '클립 업로드에 실패했습니다.');
         setClipUploadErrors((prev) => ({
           ...prev,
           [recordedIndex]: message,
-        }));
-        setUploadedCuts((prev) => ({
-          ...prev,
-          [recordedIndex]: !recordingShouldAdvanceRef.current,
         }));
         setRecordingStatus('idle');
         setRecordingElapsedSeconds(null);
@@ -3226,10 +3233,18 @@ function ReelsMakerInner() {
     stopRecording,
   ]);
 
-  const handleComplete = () => {
+  const handleContinueToNextCut = useCallback(() => {
+    if (nextIncompleteCaptureCutIndex < 0) return;
+    if (recordingStatus === 'recording') return;
+
+    setActiveCutIndex(nextIncompleteCaptureCutIndex);
+    setTemplateGuideStep(nextIncompleteCaptureCutIndex);
+  }, [nextIncompleteCaptureCutIndex, recordingStatus]);
+
+  const handleComplete = useCallback(() => {
     if (!allDone) return;
     setStage('caption-edit');
-  };
+  }, [allDone]);
 
   const handleFinalComplete = async () => {
     if (!sessionId) return;
@@ -4066,7 +4081,7 @@ function ReelsMakerInner() {
                       }}
                       className="h-10 shrink-0 rounded-full bg-[#FF4D6D] px-4 text-xs font-semibold shadow-lg"
                     >
-                      가이드 보기
+                      가이드
                     </button>
                   )}
                   <button
@@ -4211,48 +4226,32 @@ function ReelsMakerInner() {
 
                   <div className="pointer-events-none absolute inset-x-0 top-0 z-30 space-y-2 bg-gradient-to-b from-black/35 via-black/10 to-transparent px-3 pb-6 pt-3">
                     <div className="pointer-events-auto">
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="flex items-start gap-2">
                         {shouldShowGuideImageToggle && (
                           <button
                             type="button"
                             onClick={handleGuideImageToggle}
-                            className="h-10 min-w-0 w-full rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap"
+                            className="h-10 min-w-0 rounded-full border border-white/35 bg-white/15 px-3 text-[11px] leading-none font-semibold text-white whitespace-nowrap"
                           >
                             가이드 이미지 {isGuideImageVisible ? 'ON' : 'OFF'}
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={addCaptionToActiveClip}
-                          disabled={
+                        <CaptureCaptionMenu
+                          activeCutIndex={activeCutIndex}
+                          overlayCaptionCount={activeOverlayCaptionCount}
+                          maxCaptions={MAX_CAPTIONS_PER_CLIP}
+                          isBoxed={activeCaptionStyle.boxed}
+                          isAddDisabled={
                             !showCaptionStage ||
                             activeClipId == null ||
                             activeOverlayCaptionCount >= MAX_CAPTIONS_PER_CLIP
                           }
-                          className="flex h-10 min-w-0 w-full items-center justify-center gap-1 rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          자막 추가 {activeOverlayCaptionCount}/{MAX_CAPTIONS_PER_CLIP}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCaptionToggleBox}
-                          disabled={!showCaptionOverlay}
-                          className="h-10 min-w-0 w-full rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:opacity-40"
-                        >
-                          텍스트 박스 {activeCaptionStyle.boxed ? 'ON' : 'OFF'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={deleteSelectedCaption}
-                          disabled={!resolvedSelectedCaptionId}
-                          className={`flex h-10 min-w-0 w-full items-center justify-center gap-1 rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40 ${
-                            shouldShowGuideImageToggle ? '' : 'col-span-2'
-                          }`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          선택 자막 삭제
-                        </button>
+                          isToggleBoxDisabled={!showCaptionOverlay}
+                          isDeleteDisabled={!resolvedSelectedCaptionId}
+                          onAddCaption={addCaptionToActiveClip}
+                          onToggleBox={handleCaptionToggleBox}
+                          onDeleteCaption={deleteSelectedCaption}
+                        />
                       </div>
                     </div>
 
@@ -4265,6 +4264,13 @@ function ReelsMakerInner() {
 
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/35 via-black/10 to-transparent px-3 pb-4 pt-20">
                     <div className="pointer-events-auto space-y-3">
+                      <CaptureFlowAction
+                        variant={captureFlowAction}
+                        disabled={isCaptureFlowActionDisabled}
+                        onNext={handleContinueToNextCut}
+                        onComplete={handleComplete}
+                      />
+
                       <div className="flex items-end justify-center gap-2">
                         {cuts.map((cut, index) => {
                           const clip = clips[index];
@@ -4347,78 +4353,19 @@ function ReelsMakerInner() {
                       </div>
 
                       <div className="space-y-2">
-                        <div className="grid grid-cols-3 items-center">
-                          <div className="flex justify-start">
-                            {allDone ? (
-                              <button
-                                type="button"
-                                onClick={() => setIsResetOpen(true)}
-                                disabled={recordingStatus === 'recording'}
-                                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/35 bg-black/35 text-white/80 disabled:cursor-not-allowed disabled:opacity-45"
-                                aria-label="촬영 다시 시도"
-                              >
-                                <RotateCcw className="h-5 w-5" />
-                              </button>
-                            ) : (
-                              <div className="h-12 w-12" aria-hidden />
-                            )}
-                          </div>
-                          <div className="flex justify-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (recordingStatus === 'recording') {
-                                  stopRecording();
-                                  return;
-                                }
-                                void startRecording();
-                              }}
-                              disabled={isRecordDisabled}
-                              className={`relative flex h-20 w-20 items-center justify-center rounded-full border-4 shadow-2xl ${
-                                isRecordDisabled ? 'border-white/20' : 'border-[#FF4D6D]'
-                              }`}
-                              aria-label={
-                                shouldConfirmActiveRetake ? '현재 컷 다시 촬영' : '현재 컷 촬영'
-                              }
-                            >
-                              <span
-                                className={`transition-all ${
-                                  recordingStatus === 'recording'
-                                    ? 'h-8 w-8 rounded-lg bg-[#FF4D6D]'
-                                    : 'h-12 w-12 rounded-full bg-white'
-                                }`}
-                              />
-                            </button>
-                          </div>
-                          <div className="flex justify-end">
-                            <button
-                              type="button"
-                              onClick={handleSwitchCamera}
-                              disabled={isSwitchCameraDisabled}
-                              className="flex h-12 w-12 items-center justify-center rounded-full border border-white/35 bg-black/35 disabled:cursor-not-allowed disabled:opacity-45"
-                              aria-label="전면/후면 카메라 전환"
-                            >
-                              <SwitchCamera className="h-5 w-5 text-white/80" />
-                            </button>
-                          </div>
-                        </div>
-                        {allDone && (
-                          <button
-                            type="button"
-                            onClick={handleComplete}
-                            disabled={
-                              recordingStatus === 'recording' ||
-                              isUploadingActiveCut ||
-                              isGalleryProcessing ||
-                              isTrimPreparing ||
-                              isTrimOpen ||
-                              isMediaPickerActive
-                            }
-                            className="h-11 w-full rounded-full bg-[#FF4D6D] px-4 text-sm font-semibold shadow-lg disabled:cursor-not-allowed disabled:opacity-45"
-                          >
-                            ✓ 완료하기
-                          </button>
-                        )}
+                        <CaptureActionControls
+                          recordingStatus={recordingStatus}
+                          galleryPreviewUrl={clipPosters[activeCutIndex] ?? null}
+                          canRetake={canRetakeActiveCut}
+                          isGalleryDisabled={isGalleryButtonDisabled}
+                          isRecordDisabled={isRecordDisabled}
+                          isSwitchCameraDisabled={isSwitchCameraDisabled}
+                          onOpenGallery={() => void openGalleryPickerForIndex(activeCutIndex)}
+                          onStartRecording={() => void startRecording()}
+                          onStopRecording={stopRecording}
+                          onRequestRetake={() => setIsResetOpen(true)}
+                          onSwitchCamera={handleSwitchCamera}
+                        />
                         {(galleryError || trimError) && (
                           <p className="text-center text-xs text-rose-300">{galleryError || trimError}</p>
                         )}
