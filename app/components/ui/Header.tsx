@@ -122,7 +122,7 @@ const MOBILE_PRIMARY_ITEMS: MobileMenuItem[] = [
   },
   {
     href: '/my-projects',
-    label: '제작 중인 프로젝트',
+    label: '제작 중인 릴스',
     icon: FolderOpen,
     requiresAuth: true,
   },
@@ -179,17 +179,21 @@ export default function Header() {
   const buildLoginHref = (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`;
   const videoCreditLabel = 'free';
   const hasVisibleLegacyMenuItems = MENU_ITEMS.some(isNavItemVisible);
+  const isMenuItemAvailable = (item: { requiresAuth?: boolean }) =>
+    !item.requiresAuth || isAuthenticated;
+  const mobileAuthenticatedMenuItems = MOBILE_PRIMARY_ITEMS.slice(3);
+  const hasVisibleMobileAuthenticatedMenuItems = mobileAuthenticatedMenuItems
+    .filter(isNavItemVisible)
+    .some(isMenuItemAvailable);
   const renderMobileMenuItems = (items: MobileMenuItem[]) =>
-    items.filter(isNavItemVisible).map((item) => {
+    items.filter(isNavItemVisible).filter(isMenuItemAvailable).map((item) => {
       const active = pathname === item.href;
       const Icon = item.icon;
-      const targetHref =
-        !isAuthenticated && item.requiresAuth ? buildLoginHref(item.href) : item.href;
 
       return (
         <Link
           key={item.href}
-          href={targetHref}
+          href={item.href}
           onClick={() => setIsMobileMenuOpen(false)}
           className={`w-full flex items-center gap-3 px-5 py-3.5 text-lg rounded-xl transition-colors ${
             active
@@ -586,7 +590,7 @@ export default function Header() {
                               className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
                             >
                               <FolderOpen className="w-5 h-5 text-gray-400" />
-                              <span className="text-base font-medium">제작 중인 프로젝트</span>
+                              <span className="text-base font-medium">제작 중인 릴스</span>
                             </Link>
                             <Link
                               href="/completed-reels"
@@ -703,9 +707,11 @@ export default function Header() {
 
                       <div className="border-t border-gray-200 my-2"></div>
 
-                      {renderMobileMenuItems(MOBILE_PRIMARY_ITEMS.slice(3))}
+                      {renderMobileMenuItems(mobileAuthenticatedMenuItems)}
 
-                      <div className="border-t border-gray-200 my-2"></div>
+                      {hasVisibleMobileAuthenticatedMenuItems && (
+                        <div className="border-t border-gray-200 my-2"></div>
+                      )}
 
                       {renderMobileMenuItems(MOBILE_INFO_ITEMS)}
 

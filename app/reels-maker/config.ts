@@ -46,7 +46,7 @@ export const CAPTURE_MENU_ITEMS: CaptureMenuItem[] = [
   },
   {
     href: '/my-projects',
-    label: '제작 중인 프로젝트',
+    label: '제작 중인 릴스',
     icon: FolderOpen,
     requiresAuth: true,
   },

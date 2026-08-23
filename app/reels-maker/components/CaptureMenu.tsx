@@ -15,7 +15,6 @@ type Props = {
   isGuestUser: boolean;
   isRegisteredUser: boolean;
   loginHref: string;
-  buildLoginHref: (href: string) => string;
   onClose: () => void;
   onRequestExit: (href: string) => void;
 };
@@ -27,7 +26,6 @@ export default function CaptureMenu({
   isGuestUser,
   isRegisteredUser,
   loginHref,
-  buildLoginHref,
   onClose,
   onRequestExit,
 }: Props) {
@@ -120,27 +118,26 @@ export default function CaptureMenu({
             </Link>
           )}
 
-          {CAPTURE_MENU_ITEMS.filter(isCaptureMenuItemVisible).map((item) => {
-            const Icon = item.icon;
-            const targetHref =
-              !isAuthenticated && item.requiresAuth
-                ? buildLoginHref(item.href)
-                : item.href;
-            return (
-              <Link
-                key={item.href}
-                href={targetHref}
-                onClick={(event) => {
-                  event.preventDefault();
-                  requestExit(targetHref);
-                }}
-                className="flex w-full items-center gap-3 rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
-              >
-                <Icon className="h-5 w-5 text-gray-600" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
+          {CAPTURE_MENU_ITEMS
+            .filter(isCaptureMenuItemVisible)
+            .filter((item) => !item.requiresAuth || isAuthenticated)
+            .map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    requestExit(item.href);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
+                >
+                  <Icon className="h-5 w-5 text-gray-600" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
 
           {(SHOW_DISABLED_CAPTURE_MENU_ITEMS || (isAuthenticated && isAdmin)) && (
             <div className="my-2 border-t border-gray-200" />

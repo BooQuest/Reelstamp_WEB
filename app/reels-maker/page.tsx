@@ -3938,7 +3938,6 @@ function ReelsMakerInner() {
           isGuestUser={isGuestUser}
           isRegisteredUser={isRegisteredUser}
           loginHref={buildLoginHref(currentReelsMakerHref)}
-          buildLoginHref={buildLoginHref}
           onClose={() => setIsCaptureMenuOpen(false)}
           onRequestExit={requestExit}
         />

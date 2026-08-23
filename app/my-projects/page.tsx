@@ -11,7 +11,7 @@ export default async function MyProjectsPage({
   searchParams: Promise<{ status?: string }>;
 }) {
   const user = await getCurrentUser();
-  if (!user || user.guest || user.provider === 'GUEST') {
+  if (!user) {
     redirect('/login?returnUrl=' + encodeURIComponent('/my-projects'));
   }
 
