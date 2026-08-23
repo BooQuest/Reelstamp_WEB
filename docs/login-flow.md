@@ -8,13 +8,13 @@
 
 ## 1. 카카오 로그인 플로우
 
-### 1.1. SDK 초기화 및 로그인 요청
-- **SDK 초기화**: `app/login/page.tsx`에서 `initKakao()` 호출.
-- **로그인 시작**: `window.Kakao.Auth.authorize()`를 사용하여 카카오 인증 페이지로 이동.
+### 1.1. REST OAuth 로그인 요청
+- **로그인 시작**: `app/login/LoginClient.tsx`에서 내부 Route(`app/api/auth/kakao-authorize/route.ts`)로 이동.
+- **인가 페이지 이동**: 내부 Route가 `KAKAO_REST_API_KEY`로 `https://kauth.kakao.com/oauth/authorize` URL을 생성해 카카오 계정 로그인 페이지로 리다이렉트.
 
 ### 1.2. 토큰 교환 및 로그인 처리
 - **인가 코드 수신**: 리다이렉트된 URL에서 `code` 추출.
-- **액세스 토큰 교환**: `https://kauth.kakao.com/oauth/token` 호출.
+- **액세스 토큰 교환**: 내부 API Route(`app/api/auth/kakao-token/route.ts`)를 통해 `https://kauth.kakao.com/oauth/token` 호출.
 - **로그인 처리**: 발급받은 토큰으로 `loginWithSocialAction(token, 'KAKAO')` 호출.
 
 ## 2. 네이버 로그인 플로우 (OAuth 2.0 직접 구현)
@@ -44,14 +44,16 @@
 
 ```env
 # 카카오
-NEXT_PUBLIC_KAKAO_JS_KEY=...
+KAKAO_REST_API_KEY=...
+# 카카오 Client Secret 기능을 켰다면 필요
+KAKAO_CLIENT_SECRET=...
 
 # 네이버
 NEXT_PUBLIC_NAVER_CLIENT_ID=...
 NAVER_CLIENT_SECRET=...
 ```
 
-**주의**: `NAVER_CLIENT_SECRET`은 서버 사이드 전용이므로 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다.
+**주의**: `KAKAO_REST_API_KEY`, `KAKAO_CLIENT_SECRET`, `NAVER_CLIENT_SECRET`은 서버 사이드 전용이므로 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다.
 
 ### 6. 사용자 정보 출력
 
@@ -65,13 +67,16 @@ if (result.userInfo) {
 
 ## 주요 파일
 
-- **`app/login/page.tsx`**: 클라이언트 사이드 로그인 UI 및 카카오 SDK 처리
+- **`app/login/LoginClient.tsx`**: 클라이언트 사이드 로그인 UI 및 소셜 로그인 시작 처리
+- **`app/api/auth/kakao-authorize/route.ts`**: 카카오 REST OAuth 인가 URL 생성
+- **`app/api/auth/kakao-token/route.ts`**: 카카오 인가 코드를 액세스 토큰으로 교환
 - **`app/actions/auth.ts`**: Server Action - Spring API 호출 및 httpOnly 쿠키 저장
 - **`app/lib/api/server-client.ts`**: 서버 사이드 API 클라이언트 - 쿠키에서 토큰 자동 추출
 
 ## 환경 변수
 
-- **`NEXT_PUBLIC_KAKAO_JS_KEY`**: 필수 (없으면 에러 발생)
+- **`KAKAO_REST_API_KEY`**: 필수 (없으면 카카오 로그인 시작/토큰 교환 실패)
+- **`KAKAO_CLIENT_SECRET`**: 카카오 Client Secret 기능을 켠 경우 필수
 
 ## 보안 특징
 
@@ -79,4 +84,3 @@ if (result.userInfo) {
 - **secure 옵션**: 프로덕션에서 HTTPS만 전송
 - **sameSite: 'lax'**: CSRF 방어
 - **서버 사이드 처리**: 토큰이 클라이언트에 노출되지 않음
-

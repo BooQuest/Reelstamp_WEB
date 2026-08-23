@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import Script from 'next/script';
 import { ArrowLeft } from 'lucide-react';
 import { loginAsGuestAction, loginWithSocialAction } from '@/app/actions/auth';
 import { useAuth } from '@/app/components/providers/AuthProvider';
@@ -20,21 +19,6 @@ import {
   storeLoginReturnUrl,
   type LoginOAuthStatePrefix,
 } from '@/app/lib/auth/loginRedirect';
-
-// 카카오 SDK 타입 정의
-interface KakaoSdk {
-  isInitialized: () => boolean;
-  init: (key: string) => void;
-  Auth: {
-    authorize: (options: { redirectUri: string; state?: string }) => void;
-  };
-}
-
-declare global {
-  interface Window {
-    Kakao?: KakaoSdk;
-  }
-}
 
 type OAuthTokenResponse = {
   access_token?: string;
@@ -95,18 +79,6 @@ export default function LoginClient() {
     setMounted(true);
   }, []);
 
-  // 카카오 SDK 초기화
-  const initKakao = () => {
-    if (typeof window !== 'undefined' && window.Kakao && !window.Kakao.isInitialized()) {
-      const kakaoKey = process.env.NEXT_PUBLIC_KAKAO_JS_KEY;
-      if (!kakaoKey) {
-        console.warn('NEXT_PUBLIC_KAKAO_JS_KEY 환경 변수가 설정되지 않았습니다.');
-        return;
-      }
-      window.Kakao.init(kakaoKey);
-    }
-  };
-
   const createOauthNonce = () => {
     return (
       typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -122,13 +94,6 @@ export default function LoginClient() {
   };
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (window.Kakao) {
-        initKakao();
-        clearInterval(timer);
-      }
-    }, 1000);
-
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
     const state = urlParams.get('state');
@@ -159,7 +124,8 @@ export default function LoginClient() {
         parsedState?.provider ||
         'KAKAO';
 
-      const requiresState = inferredProvider === 'NAVER' || inferredProvider === 'GOOGLE';
+      const requiresState =
+        inferredProvider === 'KAKAO' || inferredProvider === 'NAVER' || inferredProvider === 'GOOGLE';
       if (requiresState) {
         if (!state) {
           setError('로그인 state 정보가 누락되었습니다. 다시 시도해주세요.');
@@ -188,8 +154,6 @@ export default function LoginClient() {
         handleKakaoCode(code);
       }
     }
-
-    return () => clearInterval(timer);
   }, [isProcessing, isSocialAuthenticated]);
 
   // [카카오] 인가 코드를 액세스 토큰으로 교환
@@ -198,24 +162,16 @@ export default function LoginClient() {
     setLoadingText('카카오 로그인 처리 중...');
     setError(null);
     try {
-      const kakaoKey = process.env.NEXT_PUBLIC_KAKAO_JS_KEY;
-      if (!kakaoKey) throw new Error('카카오 API 키가 설정되지 않았습니다.');
-
       const redirectUri = `${window.location.origin}/login`;
-      const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', {
+      const tokenResponse = await fetch('/api/auth/kakao-token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
-        body: new URLSearchParams({
-          grant_type: 'authorization_code',
-          client_id: kakaoKey,
-          redirect_uri: redirectUri,
-          code: code,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, redirectUri }),
       });
 
       const tokenData = (await tokenResponse.json()) as OAuthTokenResponse;
       if (!tokenResponse.ok || !tokenData.access_token) {
-        throw new Error(tokenData.error_description || '카카오 토큰 교환 실패');
+        throw new Error(tokenData.message || tokenData.error_description || '카카오 토큰 교환 실패');
       }
 
       await processLogin(tokenData.access_token, 'KAKAO', setIsLoadingKakao);
@@ -365,25 +321,17 @@ export default function LoginClient() {
 
   // 카카오 로그인 핸들러
   const handleKakaoLogin = () => {
-    if (!window.Kakao) {
-      setError('카카오 SDK가 로드되지 않았습니다. 잠시 후 다시 시도해주세요.');
-      return;
-    }
-
-    if (!window.Kakao.isInitialized()) {
-      initKakao();
-    }
-
     setIsLoadingKakao(true);
     setLoadingText('카카오 로그인 중...');
     setError(null);
     sessionStorage.setItem('oauth_provider', 'KAKAO');
     const state = prepareOauthState('kakao');
+    const redirectUri = `${window.location.origin}/login`;
+    const kakaoAuthUrl = new URL('/api/auth/kakao-authorize', window.location.origin);
 
-    window.Kakao.Auth.authorize({
-      redirectUri: `${window.location.origin}/login`,
-      state,
-    });
+    kakaoAuthUrl.searchParams.set('redirectUri', redirectUri);
+    kakaoAuthUrl.searchParams.set('state', state);
+    window.location.href = kakaoAuthUrl.toString();
   };
 
   // 네이버 로그인 핸들러
@@ -443,15 +391,6 @@ export default function LoginClient() {
 
   return (
     <div className="bg-white flex flex-col items-center justify-start px-4 py-20 sm:py-20 md:py-28 lg:py-40 xl:py-48 min-h-[calc(100vh-80px)] relative overflow-x-hidden">
-      <Script
-        src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.0/kakao.min.js"
-        strategy="afterInteractive"
-        onLoad={initKakao}
-        onError={() => {
-          setError('카카오 SDK를 불러오는 데 실패했습니다.');
-        }}
-      />
-
       {/* 배경 디자인 - 모바일 */}
       <div 
         className="absolute inset-0 flex items-center justify-center pointer-events-none sm:hidden overflow-hidden"
