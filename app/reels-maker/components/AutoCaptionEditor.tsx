@@ -71,7 +71,6 @@ const clampTimelineMs = (valueMs: number, totalDurationMs: number) =>
   Math.max(0, Math.min(totalDurationMs, valueMs));
 
 type Props = {
-  sessionId: number;
   cuts: Cut[];
   clips: Array<ClipInfo | null>;
   clipPosters: Record<number, string>;
@@ -118,7 +117,6 @@ type Props = {
 };
 
 export default function AutoCaptionEditor({
-  sessionId,
   cuts,
   clips,
   clipPosters,
@@ -171,7 +169,6 @@ export default function AutoCaptionEditor({
   const autoCaptionRepackSignatureRef = useRef(new Map<number, string>());
   const measureCaptionText = useMemo(() => createCaptionTextMeasurer(), []);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [showPrompt, setShowPrompt] = useState(false);
   const [isTimelineScrubbing, setIsTimelineScrubbing] = useState(false);
   const [playbackPosition, setPlaybackPosition] = useState({
     cutIndex: activeCutIndex,
@@ -420,22 +417,6 @@ export default function AutoCaptionEditor({
   }, [captions, job, jobWordsByClip, measureCaptionText, setCaptions]);
 
   useEffect(() => {
-    const key = `reelstamp:auto-caption-prompt:${sessionId}`;
-    const timer = window.setTimeout(() => {
-      if (
-        isRegisteredUser &&
-        autoCaptionAvailable &&
-        !job &&
-        !isProcessing &&
-        sessionStorage.getItem(key) !== 'seen'
-      ) {
-        setShowPrompt(true);
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [autoCaptionAvailable, isProcessing, isRegisteredUser, job, sessionId]);
-
-  useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     const pendingSeek = pendingSeekRef.current;
@@ -546,11 +527,6 @@ export default function AutoCaptionEditor({
     }
   };
 
-  const markPromptSeen = () => {
-    sessionStorage.setItem(`reelstamp:auto-caption-prompt:${sessionId}`, 'seen');
-    setShowPrompt(false);
-  };
-
   const startAutoCaption = async (regenerate = false) => {
     if (regenerate) {
       const hasEditedAutoCaptions = captions.some(isEditedAutoSpeechCaption);
@@ -559,7 +535,6 @@ export default function AutoCaptionEditor({
         : '기존 음성인식 자막만 새 결과로 교체합니다. 템플릿/사용자 자막은 유지됩니다.';
       if (!window.confirm(message)) return;
     }
-    markPromptSeen();
     await onStartAutoCaption();
     if (regenerate) {
       setCaptions((current) =>
@@ -1211,34 +1186,6 @@ export default function AutoCaptionEditor({
         </section>
       </main>
 
-      {showPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
-            <Mic className="mb-3 h-8 w-8 text-blue-600" />
-            <h2 className="text-xl font-bold">음성으로 자막을 만들까요?</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              촬영한 영상의 오디오가 음성인식 서비스로 전송됩니다. 생성된
-              자막은 컷별로 직접 수정할 수 있습니다.
-            </p>
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={markPromptSeen}
-                className="rounded-full border border-slate-300 py-3 text-sm font-bold"
-              >
-                나중에
-              </button>
-              <button
-                type="button"
-                onClick={() => void startAutoCaption(false)}
-                className="rounded-full bg-blue-600 py-3 text-sm font-bold text-white"
-              >
-                지금 만들기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

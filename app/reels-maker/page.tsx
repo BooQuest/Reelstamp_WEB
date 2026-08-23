@@ -30,6 +30,7 @@ import CaptureCaptionMenu from '@/app/reels-maker/components/CaptureCaptionMenu'
 import CaptureFlowAction from '@/app/reels-maker/components/CaptureFlowAction';
 import CaptureMenu from '@/app/reels-maker/components/CaptureMenu';
 import AutoCaptionEditor from '@/app/reels-maker/components/AutoCaptionEditor';
+import CaptionEditDecisionModal from '@/app/reels-maker/components/CaptionEditDecisionModal';
 import CameraPreviewVideo from '@/app/reels-maker/components/CameraPreviewVideo';
 import CaptionOverlayStage from '@/app/reels-maker/components/CaptionOverlayStage';
 import CapturedClipPreview from '@/app/reels-maker/components/CapturedClipPreview';
@@ -167,6 +168,10 @@ type ReplacementConfirmState =
       cutIndex: number;
     }
   | null;
+
+type FinalCompleteOptions = {
+  acceptedStaleAutoCaptionClipIds?: number[];
+};
 
 const GALLERY_FILE_PICKER_TYPES: FilePickerAcceptOption[] = [
   {
@@ -393,6 +398,8 @@ function ReelsMakerInner() {
   >([]);
   const [acceptedStaleAutoCaptionClipIds, setAcceptedStaleAutoCaptionClipIds] =
     useState<number[]>([]);
+  const [isCaptionEditDecisionOpen, setIsCaptionEditDecisionOpen] =
+    useState(false);
   const [cutGuideVisibility, setCutGuideVisibility] = useState<Record<number, boolean>>({});
   const [guideImageIndexByCut, setGuideImageIndexByCut] = useState<Record<number, number>>({});
   const [isTemplateGuideOpen, setIsTemplateGuideOpen] = useState(false);
@@ -625,6 +632,8 @@ function ReelsMakerInner() {
     initialJobId: activeAutoCaptionJobId ?? latestAutoCaptionJobId,
     onSessionReloaded: applyCaptionSessionSnapshot,
   });
+  const currentStaleAutoCaptionClipIds =
+    autoCaptionJob?.staleClipIds ?? staleAutoCaptionClipIds;
   const isMediaImportBlocked =
     isSessionLoading ||
     !sessionId ||
@@ -3212,6 +3221,7 @@ function ReelsMakerInner() {
       resetCaptionGesture();
       setIsMediaSourceOpen(false);
       setIsTemplateGuideOpen(false);
+      setIsCaptionEditDecisionOpen(false);
       setReplacementConfirm(null);
       if (isTrimOpen) {
         closeTrimModal();
@@ -3228,10 +3238,15 @@ function ReelsMakerInner() {
 
   const handleComplete = useCallback(() => {
     if (!allDone) return;
-    setStage('caption-edit');
+    setIsCaptionEditDecisionOpen(true);
   }, [allDone]);
 
-  const handleFinalComplete = async () => {
+  const handleEditCaptionsBeforeComplete = useCallback(() => {
+    setIsCaptionEditDecisionOpen(false);
+    setStage('caption-edit');
+  }, []);
+
+  const handleFinalComplete = async (options?: FinalCompleteOptions) => {
     if (!sessionId) return;
     if (!allDone) return;
     if (isRegisteredUser) {
@@ -3258,13 +3273,16 @@ function ReelsMakerInner() {
     setStage('processing');
 
     try {
+      const completionAcceptedStaleClipIds =
+        options?.acceptedStaleAutoCaptionClipIds ??
+        acceptedStaleAutoCaptionClipIds;
       const response = await fetch(`/api/reels-maker/sessions/${sessionId}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           captionItems,
           captionsEnabled,
-          acceptedStaleAutoCaptionClipIds,
+          acceptedStaleAutoCaptionClipIds: completionAcceptedStaleClipIds,
         }),
       });
       const payload = (await response.json()) as
@@ -3305,6 +3323,21 @@ function ReelsMakerInner() {
       setStage('capture');
       alert(COMPLETE_START_FAILED_USER_MESSAGE);
     }
+  };
+
+  const handleSkipCaptionEditBeforeComplete = () => {
+    if (!allDone) return;
+    const nextAcceptedStaleClipIds = Array.from(
+      new Set([
+        ...acceptedStaleAutoCaptionClipIds,
+        ...currentStaleAutoCaptionClipIds,
+      ])
+    );
+    setIsCaptionEditDecisionOpen(false);
+    setAcceptedStaleAutoCaptionClipIds(nextAcceptedStaleClipIds);
+    void handleFinalComplete({
+      acceptedStaleAutoCaptionClipIds: nextAcceptedStaleClipIds,
+    });
   };
 
   useEffect(() => {
@@ -3783,7 +3816,6 @@ function ReelsMakerInner() {
   if (stage === 'caption-edit' && sessionId) {
     return (
       <AutoCaptionEditor
-        sessionId={sessionId}
         cuts={cuts}
         clips={clips}
         clipPosters={clipPosters}
@@ -3798,9 +3830,7 @@ function ReelsMakerInner() {
         remainingAttempts={
           autoCaptionJob?.remainingAttempts ?? autoCaptionRemainingAttempts
         }
-        staleClipIds={
-          autoCaptionJob?.staleClipIds ?? staleAutoCaptionClipIds
-        }
+        staleClipIds={currentStaleAutoCaptionClipIds}
         acceptedStaleClipIds={acceptedStaleAutoCaptionClipIds}
         job={autoCaptionJob}
         jobError={autoCaptionError}
@@ -4392,6 +4422,14 @@ function ReelsMakerInner() {
           onSelectStep={setTemplateGuideStep}
           onPrimaryAction={handleTemplateGuidePrimaryAction}
           onSelectReel={setExampleReelIndex}
+        />
+      )}
+
+      {isCaptionEditDecisionOpen && (
+        <CaptionEditDecisionModal
+          onSkip={handleSkipCaptionEditBeforeComplete}
+          onEdit={handleEditCaptionsBeforeComplete}
+          onCancel={() => setIsCaptionEditDecisionOpen(false)}
         />
       )}
 
