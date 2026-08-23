@@ -13,7 +13,6 @@ describe('CaptureFlowAction', () => {
       <CaptureFlowAction
         variant={null}
         disabled={false}
-        onNext={vi.fn()}
         onComplete={vi.fn()}
       />
     );
@@ -21,32 +20,12 @@ describe('CaptureFlowAction', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('calls next handler for the next cut action', () => {
-    const onNext = vi.fn();
-    const onComplete = vi.fn();
-    render(
-      <CaptureFlowAction
-        variant="next"
-        disabled={false}
-        onNext={onNext}
-        onComplete={onComplete}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: '다음 컷 촬영' }));
-
-    expect(onNext).toHaveBeenCalledTimes(1);
-    expect(onComplete).not.toHaveBeenCalled();
-  });
-
   it('calls complete handler for the complete action', () => {
-    const onNext = vi.fn();
     const onComplete = vi.fn();
     render(
       <CaptureFlowAction
         variant="complete"
         disabled={false}
-        onNext={onNext}
         onComplete={onComplete}
       />
     );
@@ -54,6 +33,5 @@ describe('CaptureFlowAction', () => {
     fireEvent.click(screen.getByRole('button', { name: '완료하기' }));
 
     expect(onComplete).toHaveBeenCalledTimes(1);
-    expect(onNext).not.toHaveBeenCalled();
   });
 });

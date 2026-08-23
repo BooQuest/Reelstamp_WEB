@@ -83,6 +83,7 @@ import type {
 import {
   parseGuideImageEntries,
 } from '@/app/reels-maker/utils/assets';
+import { findNextIncompleteCaptureCutIndex } from '@/app/reels-maker/utils/captureProgression';
 import {
   buildCaptionExportStyle,
   clampValue,
@@ -649,27 +650,7 @@ function ReelsMakerInner() {
     isTrimOpen ||
     isMediaPickerActive;
   const hasUploadingCut = Object.values(uploadingCuts).some(Boolean);
-  const isActiveCutComplete = Boolean(
-    activeCut &&
-      (activeCut.isFixed
-        ? activeClip && !activeFixedError
-        : uploadedCuts[activeCutIndex])
-  );
-  const nextIncompleteCaptureCutIndex = useMemo(() => {
-    if (!isActiveCutComplete || allDone) return -1;
-
-    const nextAfterActive = cuts.findIndex(
-      (cut, index) => index > activeCutIndex && !cut.isFixed && !uploadedCuts[index]
-    );
-    if (nextAfterActive >= 0) return nextAfterActive;
-
-    return cuts.findIndex((cut, index) => !cut.isFixed && !uploadedCuts[index]);
-  }, [activeCutIndex, allDone, cuts, isActiveCutComplete, uploadedCuts]);
-  const captureFlowAction: 'next' | 'complete' | null = allDone
-    ? 'complete'
-    : isActiveCutComplete && nextIncompleteCaptureCutIndex >= 0
-      ? 'next'
-      : null;
+  const captureFlowAction: 'complete' | null = allDone ? 'complete' : null;
   const isCaptureFlowActionDisabled =
     recordingStatus === 'recording' ||
     isSessionLoading ||
@@ -2381,8 +2362,20 @@ function ReelsMakerInner() {
       setRecordingStatus('done');
       setGalleryError(null);
       setCameraError(null);
+
+      const nextGuideCutIndex = findNextIncompleteCaptureCutIndex({
+        cuts,
+        uploadedCuts: uploadedCutsRef.current,
+        fromIndex: index,
+        completedCutIndex: index,
+      });
+      if (nextGuideCutIndex >= 0) {
+        setActiveCutIndex(nextGuideCutIndex);
+        setTemplateGuideStep(nextGuideCutIndex);
+        setIsTemplateGuideOpen(true);
+      }
     },
-    [createPosterFromClip, uploadRecordedClip]
+    [createPosterFromClip, cuts, uploadRecordedClip]
   );
 
   const finishMediaPicker = useCallback(() => {
@@ -3232,14 +3225,6 @@ function ReelsMakerInner() {
     stage,
     stopRecording,
   ]);
-
-  const handleContinueToNextCut = useCallback(() => {
-    if (nextIncompleteCaptureCutIndex < 0) return;
-    if (recordingStatus === 'recording') return;
-
-    setActiveCutIndex(nextIncompleteCaptureCutIndex);
-    setTemplateGuideStep(nextIncompleteCaptureCutIndex);
-  }, [nextIncompleteCaptureCutIndex, recordingStatus]);
 
   const handleComplete = useCallback(() => {
     if (!allDone) return;
@@ -4267,7 +4252,6 @@ function ReelsMakerInner() {
                       <CaptureFlowAction
                         variant={captureFlowAction}
                         disabled={isCaptureFlowActionDisabled}
-                        onNext={handleContinueToNextCut}
                         onComplete={handleComplete}
                       />
 
