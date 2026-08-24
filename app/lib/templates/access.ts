@@ -1,3 +1,5 @@
+import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
+
 export type TemplateAccessType = 'FREE' | 'PAID';
 
 export type TemplateAccessSource = {
@@ -67,6 +69,10 @@ export const canUseTemplate = ({
     return true;
   }
 
+  if (isReelstampBetaEnabled()) {
+    return Boolean(isAuthenticated && user);
+  }
+
   return Boolean(
     isAuthenticated &&
       user &&
@@ -75,5 +81,28 @@ export const canUseTemplate = ({
   );
 };
 
-export const buildTemplateLoginHref = () =>
-  `/login?returnUrl=${encodeURIComponent(TEMPLATE_PAYMENT_PATH)}`;
+export const shouldWaitForPaidTemplateSubscription = ({
+  template,
+  isAuthenticated,
+  user,
+  isLoadingSubscription,
+}: {
+  template: TemplateAccessSource | null | undefined;
+  isAuthenticated: boolean;
+  user: TemplateAccessUser;
+  isLoadingSubscription: boolean;
+}) =>
+  Boolean(
+    template &&
+      isPaidTemplate(template) &&
+      !isReelstampBetaEnabled() &&
+      isAuthenticated &&
+      !isGuestTemplateUser(user) &&
+      isLoadingSubscription
+  );
+
+export const resolveRestrictedTemplateLoginReturnUrl = (destination?: string) =>
+  isReelstampBetaEnabled() && destination ? destination : TEMPLATE_PAYMENT_PATH;
+
+export const buildTemplateLoginHref = (returnUrl = TEMPLATE_PAYMENT_PATH) =>
+  `/login?returnUrl=${encodeURIComponent(returnUrl)}`;

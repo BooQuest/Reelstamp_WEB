@@ -20,6 +20,8 @@ import {
   isGuestTemplateUser,
   isPaidTemplate,
   resolveTemplateAccessType,
+  resolveRestrictedTemplateLoginReturnUrl,
+  shouldWaitForPaidTemplateSubscription,
   TEMPLATE_LOGIN_REQUIRED_MESSAGE,
   TEMPLATE_PAYMENT_PATH,
   type TemplateAccessType,
@@ -119,17 +121,16 @@ export default function AllTemplatesClient() {
   const showTemplateGrid = Boolean(selectedCategoryId) || Boolean(templateIdParam);
   const isTemplateAccessLoading = useCallback(
     (template: TemplateItem | null | undefined) =>
-      Boolean(
-        template &&
-          isPaidTemplate(template) &&
-          isAuthenticated &&
-          !isGuestTemplateUser(user) &&
-          isLoadingSubscription
-      ),
+      shouldWaitForPaidTemplateSubscription({
+        template,
+        isAuthenticated,
+        user,
+        isLoadingSubscription,
+      }),
     [isAuthenticated, isLoadingSubscription, user]
   );
 
-  const redirectToTemplateLogin = useCallback(() => {
+  const redirectToTemplateLogin = useCallback((returnUrl?: string) => {
     showAppToast({
       message: TEMPLATE_LOGIN_REQUIRED_MESSAGE,
       tone: 'error',
@@ -138,20 +139,20 @@ export default function AllTemplatesClient() {
       clearTimeout(accessRedirectTimerRef.current);
     }
     accessRedirectTimerRef.current = setTimeout(() => {
-      router.push(buildTemplateLoginHref());
+      router.push(buildTemplateLoginHref(returnUrl));
     }, 800);
   }, [router]);
 
-  const handleRestrictedPaidTemplate = useCallback(() => {
+  const handleRestrictedPaidTemplate = useCallback((destination?: string) => {
     if (!isAuthenticated || isGuestTemplateUser(user)) {
-      redirectToTemplateLogin();
+      redirectToTemplateLogin(resolveRestrictedTemplateLoginReturnUrl(destination));
       return;
     }
 
     router.push(TEMPLATE_PAYMENT_PATH);
   }, [isAuthenticated, redirectToTemplateLogin, router, user]);
 
-  const ensureTemplateAccess = useCallback((template: TemplateItem) => {
+  const ensureTemplateAccess = useCallback((template: TemplateItem, destination?: string) => {
     if (!isPaidTemplate(template)) {
       return true;
     }
@@ -162,7 +163,7 @@ export default function AllTemplatesClient() {
       return true;
     }
 
-    handleRestrictedPaidTemplate();
+    handleRestrictedPaidTemplate(destination);
     return false;
   }, [
     handleRestrictedPaidTemplate,
@@ -174,11 +175,11 @@ export default function AllTemplatesClient() {
 
   const openTemplateGuideFlow = useCallback(
     (template: TemplateItem) => {
-      if (!ensureTemplateAccess(template)) {
+      const destination = buildReelsMakerHref(template.id, returnUrl);
+      if (!ensureTemplateAccess(template, destination)) {
         return false;
       }
 
-      const destination = buildReelsMakerHref(template.id, returnUrl);
       router.push(
         isAuthenticated ? destination : `/login?returnUrl=${encodeURIComponent(destination)}`
       );

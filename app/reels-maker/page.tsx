@@ -106,6 +106,7 @@ import {
   TEMPLATE_LOGIN_REQUIRED_MESSAGE,
   TEMPLATE_PAYMENT_PATH,
 } from '@/app/lib/templates/access';
+import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
 
 const DEFAULT_COMPLETION_RETURN_URL = '/templates';
 
@@ -3775,7 +3776,9 @@ function ReelsMakerInner() {
                 onClick={() =>
                   router.push(
                     sessionError.type === 'template-login'
-                      ? buildTemplateLoginHref()
+                      ? buildTemplateLoginHref(
+                          isReelstampBetaEnabled() ? currentReelsMakerHref : undefined
+                        )
                       : buildLoginHref(currentReelsMakerHref)
                   )
                 }

@@ -1,4 +1,6 @@
-export const PRICING_LOCKED_FOR_BETA = true;
+import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
+
+export const PRICING_LOCKED_FOR_BETA = isReelstampBetaEnabled();
 
 export const PRICING_BETA_NOTICE = {
   title: '현재는 베타 무료 이용 기간입니다',

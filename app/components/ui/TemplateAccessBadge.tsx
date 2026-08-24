@@ -1,6 +1,7 @@
 'use client';
 
 import { Crown } from 'lucide-react';
+import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
 import { clsx } from '@/app/lib/utils/clsx';
 import type { TemplateAccessType } from '@/app/lib/templates/access';
 
@@ -13,7 +14,7 @@ export default function TemplateAccessBadge({
   accessType,
   className,
 }: TemplateAccessBadgeProps) {
-  if (accessType !== 'PAID') {
+  if (accessType !== 'PAID' || isReelstampBetaEnabled()) {
     return null;
   }
 

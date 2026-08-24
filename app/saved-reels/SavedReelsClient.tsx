@@ -13,6 +13,8 @@ import {
   isGuestTemplateUser,
   isPaidTemplate,
   resolveTemplateAccessType,
+  resolveRestrictedTemplateLoginReturnUrl,
+  shouldWaitForPaidTemplateSubscription,
   TEMPLATE_LOGIN_REQUIRED_MESSAGE,
   TEMPLATE_PAYMENT_PATH,
 } from '@/app/lib/templates/access';
@@ -38,14 +40,14 @@ export default function SavedReelsClient() {
   }, []);
 
   const isTemplateAccessLoading = (template: TemplateSummary) =>
-    Boolean(
-      isPaidTemplate(template) &&
-        isAuthenticated &&
-        !isGuestTemplateUser(user) &&
-        isLoadingSubscription
-    );
+    shouldWaitForPaidTemplateSubscription({
+      template,
+      isAuthenticated,
+      user,
+      isLoadingSubscription,
+    });
 
-  const redirectToTemplateLogin = () => {
+  const redirectToTemplateLogin = (returnUrl?: string) => {
     showAppToast({
       message: TEMPLATE_LOGIN_REQUIRED_MESSAGE,
       tone: 'error',
@@ -54,20 +56,20 @@ export default function SavedReelsClient() {
       clearTimeout(accessRedirectTimerRef.current);
     }
     accessRedirectTimerRef.current = setTimeout(() => {
-      router.push(buildTemplateLoginHref());
+      router.push(buildTemplateLoginHref(returnUrl));
     }, 800);
   };
 
-  const handleRestrictedPaidTemplate = () => {
+  const handleRestrictedPaidTemplate = (destination?: string) => {
     if (!isAuthenticated || isGuestTemplateUser(user)) {
-      redirectToTemplateLogin();
+      redirectToTemplateLogin(resolveRestrictedTemplateLoginReturnUrl(destination));
       return;
     }
 
     router.push(TEMPLATE_PAYMENT_PATH);
   };
 
-  const ensureTemplateAccess = (template: TemplateSummary) => {
+  const ensureTemplateAccess = (template: TemplateSummary, destination?: string) => {
     if (!isPaidTemplate(template)) {
       return true;
     }
@@ -78,24 +80,26 @@ export default function SavedReelsClient() {
       return true;
     }
 
-    handleRestrictedPaidTemplate();
+    handleRestrictedPaidTemplate(destination);
     return false;
   };
 
   const handleOpen = (template: TemplateSummary) => {
-    if (!ensureTemplateAccess(template)) {
+    const destination = `/all-templates?templateId=${encodeURIComponent(template.id)}`;
+    if (!ensureTemplateAccess(template, destination)) {
       return;
     }
 
-    router.push(`/all-templates?templateId=${encodeURIComponent(template.id)}`);
+    router.push(destination);
   };
 
   const handleCreate = (template: TemplateSummary) => {
-    if (!ensureTemplateAccess(template)) {
+    const destination = buildReelsMakerHref(template.id);
+    if (!ensureTemplateAccess(template, destination)) {
       return;
     }
 
-    router.push(buildReelsMakerHref(template.id));
+    router.push(destination);
   };
 
   if (isLoading) {

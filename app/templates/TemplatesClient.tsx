@@ -23,6 +23,8 @@ import {
   isGuestTemplateUser,
   isPaidTemplate,
   resolveTemplateAccessType,
+  resolveRestrictedTemplateLoginReturnUrl,
+  shouldWaitForPaidTemplateSubscription,
   TEMPLATE_LOGIN_REQUIRED_MESSAGE,
   TEMPLATE_PAYMENT_PATH,
   type TemplateAccessType,
@@ -197,7 +199,7 @@ export default function TemplatesClient() {
     toggleSave(template);
   };
 
-  const redirectToTemplateLogin = () => {
+  const redirectToTemplateLogin = (returnUrl?: string) => {
     showAppToast({
       message: TEMPLATE_LOGIN_REQUIRED_MESSAGE,
       tone: 'error',
@@ -206,13 +208,13 @@ export default function TemplatesClient() {
       clearTimeout(accessRedirectTimerRef.current);
     }
     accessRedirectTimerRef.current = setTimeout(() => {
-      router.push(buildTemplateLoginHref());
+      router.push(buildTemplateLoginHref(returnUrl));
     }, 800);
   };
 
-  const handleRestrictedPaidTemplate = () => {
+  const handleRestrictedPaidTemplate = (destination?: string) => {
     if (!isAuthenticated || isGuestTemplateUser(user)) {
-      redirectToTemplateLogin();
+      redirectToTemplateLogin(resolveRestrictedTemplateLoginReturnUrl(destination));
       return;
     }
 
@@ -232,7 +234,7 @@ export default function TemplatesClient() {
         user,
         subscription,
       })) {
-        handleRestrictedPaidTemplate();
+        handleRestrictedPaidTemplate(destination);
         return;
       }
       router.push(
@@ -379,12 +381,13 @@ export default function TemplatesClient() {
   );
   const isRequestingActiveCard = Boolean(activeCard && requestingTrendId === activeCard.trendReelId);
   const isActiveCardAccessLoading = Boolean(
-    activeCard &&
-      isAvailableCard(activeCard) &&
-      isPaidTemplate(activeCard) &&
-      isAuthenticated &&
-      !isGuestTemplateUser(user) &&
-      isLoadingSubscription
+    isAvailableCard(activeCard) &&
+      shouldWaitForPaidTemplateSubscription({
+        template: activeCard,
+        isAuthenticated,
+        user,
+        isLoadingSubscription,
+      })
   );
   const primaryButtonText = useMemo(() => {
     if (!activeCard) {
