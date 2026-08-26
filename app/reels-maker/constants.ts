@@ -21,6 +21,11 @@ export const MAX_CAPTION_SCALE = 2.2;
 export const MIN_CAPTION_MAX_WIDTH_RATIO = 0.5;
 export const MAX_CAPTION_MAX_WIDTH_RATIO = 0.95;
 export const MAX_CAPTIONS_PER_CLIP = 5;
+export const MAX_AUTO_CAPTION_CHUNKS_PER_CLIP = 60;
+export const AUTO_CAPTION_PAUSE_SPLIT_MS = 450;
+export const AUTO_CAPTION_MIN_DISPLAY_MS = 800;
+export const AUTO_CAPTION_MAX_LINES = 2;
+export const AUTO_CAPTION_WIDTH_SAFETY_RATIO = 0.97;
 export const MIN_TRIM_DURATION_SECONDS = 0.3;
 export const DEFAULT_GALLERY_CLIP_DURATION_SECONDS = 3;
 export const TIMELINE_THUMBNAIL_COUNT = 10;
@@ -45,7 +50,7 @@ export const CAPTION_FONT_FAMILY = 'ReelstampCaptionPretendard';
 export const CAPTION_FONT_WEIGHT = 600;
 export const CAPTION_TEXT_COLOR = '#FFFFFF';
 export const CAPTION_BOX_BACKGROUND_COLOR = '#000000';
-export const CAPTION_BOX_BACKGROUND_OPACITY = 0.5;
+export const CAPTION_BOX_BACKGROUND_OPACITY = 1;
 export const CAPTION_BOX_PADDING_X_PX = toCaptionRenderPx(16);
 export const CAPTION_BOX_PADDING_Y_PX = toCaptionRenderPx(8);
 export const CAPTION_BOX_BORDER_RADIUS_PX = toCaptionRenderPx(18);
@@ -88,4 +93,6 @@ export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
 export const AUTO_CAPTION_DEFAULT_STYLE: CaptionStyle = {
   ...DEFAULT_CAPTION_STYLE,
   yRatio: 0.82,
+  maxLines: AUTO_CAPTION_MAX_LINES,
+  anchorY: 'BOTTOM',
 };

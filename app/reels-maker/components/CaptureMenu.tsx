@@ -2,7 +2,11 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronRight, User, X } from 'lucide-react';
 import type { UserInfo } from '@/app/lib/api/auth';
-import { CAPTURE_MENU_ITEMS } from '../config';
+import {
+  CAPTURE_MENU_ITEMS,
+  SHOW_DISABLED_CAPTURE_MENU_ITEMS,
+  isCaptureMenuItemVisible,
+} from '../config';
 
 type Props = {
   user: UserInfo | null;
@@ -11,7 +15,6 @@ type Props = {
   isGuestUser: boolean;
   isRegisteredUser: boolean;
   loginHref: string;
-  buildLoginHref: (href: string) => string;
   onClose: () => void;
   onRequestExit: (href: string) => void;
 };
@@ -23,7 +26,6 @@ export default function CaptureMenu({
   isGuestUser,
   isRegisteredUser,
   loginHref,
-  buildLoginHref,
   onClose,
   onRequestExit,
 }: Props) {
@@ -116,50 +118,55 @@ export default function CaptureMenu({
             </Link>
           )}
 
-          {CAPTURE_MENU_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const targetHref =
-              !isAuthenticated && item.requiresAuth
-                ? buildLoginHref(item.href)
-                : item.href;
-            return (
+          {CAPTURE_MENU_ITEMS
+            .filter(isCaptureMenuItemVisible)
+            .filter((item) => !item.requiresAuth || isAuthenticated)
+            .map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    requestExit(item.href);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
+                >
+                  <Icon className="h-5 w-5 text-gray-600" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+
+          {(SHOW_DISABLED_CAPTURE_MENU_ITEMS || (isAuthenticated && isAdmin)) && (
+            <div className="my-2 border-t border-gray-200" />
+          )}
+
+          {SHOW_DISABLED_CAPTURE_MENU_ITEMS && (
+            <>
               <Link
-                key={item.href}
-                href={targetHref}
+                href="/contents/script-creation"
                 onClick={(event) => {
                   event.preventDefault();
-                  requestExit(targetHref);
+                  requestExit('/contents/script-creation');
                 }}
-                className="flex w-full items-center gap-3 rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
+                className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
               >
-                <Icon className="h-5 w-5 text-gray-600" />
-                <span>{item.label}</span>
+                릴스 제작
               </Link>
-            );
-          })}
-
-          <div className="my-2 border-t border-gray-200" />
-
-          <Link
-            href="/contents/script-creation"
-            onClick={(event) => {
-              event.preventDefault();
-              requestExit('/contents/script-creation');
-            }}
-            className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
-          >
-            릴스 제작
-          </Link>
-          <Link
-            href="/ranking"
-            onClick={(event) => {
-              event.preventDefault();
-              requestExit('/ranking');
-            }}
-            className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
-          >
-            인기 급상승 릴스
-          </Link>
+              <Link
+                href="/ranking"
+                onClick={(event) => {
+                  event.preventDefault();
+                  requestExit('/ranking');
+                }}
+                className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
+              >
+                인기 급상승 릴스
+              </Link>
+            </>
+          )}
 
           {isAuthenticated && isAdmin && (
             <Link

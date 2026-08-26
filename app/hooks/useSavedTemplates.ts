@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { WebApiResponse } from '@/app/lib/api/auth';
+import type { TemplateAccessType } from '@/app/lib/templates/access';
 
 export type TemplateSummary = {
   id: string;
@@ -11,7 +12,9 @@ export type TemplateSummary = {
   subtitle: string;
   thumbnailUrl?: string | null;
   embedUrl?: string | null;
+  instagramOnly?: boolean;
   tags: string[];
+  accessType?: TemplateAccessType | null;
 };
 
 type TemplateListResponse = {
@@ -47,6 +50,7 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
       subtitle: template.subtitle ?? '',
       thumbnailUrl: template.thumbnailUrl?.trim() || null,
       embedUrl: template.embedUrl ?? null,
+      instagramOnly: Boolean(template.instagramOnly),
       tags: Array.isArray(template.tags) ? template.tags : [],
     }));
 
@@ -116,6 +120,7 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
                   ...template,
                   thumbnailUrl: template.thumbnailUrl?.trim() || null,
                   embedUrl: template.embedUrl ?? null,
+                  instagramOnly: Boolean(template.instagramOnly),
                   tags: Array.isArray(template.tags) ? template.tags : [],
                 } as TemplateSummary,
                 ...prev,

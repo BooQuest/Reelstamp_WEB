@@ -9,6 +9,7 @@ import {
   useState,
   type ChangeEvent as ReactChangeEvent,
   type PointerEvent as ReactPointerEvent,
+  type RefObject,
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -17,24 +18,23 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
-  Image as ImageIcon,
   Loader2,
   Menu,
   Plus,
-  RotateCcw,
-  SwitchCamera,
-  Trash2,
 } from 'lucide-react';
 import type { WebApiResponse } from '@/app/lib/api/auth';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
+import CaptureActionControls from '@/app/reels-maker/components/CaptureActionControls';
+import CaptureCaptionMenu from '@/app/reels-maker/components/CaptureCaptionMenu';
+import CaptureFlowAction from '@/app/reels-maker/components/CaptureFlowAction';
 import CaptureMenu from '@/app/reels-maker/components/CaptureMenu';
 import AutoCaptionEditor from '@/app/reels-maker/components/AutoCaptionEditor';
+import CaptionEditDecisionModal from '@/app/reels-maker/components/CaptionEditDecisionModal';
 import CameraPreviewVideo from '@/app/reels-maker/components/CameraPreviewVideo';
 import CaptionOverlayStage from '@/app/reels-maker/components/CaptionOverlayStage';
 import CapturedClipPreview from '@/app/reels-maker/components/CapturedClipPreview';
-import CutExampleModal from '@/app/reels-maker/components/CutExampleModal';
-import ExampleReelsModal from '@/app/reels-maker/components/ExampleReelsModal';
+import CutMediaSourceModal from '@/app/reels-maker/components/CutMediaSourceModal';
 import ExitConfirmModal from '@/app/reels-maker/components/ExitConfirmModal';
 import FinalPreview from '@/app/reels-maker/components/FinalPreview';
 import FixedClipVideo from '@/app/reels-maker/components/FixedClipVideo';
@@ -42,6 +42,10 @@ import FullScreenState from '@/app/reels-maker/components/FullScreenState';
 import GuestDraftNotice from '@/app/reels-maker/components/GuestDraftNotice';
 import ProcessingView from '@/app/reels-maker/components/ProcessingView';
 import ResetCutModal from '@/app/reels-maker/components/ResetCutModal';
+import RetakeConfirmModal from '@/app/reels-maker/components/RetakeConfirmModal';
+import TemplateGuideModal, {
+  type TemplateGuideStep,
+} from '@/app/reels-maker/components/TemplateGuideModal';
 import TrimModal from '@/app/reels-maker/components/TrimModal';
 import useCaptionEditor from '@/app/reels-maker/hooks/useCaptionEditor';
 import useAutoCaption from '@/app/reels-maker/hooks/useAutoCaption';
@@ -65,7 +69,6 @@ import type {
   CameraFacingMode,
   CaptionItem,
   ClipInfo,
-  ExampleMedia,
   RecorderStatus,
   ReelsMakerClipPresignResponse,
   ReelsMakerErrorResponse,
@@ -73,20 +76,37 @@ import type {
   ReelsMakerStatusResponse,
   Stage,
   TemplateDetailResponse,
+  TemplateExampleReel,
   TrimDragMode,
   TrimDragStartState,
   VideoMetadata,
 } from '@/app/reels-maker/types';
 import {
-  isVideoAssetUrl,
   parseGuideImageEntries,
 } from '@/app/reels-maker/utils/assets';
+import { findNextIncompleteCaptureCutIndex } from '@/app/reels-maker/utils/captureProgression';
 import {
   buildCaptionExportStyle,
   clampValue,
   normalizeCaptionStyle,
 } from '@/app/reels-maker/utils/captions';
+import {
+  buildCameraEnhancementConstraints,
+  buildCameraMediaConstraintCandidates,
+  buildFallbackCameraMediaConstraints,
+  isPortraitMediaTrackSettings,
+  selectPreferredRearCameraDevice,
+  type CameraPreviewMetrics,
+} from '@/app/reels-maker/utils/camera';
 import { getErrorMessage } from '@/app/reels-maker/utils/errors';
+import {
+  buildTemplateLoginHref,
+  PAID_TEMPLATE_REQUIRED_ERROR_CODE,
+  TEMPLATE_LOGIN_REQUIRED_ERROR_CODE,
+  TEMPLATE_LOGIN_REQUIRED_MESSAGE,
+  TEMPLATE_PAYMENT_PATH,
+} from '@/app/lib/templates/access';
+import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
 
 const DEFAULT_COMPLETION_RETURN_URL = '/templates';
 
@@ -124,8 +144,48 @@ const buildReelsMakerHref = ({
   return `/reels-maker?${params.toString()}`;
 };
 
+type FilePickerAcceptOption = {
+  description?: string;
+  accept: Record<string, string[]>;
+};
+
+type FileSystemFileHandleLike = {
+  getFile: () => Promise<File>;
+};
+
+type WindowWithOpenFilePicker = Window & {
+  showOpenFilePicker?: (options?: {
+    multiple?: boolean;
+    excludeAcceptAllOption?: boolean;
+    types?: FilePickerAcceptOption[];
+  }) => Promise<FileSystemFileHandleLike[]>;
+};
+
+type ClipSource = 'recording' | 'file';
+
+type ReplacementConfirmState =
+  | {
+      type: 'recording' | 'gallery';
+      cutIndex: number;
+    }
+  | null;
+
+type FinalCompleteOptions = {
+  acceptedStaleAutoCaptionClipIds?: number[];
+};
+
+const GALLERY_FILE_PICKER_TYPES: FilePickerAcceptOption[] = [
+  {
+    description: '사진 또는 영상',
+    accept: {
+      'image/*': ['.jpg', '.jpeg', '.png', '.webp', '.heic'],
+      'video/*': ['.mp4', '.mov', '.webm', '.m4v'],
+    },
+  },
+];
+
 type SessionErrorState = {
-  type: 'auth' | 'generic';
+  type: 'auth' | 'template-login' | 'paid-template' | 'generic';
   message: string;
   status?: number;
   errorCode?: string | null;
@@ -167,6 +227,23 @@ const buildSessionErrorState = ({
   message?: string | null;
   fallbackMessage: string;
 }): SessionErrorState => {
+  if (errorCode === TEMPLATE_LOGIN_REQUIRED_ERROR_CODE) {
+    return {
+      type: 'template-login',
+      status,
+      errorCode,
+      message: TEMPLATE_LOGIN_REQUIRED_MESSAGE,
+    };
+  }
+  if (errorCode === PAID_TEMPLATE_REQUIRED_ERROR_CODE) {
+    return {
+      type: 'paid-template',
+      status,
+      errorCode,
+      message: message?.trim() || '유료 템플릿은 결제 후 이용할 수 있습니다.',
+    };
+  }
+
   const type = isSessionAuthError(status, errorCode) ? 'auth' : 'generic';
   return {
     type,
@@ -190,13 +267,56 @@ const normalizeSessionCaptions = (
       source,
       role,
       style: normalizeCaptionStyle(
-        caption.style ??
-          (source === 'AUTO'
-            ? AUTO_CAPTION_DEFAULT_STYLE
-            : DEFAULT_CAPTION_STYLE)
+        source === 'AUTO'
+          ? { ...AUTO_CAPTION_DEFAULT_STYLE, ...(caption.style ?? {}) }
+          : { ...DEFAULT_CAPTION_STYLE, ...(caption.style ?? {}) }
       ),
     };
   });
+};
+
+const RECORDER_VIDEO_BITS_PER_SECOND = 12_000_000;
+const RECORDER_AUDIO_BITS_PER_SECOND = 192_000;
+const RECORDER_PREFERRED_MIME_TYPES = [
+  'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
+  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+  'video/mp4',
+  'video/webm;codecs=vp9,opus',
+  'video/webm;codecs=vp8,opus',
+  'video/webm',
+];
+
+const isValidMediaDimension = (value: number) =>
+  Number.isFinite(value) && value > 0;
+
+const isValidMediaSize = (width: number, height: number) =>
+  isValidMediaDimension(width) && isValidMediaDimension(height);
+
+const getSupportedRecorderMimeType = () => {
+  if (typeof window === 'undefined' || !window.MediaRecorder) return null;
+  return (
+    RECORDER_PREFERRED_MIME_TYPES.find((type) =>
+      window.MediaRecorder.isTypeSupported(type)
+    ) || null
+  );
+};
+
+const buildRecorderOptions = (
+  mimeType: string | null,
+  stream: MediaStream
+): MediaRecorderOptions => {
+  const options: MediaRecorderOptions = {
+    videoBitsPerSecond: RECORDER_VIDEO_BITS_PER_SECOND,
+  };
+
+  if (mimeType) {
+    options.mimeType = mimeType;
+  }
+  if (stream.getAudioTracks().length > 0) {
+    options.audioBitsPerSecond = RECORDER_AUDIO_BITS_PER_SECOND;
+  }
+
+  return options;
 };
 
 function ReelsMakerInner() {
@@ -206,6 +326,7 @@ function ReelsMakerInner() {
   const templateId = searchParams.get('templateId');
   const requestedSessionId = searchParams.get('sessionId');
   const returnUrlParam = searchParams.get('returnUrl');
+  const isVideoDebugEnabled = searchParams.get('videoDebug') === '1';
   const completionReturnUrl = useMemo(
     () => normalizeCompletionReturnUrl(returnUrlParam),
     [returnUrlParam]
@@ -234,6 +355,9 @@ function ReelsMakerInner() {
   const cameraSetupInProgressRef = useRef(false);
   const switchCameraInProgressRef = useRef(false);
   const latestClipsRef = useRef<Array<ClipInfo | null>>([]);
+  const uploadedCutsRef = useRef<Record<number, boolean>>({});
+  const mediaPickerTargetIndexRef = useRef<number | null>(null);
+  const mediaPickerFocusTimeoutRef = useRef<number | null>(null);
   const sessionHydratedRef = useRef(false);
   const sessionInitKeyRef = useRef<string | null>(null);
 
@@ -258,6 +382,7 @@ function ReelsMakerInner() {
   const [recordingStatus, setRecordingStatus] = useState<RecorderStatus>('idle');
   const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState<number | null>(null);
   const [clips, setClips] = useState<Array<ClipInfo | null>>([]);
+  const [clipSources, setClipSources] = useState<Record<number, ClipSource>>({});
   const [captions, setCaptions] = useState<CaptionItem[]>([]);
   const [captionsEnabled, setCaptionsEnabled] = useState(true);
   const [autoCaptionAvailable, setAutoCaptionAvailable] = useState(false);
@@ -266,15 +391,21 @@ function ReelsMakerInner() {
   const [activeAutoCaptionJobId, setActiveAutoCaptionJobId] = useState<
     string | null
   >(null);
+  const [latestAutoCaptionJobId, setLatestAutoCaptionJobId] = useState<
+    string | null
+  >(null);
   const [staleAutoCaptionClipIds, setStaleAutoCaptionClipIds] = useState<
     number[]
   >([]);
   const [acceptedStaleAutoCaptionClipIds, setAcceptedStaleAutoCaptionClipIds] =
     useState<number[]>([]);
+  const [isCaptionEditDecisionOpen, setIsCaptionEditDecisionOpen] =
+    useState(false);
   const [cutGuideVisibility, setCutGuideVisibility] = useState<Record<number, boolean>>({});
   const [guideImageIndexByCut, setGuideImageIndexByCut] = useState<Record<number, number>>({});
-  const [isExampleOpen, setIsExampleOpen] = useState(false);
-  const [isReelOpen, setIsReelOpen] = useState(false);
+  const [isTemplateGuideOpen, setIsTemplateGuideOpen] = useState(false);
+  const [templateGuideStep, setTemplateGuideStep] =
+    useState<TemplateGuideStep>('overview');
   const [exampleReelIndex, setExampleReelIndex] = useState(0);
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
@@ -287,6 +418,14 @@ function ReelsMakerInner() {
   const [cameraFacingMode, setCameraFacingMode] = useState<CameraFacingMode>('environment');
   const [galleryError, setGalleryError] = useState<string | null>(null);
   const [isGalleryProcessing, setIsGalleryProcessing] = useState(false);
+  const [isMediaSourceOpen, setIsMediaSourceOpen] = useState(false);
+  const [isMediaPickerActive, setIsMediaPickerActive] = useState(false);
+  const [mediaPickerTargetCutIndex, setMediaPickerTargetCutIndex] = useState<number | null>(
+    null
+  );
+  const [trimTargetCutIndex, setTrimTargetCutIndex] = useState<number | null>(null);
+  const [replacementConfirm, setReplacementConfirm] =
+    useState<ReplacementConfirmState>(null);
   const [isTrimOpen, setIsTrimOpen] = useState(false);
   const [trimSourceFile, setTrimSourceFile] = useState<File | null>(null);
   const [trimSourceUrl, setTrimSourceUrl] = useState<string | null>(null);
@@ -300,12 +439,6 @@ function ReelsMakerInner() {
   const [trimThumbnails, setTrimThumbnails] = useState<string[]>([]);
   const [isTrimPreparing, setIsTrimPreparing] = useState(false);
   const [trimError, setTrimError] = useState<string | null>(null);
-  const [exampleMediaLoadedByCutKey, setExampleMediaLoadedByCutKey] = useState<Record<string, boolean>>(
-    {}
-  );
-  const [exampleMediaFailedByCutKey, setExampleMediaFailedByCutKey] = useState<Record<string, boolean>>(
-    {}
-  );
   const [captureScale, setCaptureScale] = useState(1);
   const [isCaptureMenuOpen, setIsCaptureMenuOpen] = useState(false);
 
@@ -322,6 +455,19 @@ function ReelsMakerInner() {
   const buildLoginHref = useCallback(
     (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`,
     []
+  );
+  const logVideoDebug = useCallback(
+    (event: string, details?: unknown) => {
+      if (!isVideoDebugEnabled) return;
+      console.info(`[ReelsMaker videoDebug] ${event}`, details);
+    },
+    [isVideoDebugEnabled]
+  );
+  const handleCameraPreviewMetrics = useCallback(
+    (metrics: CameraPreviewMetrics) => {
+      logVideoDebug('camera preview metrics', metrics);
+    },
+    [logVideoDebug]
   );
 
   const cuts = useMemo(() => {
@@ -412,7 +558,8 @@ function ReelsMakerInner() {
   const shouldShowActiveClipPreview =
     !isActiveCutFixed && Boolean(activeClip) && recordingStatus !== 'recording';
   const activeClipId = activeCut ? sessionClipMap[activeCut.order] ?? null : null;
-  const activeCutGuideText = activeCut?.guideText?.trim() || '등록된 컷 가이드가 없습니다.';
+  const activeClipSource = clipSources[activeCutIndex] ?? null;
+  const shouldConfirmActiveRetake = activeClipSource === 'recording';
   const showCaptionStage =
     captionsEnabled &&
     !activeUploadError &&
@@ -465,6 +612,7 @@ function ReelsMakerInner() {
         session.autoCaptionRemainingAttempts ?? 0
       );
       setActiveAutoCaptionJobId(session.activeAutoCaptionJobId ?? null);
+      setLatestAutoCaptionJobId(session.latestAutoCaptionJobId ?? null);
       setStaleAutoCaptionClipIds(session.staleAutoCaptionClipIds ?? []);
       setAcceptedStaleAutoCaptionClipIds((current) =>
         current.filter((clipId) =>
@@ -482,23 +630,58 @@ function ReelsMakerInner() {
     start: startAutoCaption,
   } = useAutoCaption({
     sessionId,
-    initialJobId: activeAutoCaptionJobId,
+    initialJobId: activeAutoCaptionJobId ?? latestAutoCaptionJobId,
     onSessionReloaded: applyCaptionSessionSnapshot,
   });
-  const isRecordDisabled =
-    isActiveCutFixed || isUploadingActiveCut || isSessionLoading || !sessionId;
-  const isGalleryDisabled =
-    isActiveCutFixed ||
-    isUploadingActiveCut ||
+  const currentStaleAutoCaptionClipIds =
+    autoCaptionJob?.staleClipIds ?? staleAutoCaptionClipIds;
+  const isMediaImportBlocked =
     isSessionLoading ||
     !sessionId ||
     recordingStatus === 'recording' ||
     isGalleryProcessing ||
     isTrimPreparing ||
-    isTrimOpen;
+    isTrimOpen ||
+    isMediaPickerActive;
+  const isRecordDisabled =
+    isActiveCutFixed ||
+    isUploadingActiveCut ||
+    isSessionLoading ||
+    !sessionId ||
+    isGalleryProcessing ||
+    isTrimPreparing ||
+    isTrimOpen ||
+    isMediaPickerActive;
   const isSwitchCameraDisabled =
     recordingStatus === 'recording' ||
     isActiveCutFixed ||
+    isGalleryProcessing ||
+    isTrimPreparing ||
+    isTrimOpen ||
+    isMediaPickerActive;
+  const hasUploadingCut = Object.values(uploadingCuts).some(Boolean);
+  const captureFlowAction: 'complete' | null = allDone ? 'complete' : null;
+  const isCaptureFlowActionDisabled =
+    recordingStatus === 'recording' ||
+    isSessionLoading ||
+    !sessionId ||
+    hasUploadingCut ||
+    isGalleryProcessing ||
+    isTrimPreparing ||
+    isTrimOpen ||
+    isMediaPickerActive;
+  const isGalleryButtonDisabled =
+    !activeCut ||
+    isActiveCutFixed ||
+    isMediaImportBlocked ||
+    Boolean(uploadingCuts[activeCutIndex]);
+  const canRetakeActiveCut =
+    !isActiveCutFixed && Boolean(activeClip) && recordingStatus !== 'recording';
+  const isCaptureCameraPaused =
+    !sessionId ||
+    isSessionLoading ||
+    isTemplateGuideOpen ||
+    isMediaPickerActive ||
     isGalleryProcessing ||
     isTrimPreparing ||
     isTrimOpen;
@@ -536,70 +719,18 @@ function ReelsMakerInner() {
     activeGuideImageIndex >= 0 ? guideImageEntries[activeGuideImageIndex]?.url ?? null : null;
   const hasMultipleGuideImages = guideImageCount > 1;
   const isGuideImageNavigationDisabled = recordingStatus === 'recording' && hasTimedGuideImages;
+  const shouldShowGuideImageToggle = Boolean(guideImageSrc);
   const isGuideImageVisible =
     Boolean(guideImageSrc) && (cutGuideVisibility[activeCutIndex] ?? true);
-  const activeCutKey = useMemo(() => {
-    if (!template?.id || activeCut?.order == null) return null;
-    return `${template.id}:${activeCut.order}`;
-  }, [template?.id, activeCut?.order]);
-  const activeCutExampleMedia = useMemo<ExampleMedia | null>(() => {
-    const exampleImageUrl = activeCut?.exampleImageUrl?.trim();
-    if (exampleImageUrl) {
-      return {
-        type: isVideoAssetUrl(exampleImageUrl) ? 'video' : 'image',
-        src: exampleImageUrl,
-      };
-    }
-    const exampleVideoUrl = activeCut?.exampleVideoUrl?.trim();
-    if (exampleVideoUrl) {
-      return {
-        type: 'video',
-        src: exampleVideoUrl,
-      };
-    }
-    return null;
-  }, [activeCut?.exampleImageUrl, activeCut?.exampleVideoUrl]);
-  const isActiveExampleMediaLoaded = Boolean(
-    activeCutKey && exampleMediaLoadedByCutKey[activeCutKey]
-  );
-  const isActiveExampleMediaFailed = Boolean(
-    activeCutKey && exampleMediaFailedByCutKey[activeCutKey]
-  );
-  const visibleActiveCutExampleMedia =
-    activeCutExampleMedia && !isActiveExampleMediaFailed ? activeCutExampleMedia : null;
-  const shouldShowActiveCutExampleMedia = visibleActiveCutExampleMedia !== null;
-  const isActiveExampleMediaLoading = Boolean(
-    isExampleOpen &&
-      visibleActiveCutExampleMedia &&
-      !isActiveExampleMediaLoaded
-  );
-  const handleActiveExampleMediaLoad = useCallback(() => {
-    if (!activeCutKey) return;
-    setExampleMediaLoadedByCutKey((prev) => ({
-      ...prev,
-      [activeCutKey]: true,
-    }));
-    setExampleMediaFailedByCutKey((prev) => ({
-      ...prev,
-      [activeCutKey]: false,
-    }));
-  }, [activeCutKey]);
-  const handleActiveExampleMediaError = useCallback(() => {
-    if (!activeCutKey) return;
-    setExampleMediaFailedByCutKey((prev) => ({
-      ...prev,
-      [activeCutKey]: true,
-    }));
-    setExampleMediaLoadedByCutKey((prev) => ({
-      ...prev,
-      [activeCutKey]: false,
-    }));
-  }, [activeCutKey]);
-  const exampleReelUrls = template?.exampleReelUrls ?? [];
-  const hasExampleReels = exampleReelUrls.length > 0;
-  const currentExampleReelUrl = exampleReelUrls[exampleReelIndex] ?? null;
-  const isFirstExampleReel = exampleReelIndex <= 0;
-  const isLastExampleReel = exampleReelIndex >= exampleReelUrls.length - 1;
+  const exampleReels: TemplateExampleReel[] =
+    template?.exampleReels && template.exampleReels.length > 0
+      ? template.exampleReels
+      : (template?.exampleReelUrls ?? []).map((url) => ({
+          url,
+          instagramOnly: false,
+        }));
+  const exampleReelUrls = exampleReels.map((reel) => reel.url);
+  const canOpenActiveCutGuide = Boolean(template && cuts.length > 0 && activeCut);
   const activeCutDurationMode = activeCut?.isFixed
     ? null
     : (activeCut?.durationMode ?? DURATION_MODE_RECOMMENDED);
@@ -616,8 +747,11 @@ function ReelsMakerInner() {
     isRecommendedTimingExceeded;
   const trimDurationSeconds = Math.max(0, trimEndSeconds - trimStartSeconds);
   const trimSliderMax = trimSourceMetadata?.duration ?? 0;
+  const trimTargetCut =
+    trimTargetCutIndex === null ? activeCut : (cuts[trimTargetCutIndex] ?? null);
+  const trimTargetDurationSeconds = Math.max(0, trimTargetCut?.durationSeconds ?? 0);
   const recommendedTrimSeconds =
-    activeCutDurationSeconds > 0 ? activeCutDurationSeconds : trimDurationSeconds;
+    trimTargetDurationSeconds > 0 ? trimTargetDurationSeconds : trimDurationSeconds;
   const minTrimDurationForSource = Math.min(
     MIN_TRIM_DURATION_SECONDS,
     trimSliderMax > 0 ? trimSliderMax : MIN_TRIM_DURATION_SECONDS
@@ -653,13 +787,36 @@ function ReelsMakerInner() {
     });
   }, [activeCutIndex, activeGuideImageIndex, guideImageCount, isGuideImageNavigationDisabled]);
 
-  const handlePrevExampleReel = useCallback(() => {
-    setExampleReelIndex((prev) => Math.max(0, prev - 1));
-  }, []);
+  const findNextCaptureCutIndex = useCallback(
+    (fromIndex: number) =>
+      cuts.findIndex((cut, cutIndex) => cutIndex > fromIndex && !cut.isFixed),
+    [cuts]
+  );
 
-  const handleNextExampleReel = useCallback(() => {
-    setExampleReelIndex((prev) => Math.min(exampleReelUrls.length - 1, prev + 1));
-  }, [exampleReelUrls.length]);
+  const handleTemplateGuidePrimaryAction = useCallback(() => {
+    if (templateGuideStep === 'overview') {
+      setTemplateGuideStep(0);
+      return;
+    }
+
+    const cutIndex = templateGuideStep;
+    const guideCut = cuts[cutIndex];
+    if (!guideCut) {
+      setIsTemplateGuideOpen(false);
+      return;
+    }
+
+    if (guideCut.isFixed) {
+      const nextCaptureIndex = findNextCaptureCutIndex(cutIndex);
+      if (nextCaptureIndex >= 0) {
+        setTemplateGuideStep(nextCaptureIndex);
+        return;
+      }
+    }
+
+    setActiveCutIndex(cutIndex);
+    setIsTemplateGuideOpen(false);
+  }, [cuts, findNextCaptureCutIndex, templateGuideStep]);
 
   const pauseTrimPlayback = useCallback(() => {
     if (trimPlaybackRafRef.current !== null) {
@@ -775,6 +932,7 @@ function ReelsMakerInner() {
     setTrimThumbnails([]);
     setIsTrimPreparing(false);
     setTrimError(null);
+    setTrimTargetCutIndex(null);
     setTrimSourceUrl((current) => {
       if (current) {
         URL.revokeObjectURL(current);
@@ -795,29 +953,42 @@ function ReelsMakerInner() {
     video.muted = true;
     video.src = url;
 
-    const metadata = await new Promise<VideoMetadata>((resolve, reject) => {
-      const onLoadedMetadata = () => {
-        cleanup();
-        const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
-        const width = video.videoWidth || 720;
-        const height = video.videoHeight || 1280;
-        resolve({ duration, width, height });
-      };
-      const onError = () => {
-        cleanup();
-        reject(new Error('영상 정보를 불러오지 못했습니다.'));
-      };
-      const cleanup = () => {
-        video.removeEventListener('loadedmetadata', onLoadedMetadata);
-        video.removeEventListener('error', onError);
-      };
-      video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
-      video.addEventListener('error', onError, { once: true });
-    });
-
-    video.src = '';
-    return metadata;
-  }, []);
+    try {
+      return await new Promise<VideoMetadata>((resolve, reject) => {
+        const onLoadedMetadata = () => {
+          cleanup();
+          const duration =
+            Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+          const width = video.videoWidth;
+          const height = video.videoHeight;
+          logVideoDebug('gallery metadata loaded', {
+            duration,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+            metadataWidth: width,
+            metadataHeight: height,
+          });
+          if (!isValidMediaSize(width, height)) {
+            reject(new Error('영상 해상도 정보를 확인하지 못했습니다.'));
+            return;
+          }
+          resolve({ duration, width, height });
+        };
+        const onError = () => {
+          cleanup();
+          reject(new Error('영상 정보를 불러오지 못했습니다.'));
+        };
+        const cleanup = () => {
+          video.removeEventListener('loadedmetadata', onLoadedMetadata);
+          video.removeEventListener('error', onError);
+        };
+        video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
+        video.addEventListener('error', onError, { once: true });
+      });
+    } finally {
+      video.src = '';
+    }
+  }, [logVideoDebug]);
 
   const seekVideoTo = useCallback(async (video: HTMLVideoElement, time: number) => {
     if (Math.abs(video.currentTime - time) < 0.02) {
@@ -933,16 +1104,33 @@ function ReelsMakerInner() {
         if (!data) {
           throw new Error(payload?.message || '템플릿 정보를 불러오지 못했습니다.');
         }
+        const normalizedExampleReels: TemplateExampleReel[] = Array.isArray(data?.exampleReels)
+          ? data.exampleReels
+              .filter((reel): reel is TemplateExampleReel => {
+                if (!reel || typeof reel.url !== 'string') return false;
+                return reel.url.trim().length > 0;
+              })
+              .map((reel) => ({
+                url: reel.url.trim(),
+                instagramOnly: Boolean(reel.instagramOnly),
+              }))
+          : Array.isArray(data?.exampleReelUrls)
+            ? data.exampleReelUrls
+                .filter((url): url is string => {
+                  if (typeof url !== 'string') return false;
+                  return url.trim().length > 0;
+                })
+                .map((url) => ({
+                  url: url.trim(),
+                  instagramOnly: false,
+                }))
+            : [];
         const normalized = {
           ...data,
           tags: Array.isArray(data?.tags) ? data.tags : [],
           cuts: Array.isArray(data?.cuts) ? data.cuts : [],
-          exampleReelUrls: Array.isArray(data?.exampleReelUrls)
-            ? data.exampleReelUrls.filter((url): url is string => {
-                if (typeof url !== 'string') return false;
-                return url.trim().length > 0;
-              })
-            : [],
+          exampleReels: normalizedExampleReels,
+          exampleReelUrls: normalizedExampleReels.map((reel) => reel.url),
         };
 
         if (!normalized.cuts || normalized.cuts.length === 0) {
@@ -1037,6 +1225,7 @@ function ReelsMakerInner() {
         session.autoCaptionRemainingAttempts ?? 0
       );
       setActiveAutoCaptionJobId(session.activeAutoCaptionJobId ?? null);
+      setLatestAutoCaptionJobId(session.latestAutoCaptionJobId ?? null);
       setStaleAutoCaptionClipIds(session.staleAutoCaptionClipIds ?? []);
       setAcceptedStaleAutoCaptionClipIds([]);
       setSelectedCaptionId(restoredCaptions[0]?.id ?? null);
@@ -1054,6 +1243,11 @@ function ReelsMakerInner() {
         setStage('capture');
       } else if (session.activeAutoCaptionJobId) {
         setStage('caption-edit');
+      }
+
+      if (!requestedSessionId && session.status === 'CAPTURE') {
+        setTemplateGuideStep('overview');
+        setIsTemplateGuideOpen(true);
       }
 
       const restoredUploadedCuts: Record<number, boolean> = {};
@@ -1096,6 +1290,7 @@ function ReelsMakerInner() {
         })
       );
       setUploadedCuts(restoredUploadedCuts);
+      setClipSources({});
       const restoredIndex = cuts.findIndex(
         (cut) => cut.order === session.lastActiveClipOrder
       );
@@ -1177,6 +1372,7 @@ function ReelsMakerInner() {
     setAutoCaptionAvailable(false);
     setAutoCaptionRemainingAttempts(0);
     setActiveAutoCaptionJobId(null);
+    setLatestAutoCaptionJobId(null);
     setStaleAutoCaptionClipIds([]);
     setAcceptedStaleAutoCaptionClipIds([]);
     setSelectedCaptionId(null);
@@ -1196,6 +1392,7 @@ function ReelsMakerInner() {
     });
     setFixedClipErrors({});
     setClipPosters({});
+    setClipSources({});
     setFinalVideoUrl((prev) => {
       revokeBlobUrl(prev);
       return null;
@@ -1203,11 +1400,16 @@ function ReelsMakerInner() {
     setFinalPosterUrl(null);
     setFinalVideoMimeType('video/mp4');
     setIsPreviewOpen(false);
-    setExampleMediaLoadedByCutKey({});
-    setExampleMediaFailedByCutKey({});
     setGalleryError(null);
     setIsGalleryProcessing(false);
+    setIsMediaSourceOpen(false);
+    setIsMediaPickerActive(false);
+    setMediaPickerTargetCutIndex(null);
+    setTrimTargetCutIndex(null);
+    setReplacementConfirm(null);
     setIsTrimOpen(false);
+    setIsTemplateGuideOpen(false);
+    setTemplateGuideStep('overview');
     resetTrimState();
   }, [
     template?.id,
@@ -1238,10 +1440,16 @@ function ReelsMakerInner() {
   }, [cuts.length, activeCutIndex]);
 
   useEffect(() => {
-    if (!isReelOpen) {
+    if (typeof templateGuideStep === 'number' && templateGuideStep >= cuts.length) {
+      setTemplateGuideStep('overview');
+    }
+  }, [cuts.length, templateGuideStep]);
+
+  useEffect(() => {
+    if (!isTemplateGuideOpen) {
       setExampleReelIndex(0);
     }
-  }, [isReelOpen]);
+  }, [isTemplateGuideOpen]);
 
   useEffect(() => {
     if (exampleReelUrls.length === 0) {
@@ -1365,10 +1573,10 @@ function ReelsMakerInner() {
   );
 
   const setupCamera = useCallback(
-    async (overrideFacingMode?: CameraFacingMode) => {
+    async (overrideFacingMode?: CameraFacingMode): Promise<MediaStream | null> => {
       const targetFacingMode = overrideFacingMode ?? cameraFacingMode;
       if (cameraSetupInProgressRef.current) {
-        return;
+        return null;
       }
 
       cameraSetupInProgressRef.current = true;
@@ -1377,50 +1585,205 @@ function ReelsMakerInner() {
       if (!navigator.mediaDevices?.getUserMedia) {
         setCameraError('이 브라우저에서는 카메라 기능을 사용할 수 없습니다.');
         cameraSetupInProgressRef.current = false;
-        return;
+        return null;
       }
 
       try {
-        let mediaStream: MediaStream | null = null;
-        try {
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: targetFacingMode },
-              aspectRatio: 9 / 16,
-              width: { ideal: 1080 },
-              height: { ideal: 1920 },
-            },
-            audio: true,
-          });
-        } catch {
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: targetFacingMode } },
-            audio: true,
-          });
+        type CameraConstraintAttemptDebug = {
+          label: string;
+          success: boolean;
+          accepted?: boolean;
+          portrait?: boolean;
+          fallback: boolean;
+          settings?: MediaTrackSettings | null;
+          errorName?: string | null;
+          errorMessage?: string;
+        };
+
+        const requestBestCameraStream = async (deviceId?: string) => {
+          const cameraConstraintAttempts: CameraConstraintAttemptDebug[] = [];
+          const candidates = buildCameraMediaConstraintCandidates(
+            targetFacingMode,
+            deviceId
+          );
+
+          for (const candidate of candidates) {
+            try {
+              const candidateStream = await navigator.mediaDevices.getUserMedia(
+                candidate.constraints
+              );
+              const candidateVideoTrack = candidateStream.getVideoTracks()[0];
+              const candidateSettings = candidateVideoTrack?.getSettings() ?? null;
+              const portrait = isPortraitMediaTrackSettings(candidateSettings);
+              const accepted = portrait || candidate.acceptNonPortrait;
+
+              cameraConstraintAttempts.push({
+                label: candidate.label,
+                success: true,
+                accepted,
+                portrait,
+                fallback: candidate.fallback,
+                settings: candidateSettings,
+              });
+
+              if (accepted) {
+                return {
+                  mediaStream: candidateStream,
+                  usedFallbackConstraints: candidate.fallback,
+                  selectedCameraConstraintLabel: candidate.label,
+                  cameraConstraintAttempts,
+                };
+              }
+
+              candidateStream.getTracks().forEach((track) => track.stop());
+            } catch (error) {
+              cameraConstraintAttempts.push({
+                label: candidate.label,
+                success: false,
+                fallback: candidate.fallback,
+                errorName: error instanceof Error ? error.name : null,
+                errorMessage: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+
+          throw new Error('카메라를 시작하지 못했습니다.');
+        };
+
+        const bootstrapStream = await navigator.mediaDevices.getUserMedia(
+          buildFallbackCameraMediaConstraints(targetFacingMode)
+        );
+        const bootstrapVideoTrack = bootstrapStream.getVideoTracks()[0];
+        const bootstrapVideoSettings = bootstrapVideoTrack?.getSettings() ?? null;
+
+        if (!bootstrapStream) {
+          setCameraError('카메라를 시작하지 못했습니다.');
+          return null;
         }
+
+        let selectedPreferredRearCamera = false;
+        let preferredRearCameraLabel: string | null = null;
+        let availableVideoInputLabels: string[] = [];
+
+        let selectedCameraDeviceId = bootstrapVideoSettings?.deviceId;
+
+        if (targetFacingMode === 'environment' && navigator.mediaDevices.enumerateDevices) {
+          try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            availableVideoInputLabels = devices
+              .filter((device) => device.kind === 'videoinput')
+              .map((device) => device.label)
+              .filter(Boolean);
+            const preferredRearCamera = selectPreferredRearCameraDevice(
+              devices,
+              bootstrapVideoSettings?.deviceId
+            );
+            preferredRearCameraLabel = preferredRearCamera?.label || null;
+            selectedCameraDeviceId =
+              preferredRearCamera?.deviceId || selectedCameraDeviceId;
+            selectedPreferredRearCamera = Boolean(
+              preferredRearCamera?.deviceId &&
+                preferredRearCamera.deviceId !== bootstrapVideoSettings?.deviceId
+            );
+          } catch (error) {
+            logVideoDebug('camera device enumeration failed', {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        bootstrapStream.getTracks().forEach((track) => track.stop());
+
+        const {
+          mediaStream,
+          usedFallbackConstraints,
+          selectedCameraConstraintLabel,
+          cameraConstraintAttempts,
+        } = await requestBestCameraStream(selectedCameraDeviceId);
 
         if (!mediaStream) {
           setCameraError('카메라를 시작하지 못했습니다.');
-          return;
+          return null;
         }
+
         if (mediaStream.getAudioTracks().length === 0) {
           setCameraError('마이크 접근이 필요합니다. 권한을 허용해주세요.');
           mediaStream.getTracks().forEach((track) => track.stop());
-          return;
+          return null;
         }
+        const videoTrack = mediaStream.getVideoTracks()[0];
+        const logCameraTrackSnapshot = (tag: string) => {
+          logVideoDebug('camera track snapshot', {
+            tag,
+            settings: videoTrack?.getSettings() ?? null,
+          });
+        };
+        logCameraTrackSnapshot('acquired');
+        let videoCapabilities: MediaTrackCapabilities | null = null;
+        let enhancementConstraints: MediaTrackConstraints | null = null;
+        let appliedCameraEnhancements = false;
+        let cameraEnhancementError: string | null = null;
+        try {
+          videoCapabilities =
+            videoTrack && typeof videoTrack.getCapabilities === 'function'
+              ? videoTrack.getCapabilities()
+              : null;
+        } catch {
+          videoCapabilities = null;
+        }
+        if (videoTrack && typeof videoTrack.applyConstraints === 'function') {
+          enhancementConstraints = buildCameraEnhancementConstraints(videoCapabilities);
+          if (enhancementConstraints) {
+            try {
+              await videoTrack.applyConstraints(enhancementConstraints);
+              appliedCameraEnhancements = true;
+            } catch (error) {
+              cameraEnhancementError =
+                error instanceof Error ? error.message : String(error);
+            }
+          }
+        }
+        logCameraTrackSnapshot('after-enhancements');
+        if (videoTrack) {
+          const handleTrackResize = () => logCameraTrackSnapshot('track-resize');
+          videoTrack.addEventListener('resize', handleTrackResize);
+          window.setTimeout(() => {
+            logCameraTrackSnapshot('t+2000');
+          }, 2000);
+        }
+        logVideoDebug('camera stream ready', {
+          requestedFacingMode: targetFacingMode,
+          usedFallbackConstraints,
+          selectedPreferredRearCamera,
+          preferredRearCameraLabel,
+          selectedCameraConstraintLabel,
+          selectedCameraDeviceId,
+          availableVideoInputLabels,
+          bootstrapSettings: bootstrapVideoSettings,
+          cameraConstraintAttempts,
+          settings: videoTrack?.getSettings() ?? null,
+          constraints: videoTrack?.getConstraints() ?? null,
+          capabilities: videoCapabilities,
+          enhancementConstraints,
+          appliedCameraEnhancements,
+          cameraEnhancementError,
+          audioTrackCount: mediaStream.getAudioTracks().length,
+        });
         setStream((current) => {
           if (current && current !== mediaStream) {
             current.getTracks().forEach((track) => track.stop());
           }
           return mediaStream;
         });
+        return mediaStream;
       } catch {
         setCameraError('카메라/마이크 접근이 거부되었어요. 권한을 확인해주세요.');
+        return null;
       } finally {
         cameraSetupInProgressRef.current = false;
       }
     },
-    [cameraFacingMode]
+    [cameraFacingMode, logVideoDebug]
   );
 
   const handleSwitchCamera = useCallback(async () => {
@@ -1440,22 +1803,29 @@ function ReelsMakerInner() {
   }, [cameraFacingMode, isSwitchCameraDisabled, setupCamera, stopCamera]);
 
   useEffect(() => {
-    if (stage === 'capture' && template) {
+    if (stage === 'capture' && template && !isCaptureCameraPaused) {
       if (!stream) {
-        setupCamera();
+        void setupCamera();
       }
     } else {
       stopCamera();
     }
-  }, [stage, setupCamera, stopCamera, stream, template]);
+  }, [isCaptureCameraPaused, stage, setupCamera, stopCamera, stream, template]);
 
   useEffect(() => {
     latestClipsRef.current = clips;
   }, [clips]);
 
   useEffect(() => {
+    uploadedCutsRef.current = uploadedCuts;
+  }, [uploadedCuts]);
+
+  useEffect(() => {
     return () => {
       latestClipsRef.current.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
+      if (mediaPickerFocusTimeoutRef.current) {
+        window.clearTimeout(mediaPickerFocusTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -1473,28 +1843,44 @@ function ReelsMakerInner() {
     };
   }, [pauseTrimPlayback]);
 
-  const createRecorder = () => {
-    if (!stream) return null;
-    if (!window.MediaRecorder) return null;
+  const createConfiguredRecorder = useCallback(
+    (recordingStream: MediaStream, debugLabel: string) => {
+      if (!window.MediaRecorder) return null;
 
-    const preferredTypes = [
-      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-      'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
-      'video/mp4',
-      'video/webm;codecs=vp9,opus',
-      'video/webm;codecs=vp8,opus',
-      'video/webm',
-    ];
-    const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    recordingMimeTypeRef.current = recorder.mimeType || mimeType || 'video/webm';
-    return recorder;
-  };
+      const selectedMimeType = getSupportedRecorderMimeType();
+      const options = buildRecorderOptions(selectedMimeType, recordingStream);
+      const recorder = new MediaRecorder(recordingStream, options);
 
-  const getSupportedMimeType = useCallback((types: string[]) => {
-    if (!window.MediaRecorder) return null;
-    return types.find((type) => MediaRecorder.isTypeSupported(type)) || null;
-  }, []);
+      logVideoDebug(`${debugLabel} recorder created`, {
+        preferredMimeTypes: RECORDER_PREFERRED_MIME_TYPES,
+        selectedMimeType,
+        recorderMimeType: recorder.mimeType,
+        requestedVideoBitsPerSecond: options.videoBitsPerSecond,
+        requestedAudioBitsPerSecond: options.audioBitsPerSecond ?? null,
+        recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
+        recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
+        audioTrackCount: recordingStream.getAudioTracks().length,
+        videoTrackSettings: recordingStream
+          .getVideoTracks()
+          .map((track) => track.getSettings()),
+      });
+
+      return { recorder, selectedMimeType };
+    },
+    [logVideoDebug]
+  );
+
+  const createRecorder = useCallback(
+    (recordingStream: MediaStream) => {
+      const configured = createConfiguredRecorder(recordingStream, 'camera');
+      if (!configured) return null;
+
+      recordingMimeTypeRef.current =
+        configured.recorder.mimeType || configured.selectedMimeType || 'video/webm';
+      return configured.recorder;
+    },
+    [createConfiguredRecorder]
+  );
 
   const captureVideoSegmentToBlob = useCallback(
     async (
@@ -1504,14 +1890,6 @@ function ReelsMakerInner() {
       endSeconds: number
     ): Promise<{ blob: Blob; mimeType: string; duration: number }> => {
       const duration = Math.max(MIN_TRIM_DURATION_SECONDS, endSeconds - startSeconds);
-      const preferredTypes = [
-        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-        'video/mp4',
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
-      ];
-      const mimeType = getSupportedMimeType(preferredTypes);
 
       const video = document.createElement('video');
       video.src = sourceUrl;
@@ -1543,8 +1921,25 @@ function ReelsMakerInner() {
         throw new Error('이 브라우저에서는 영상 구간 편집을 지원하지 않습니다.');
       }
 
-      const width = metadata.width || video.videoWidth || 720;
-      const height = metadata.height || video.videoHeight || 1280;
+      const width = isValidMediaDimension(metadata.width)
+        ? metadata.width
+        : video.videoWidth;
+      const height = isValidMediaDimension(metadata.height)
+        ? metadata.height
+        : video.videoHeight;
+      logVideoDebug('gallery trim dimensions', {
+        metadataWidth: metadata.width,
+        metadataHeight: metadata.height,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        canvasWidth: width,
+        canvasHeight: height,
+        startSeconds,
+        endSeconds,
+      });
+      if (!isValidMediaSize(width, height)) {
+        throw new Error('영상 해상도 정보를 확인하지 못했습니다.');
+      }
       canvas.width = width;
       canvas.height = height;
 
@@ -1575,7 +1970,11 @@ function ReelsMakerInner() {
         ...(audioDestination?.stream.getAudioTracks() ?? []),
       ]);
 
-      const recorder = new MediaRecorder(combinedStream, mimeType ? { mimeType } : undefined);
+      const configuredRecorder = createConfiguredRecorder(combinedStream, 'gallery trim');
+      if (!configuredRecorder) {
+        throw new Error('이 브라우저에서는 영상 구간 편집을 지원하지 않습니다.');
+      }
+      const { recorder, selectedMimeType } = configuredRecorder;
       const chunks: BlobPart[] = [];
 
       const outputBlob = await new Promise<Blob>(async (resolve, reject) => {
@@ -1586,7 +1985,20 @@ function ReelsMakerInner() {
         };
         recorder.onerror = () => reject(new Error('영상 구간 처리 중 오류가 발생했습니다.'));
         recorder.onstop = () => {
-          resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || 'video/webm' }));
+          const blob = new Blob(chunks, {
+            type: recorder.mimeType || selectedMimeType || 'video/webm',
+          });
+          logVideoDebug('gallery trim output blob', {
+            type: blob.type,
+            size: blob.size,
+            duration,
+            canvasWidth: canvas.width,
+            canvasHeight: canvas.height,
+            recorderMimeType: recorder.mimeType,
+            recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
+            recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
+          });
+          resolve(blob);
         };
 
         const videoWithFrameCallback = video as HTMLVideoElement & {
@@ -1667,11 +2079,11 @@ function ReelsMakerInner() {
 
       return {
         blob: outputBlob,
-        mimeType: outputBlob.type || mimeType || 'video/webm',
+        mimeType: outputBlob.type || selectedMimeType || 'video/webm',
         duration,
       };
     },
-    [getSupportedMimeType, seekVideoTo]
+    [createConfiguredRecorder, logVideoDebug, seekVideoTo]
   );
 
   const imageToVideoBlob = useCallback(
@@ -1698,22 +2110,29 @@ function ReelsMakerInner() {
         throw new Error('이 브라우저에서는 사진 변환을 지원하지 않습니다.');
       }
 
-      const width = image.naturalWidth || 720;
-      const height = image.naturalHeight || 1280;
+      const width = image.naturalWidth;
+      const height = image.naturalHeight;
+      logVideoDebug('image conversion dimensions', {
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+        canvasWidth: width,
+        canvasHeight: height,
+      });
+      if (!isValidMediaSize(width, height)) {
+        URL.revokeObjectURL(objectUrl);
+        throw new Error('사진 해상도 정보를 확인하지 못했습니다.');
+      }
       canvas.width = width;
       canvas.height = height;
       context.drawImage(image, 0, 0, width, height);
 
-      const preferredTypes = [
-        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-        'video/mp4',
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
-      ];
-      const mimeType = getSupportedMimeType(preferredTypes);
       const streamFromCanvas = canvas.captureStream(30);
-      const recorder = new MediaRecorder(streamFromCanvas, mimeType ? { mimeType } : undefined);
+      const configuredRecorder = createConfiguredRecorder(streamFromCanvas, 'image conversion');
+      if (!configuredRecorder) {
+        URL.revokeObjectURL(objectUrl);
+        throw new Error('이 브라우저에서는 사진을 영상으로 변환할 수 없습니다.');
+      }
+      const { recorder, selectedMimeType } = configuredRecorder;
       const chunks: BlobPart[] = [];
       const outputBlob = await new Promise<Blob>((resolve, reject) => {
         recorder.ondataavailable = (event) => {
@@ -1721,7 +2140,20 @@ function ReelsMakerInner() {
         };
         recorder.onerror = () => reject(new Error('사진 변환 중 오류가 발생했습니다.'));
         recorder.onstop = () => {
-          resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || 'video/webm' }));
+          const blob = new Blob(chunks, {
+            type: recorder.mimeType || selectedMimeType || 'video/webm',
+          });
+          logVideoDebug('image conversion output blob', {
+            type: blob.type,
+            size: blob.size,
+            duration: Math.max(MIN_TRIM_DURATION_SECONDS, durationSeconds),
+            canvasWidth: canvas.width,
+            canvasHeight: canvas.height,
+            recorderMimeType: recorder.mimeType,
+            recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
+            recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
+          });
+          resolve(blob);
         };
         recorder.start();
         window.setTimeout(() => {
@@ -1733,11 +2165,11 @@ function ReelsMakerInner() {
       URL.revokeObjectURL(objectUrl);
       return {
         blob: outputBlob,
-        mimeType: outputBlob.type || mimeType || 'video/webm',
+        mimeType: outputBlob.type || selectedMimeType || 'video/webm',
         duration: Math.max(MIN_TRIM_DURATION_SECONDS, durationSeconds),
       };
     },
-    [getSupportedMimeType]
+    [createConfiguredRecorder, logVideoDebug]
   );
 
   const createPosterFromClip = useCallback(async (clip: ClipInfo) => {
@@ -1858,6 +2290,9 @@ function ReelsMakerInner() {
         setActiveAutoCaptionJobId(
           completePayload.data.activeAutoCaptionJobId ?? null
         );
+        setLatestAutoCaptionJobId(
+          completePayload.data.latestAutoCaptionJobId ?? null
+        );
         setStaleAutoCaptionClipIds(
           completePayload.data.staleAutoCaptionClipIds ?? []
         );
@@ -1876,11 +2311,33 @@ function ReelsMakerInner() {
     async (
       index: number,
       clipPayload: { blob: Blob; mimeType: string; duration: number },
-      shouldAdvanceToNextCut: boolean = true
+      clipSource: ClipSource
     ) => {
       const { blob, mimeType, duration } = clipPayload;
-      const url = URL.createObjectURL(blob);
+      const previousUploaded = uploadedCutsRef.current[index] ?? false;
+      let poster: string | null = null;
 
+      try {
+        poster = await createPosterFromClip({
+          blob,
+          url: '',
+          duration,
+          mimeType,
+        });
+      } catch {
+        // 포스터 생성 실패는 업로드를 막지 않는다.
+      }
+
+      try {
+        await uploadRecordedClip(index, blob, mimeType, duration);
+      } catch (error) {
+        if (previousUploaded) {
+          setUploadedCuts((prev) => ({ ...prev, [index]: true }));
+        }
+        throw error;
+      }
+
+      const url = URL.createObjectURL(blob);
       setClips((prev) => {
         const next = [...prev];
         if (next[index]?.url) {
@@ -1895,54 +2352,56 @@ function ReelsMakerInner() {
         return next;
       });
 
-      try {
-        const poster = await createPosterFromClip({
-          blob,
-          url,
-          duration,
-          mimeType,
-        });
+      if (poster) {
         setClipPosters((prev) => ({
           ...prev,
           [index]: poster,
         }));
-      } catch {
-        // 포스터 생성 실패는 업로드를 막지 않는다.
+      } else {
+        setClipPosters((prev) => {
+          const next = { ...prev };
+          delete next[index];
+          return next;
+        });
       }
 
-      await uploadRecordedClip(index, blob, mimeType, duration);
+      setClipSources((prev) => ({
+        ...prev,
+        [index]: clipSource,
+      }));
       setRecordingStatus('done');
       setGalleryError(null);
       setCameraError(null);
 
-      if (!shouldAdvanceToNextCut) return;
-      if (index >= cuts.length - 1) return;
-
-      const nextCaptureIndex = cuts.findIndex((cut, cutIndex) => cutIndex > index && !cut.isFixed);
-      if (nextCaptureIndex !== -1) {
-        setActiveCutIndex(nextCaptureIndex);
-      } else {
-        setActiveCutIndex(index + 1);
+      const nextGuideCutIndex = findNextIncompleteCaptureCutIndex({
+        cuts,
+        uploadedCuts: uploadedCutsRef.current,
+        fromIndex: index,
+        completedCutIndex: index,
+      });
+      if (nextGuideCutIndex >= 0) {
+        setActiveCutIndex(nextGuideCutIndex);
+        setTemplateGuideStep(nextGuideCutIndex);
+        setIsTemplateGuideOpen(true);
       }
     },
     [createPosterFromClip, cuts, uploadRecordedClip]
   );
 
-  const openGalleryPicker = useCallback(() => {
-    if (isGalleryDisabled) return;
-    setGalleryError(null);
-    setTrimError(null);
-    galleryFileInputRef.current?.click();
-  }, [isGalleryDisabled]);
+  const finishMediaPicker = useCallback(() => {
+    if (mediaPickerFocusTimeoutRef.current) {
+      window.clearTimeout(mediaPickerFocusTimeoutRef.current);
+      mediaPickerFocusTimeoutRef.current = null;
+    }
+    setIsMediaPickerActive(false);
+  }, []);
 
-  const handleGalleryFileChange = useCallback(
-    async (event: ReactChangeEvent<HTMLInputElement>) => {
-      const input = event.target;
-      const file = input.files?.[0];
-      input.value = '';
-      if (!file) return;
-      if (!activeCut || activeCut.isFixed) return;
+  const handleSelectedMediaFile = useCallback(
+    async (file: File, targetIndex: number) => {
+      const targetCut = cuts[targetIndex];
+      if (!targetCut || targetCut.isFixed) return;
 
+      setActiveCutIndex(targetIndex);
       const isVideo = file.type.startsWith('video/');
       const isImage = file.type.startsWith('image/');
       if (!isVideo && !isImage) {
@@ -1956,12 +2415,13 @@ function ReelsMakerInner() {
       if (isImage) {
         setIsGalleryProcessing(true);
         try {
+          const targetCutDurationSeconds = Math.max(0, targetCut.durationSeconds ?? 0);
           const targetDuration =
-            activeCutDurationSeconds > 0
-              ? activeCutDurationSeconds
+            targetCutDurationSeconds > 0
+              ? targetCutDurationSeconds
               : DEFAULT_GALLERY_CLIP_DURATION_SECONDS;
           const converted = await imageToVideoBlob(file, targetDuration);
-          await saveClipAtIndex(activeCutIndex, converted, true);
+          await saveClipAtIndex(targetIndex, converted, 'file');
         } catch (error: unknown) {
           const message = getErrorMessage(error, '사진을 영상으로 변환하지 못했습니다.');
           setGalleryError(message);
@@ -1980,14 +2440,19 @@ function ReelsMakerInner() {
           throw new Error('선택한 영상 길이를 확인하지 못했습니다.');
         }
 
+        const targetCutDurationSeconds = Math.max(0, targetCut.durationSeconds ?? 0);
+        const minTrimDurationForMetadata = Math.min(
+          MIN_TRIM_DURATION_SECONDS,
+          metadata.duration > 0 ? metadata.duration : MIN_TRIM_DURATION_SECONDS
+        );
         const preferredDuration =
-          activeCutDurationSeconds > 0
-            ? Math.min(metadata.duration, activeCutDurationSeconds)
+          targetCutDurationSeconds > 0
+            ? Math.min(metadata.duration, targetCutDurationSeconds)
             : metadata.duration;
         const safeStart = 0;
         const safeEnd = Math.max(
           Math.min(metadata.duration, preferredDuration),
-          Math.min(metadata.duration, minTrimDurationForSource)
+          Math.min(metadata.duration, minTrimDurationForMetadata)
         );
         setTrimSourceFile(file);
         setTrimSourceUrl((current) => {
@@ -2003,6 +2468,7 @@ function ReelsMakerInner() {
         setActiveTrimDrag('none');
         setIsTrimPlaying(false);
         setIsTrimOpen(true);
+        setTrimTargetCutIndex(targetIndex);
         setTrimError(null);
 
         try {
@@ -2021,23 +2487,182 @@ function ReelsMakerInner() {
       }
     },
     [
-      activeCut,
-      activeCutDurationSeconds,
-      activeCutIndex,
+      cuts,
       generateTimelineThumbnails,
       imageToVideoBlob,
       loadVideoMetadataFromUrl,
-      minTrimDurationForSource,
       saveClipAtIndex,
     ]
   );
+
+  const handleMediaFileInputChange = useCallback(
+    async (event: ReactChangeEvent<HTMLInputElement>) => {
+      const input = event.target;
+      const file = input.files?.[0];
+      input.value = '';
+      if (!file) {
+        finishMediaPicker();
+        return;
+      }
+
+      const targetIndex = mediaPickerTargetIndexRef.current ?? activeCutIndex;
+      try {
+        await handleSelectedMediaFile(file, targetIndex);
+      } finally {
+        finishMediaPicker();
+      }
+    },
+    [activeCutIndex, finishMediaPicker, handleSelectedMediaFile]
+  );
+
+  const openFallbackFilePicker = useCallback(
+    (inputRef: RefObject<HTMLInputElement | null>, targetIndex: number) => {
+      mediaPickerTargetIndexRef.current = targetIndex;
+      setMediaPickerTargetCutIndex(targetIndex);
+      stopCamera();
+      setIsMediaPickerActive(true);
+
+      if (mediaPickerFocusTimeoutRef.current) {
+        window.clearTimeout(mediaPickerFocusTimeoutRef.current);
+      }
+      const handlePickerFocus = () => {
+        mediaPickerFocusTimeoutRef.current = window.setTimeout(() => {
+          finishMediaPicker();
+        }, 400);
+      };
+      window.addEventListener('focus', handlePickerFocus, { once: true });
+
+      try {
+        const input = inputRef.current;
+        if (!input) {
+          window.removeEventListener('focus', handlePickerFocus);
+          finishMediaPicker();
+          return;
+        }
+        input.click();
+      } catch {
+        window.removeEventListener('focus', handlePickerFocus);
+        finishMediaPicker();
+      }
+    },
+    [finishMediaPicker, stopCamera]
+  );
+
+  const openGalleryPickerForIndex = useCallback(
+    async (
+      targetIndex: number,
+      options: { skipReplacementConfirm?: boolean } = {}
+    ) => {
+      const targetCut = cuts[targetIndex];
+      if (!targetCut || targetCut.isFixed || uploadingCuts[targetIndex] || isMediaImportBlocked) {
+        return;
+      }
+
+      setActiveCutIndex(targetIndex);
+      setIsMediaSourceOpen(false);
+      setGalleryError(null);
+      setTrimError(null);
+
+      if (
+        clipSources[targetIndex] === 'recording' &&
+        !options.skipReplacementConfirm
+      ) {
+        setReplacementConfirm({ type: 'gallery', cutIndex: targetIndex });
+        return;
+      }
+
+      mediaPickerTargetIndexRef.current = targetIndex;
+      setMediaPickerTargetCutIndex(targetIndex);
+      stopCamera();
+
+      const pickerWindow = window as WindowWithOpenFilePicker;
+      if (!pickerWindow.showOpenFilePicker) {
+        openFallbackFilePicker(galleryFileInputRef, targetIndex);
+        return;
+      }
+
+      setIsMediaPickerActive(true);
+      try {
+        const [fileHandle] = await pickerWindow.showOpenFilePicker({
+          multiple: false,
+          excludeAcceptAllOption: true,
+          types: GALLERY_FILE_PICKER_TYPES,
+        });
+        const file = await fileHandle?.getFile();
+        if (file) {
+          await handleSelectedMediaFile(file, targetIndex);
+        }
+      } catch (error: unknown) {
+        const isAbortError =
+          error instanceof DOMException && error.name === 'AbortError';
+        if (!isAbortError) {
+          const message = getErrorMessage(error, '파일을 선택하지 못했습니다.');
+          setGalleryError(message);
+        }
+      } finally {
+        finishMediaPicker();
+      }
+    },
+    [
+      clipSources,
+      cuts,
+      finishMediaPicker,
+      handleSelectedMediaFile,
+      isMediaImportBlocked,
+      openFallbackFilePicker,
+      stopCamera,
+      uploadingCuts,
+    ]
+  );
+
+  const selectVideoCaptureModeForIndex = useCallback(
+    (targetIndex: number) => {
+      const targetCut = cuts[targetIndex];
+      if (!targetCut || targetCut.isFixed || uploadingCuts[targetIndex]) {
+        return;
+      }
+
+      setActiveCutIndex(targetIndex);
+      setIsMediaSourceOpen(false);
+      setGalleryError(null);
+      setTrimError(null);
+    },
+    [cuts, uploadingCuts]
+  );
+
+  const openCutMediaSource = useCallback(
+    (targetIndex: number) => {
+      const targetCut = cuts[targetIndex];
+      if (!targetCut || targetCut.isFixed || uploadingCuts[targetIndex] || isMediaImportBlocked) {
+        return;
+      }
+
+      setActiveCutIndex(targetIndex);
+      mediaPickerTargetIndexRef.current = targetIndex;
+      setMediaPickerTargetCutIndex(targetIndex);
+      setGalleryError(null);
+      setTrimError(null);
+      setIsMediaSourceOpen(true);
+    },
+    [cuts, isMediaImportBlocked, uploadingCuts]
+  );
+
+  const closeCutMediaSource = useCallback(() => {
+    setIsMediaSourceOpen(false);
+    setMediaPickerTargetCutIndex(null);
+    mediaPickerTargetIndexRef.current = null;
+  }, []);
+
+  const handleGalleryFileChange = handleMediaFileInputChange;
 
   const handleTrimConfirm = useCallback(async () => {
     if (!trimSourceUrl || !trimSourceMetadata) {
       setTrimError('영상 정보가 없습니다.');
       return;
     }
-    if (!activeCut || activeCut.isFixed) {
+    const targetIndex = trimTargetCutIndex ?? activeCutIndex;
+    const targetCut = cuts[targetIndex];
+    if (!targetCut || targetCut.isFixed) {
       setTrimError('현재 컷에는 갤러리 영상을 적용할 수 없습니다.');
       return;
     }
@@ -2056,7 +2681,7 @@ function ReelsMakerInner() {
         trimStartSeconds,
         trimEndSeconds
       );
-      await saveClipAtIndex(activeCutIndex, converted, true);
+      await saveClipAtIndex(targetIndex, converted, 'file');
       closeTrimModal();
     } catch (error: unknown) {
       const message = getErrorMessage(error, '영상 구간을 처리하지 못했습니다.');
@@ -2066,10 +2691,10 @@ function ReelsMakerInner() {
       setIsGalleryProcessing(false);
     }
   }, [
-    activeCut,
     activeCutIndex,
     captureVideoSegmentToBlob,
     closeTrimModal,
+    cuts,
     minTrimDurationForSource,
     pauseTrimPlayback,
     saveClipAtIndex,
@@ -2078,6 +2703,7 @@ function ReelsMakerInner() {
     trimSourceMetadata,
     trimSourceUrl,
     trimStartSeconds,
+    trimTargetCutIndex,
   ]);
 
   useEffect(() => {
@@ -2425,7 +3051,7 @@ function ReelsMakerInner() {
     }
   }, []);
 
-  const startRecording = async () => {
+  const startRecording = async (options: { replaceExisting?: boolean } = {}) => {
     if (recordingStatus === 'recording') return;
     if (!activeCut) {
       setCameraError('템플릿 컷 정보를 불러오지 못했습니다.');
@@ -2439,16 +3065,24 @@ function ReelsMakerInner() {
       setCameraError('릴스 제작 세션을 준비 중입니다. 잠시 후 다시 시도해주세요.');
       return;
     }
-
-    if (!stream) {
-      await setupCamera();
+    if (shouldConfirmActiveRetake && !options.replaceExisting) {
+      setReplacementConfirm({ type: 'recording', cutIndex: activeCutIndex });
+      return;
     }
-    if (!stream || stream.getAudioTracks().length === 0) {
+
+    let recordingStream =
+      stream && stream.getTracks().some((track) => track.readyState === 'live')
+        ? stream
+        : null;
+    if (!recordingStream) {
+      recordingStream = await setupCamera();
+    }
+    if (!recordingStream || recordingStream.getAudioTracks().length === 0) {
       setCameraError('마이크 권한이 필요합니다. 설정에서 허용해주세요.');
       return;
     }
 
-    const recorder = createRecorder();
+    const recorder = createRecorder(recordingStream);
     if (!recorder) {
       setCameraError('이 브라우저에서는 녹화를 지원하지 않습니다.');
       return;
@@ -2469,6 +3103,22 @@ function ReelsMakerInner() {
       const mimeType = recorder.mimeType || recordingMimeTypeRef.current || 'video/webm';
       const blob = new Blob(chunksRef.current, { type: mimeType });
       const recordedCut = cuts[recordedIndex];
+      const outputVideoTrackSettings = recordingStream
+        .getVideoTracks()
+        .map((track) => track.getSettings());
+      logVideoDebug('camera track snapshot', {
+        tag: 'after-record',
+        settings: outputVideoTrackSettings[0] ?? null,
+      });
+      logVideoDebug('camera output blob', {
+        type: blob.type,
+        size: blob.size,
+        duration: recordedCut?.durationSeconds ?? activeCut.durationSeconds,
+        recorderMimeType: recorder.mimeType,
+        recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
+        recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
+        videoTrackSettings: outputVideoTrackSettings,
+      });
       saveClipAtIndex(
         recordedIndex,
         {
@@ -2476,14 +3126,15 @@ function ReelsMakerInner() {
           duration: recordedCut?.durationSeconds ?? activeCut.durationSeconds,
           mimeType,
         },
-        true
+        'recording'
       ).catch((error: unknown) => {
         const message = getErrorMessage(error, '클립 업로드에 실패했습니다.');
         setClipUploadErrors((prev) => ({
           ...prev,
           [recordedIndex]: message,
         }));
-        setUploadedCuts((prev) => ({ ...prev, [recordedIndex]: false }));
+        setRecordingStatus('idle');
+        setRecordingElapsedSeconds(null);
         alert(message || '클립 업로드에 실패했습니다. 다시 시도해주세요.');
       });
     };
@@ -2546,6 +3197,11 @@ function ReelsMakerInner() {
       delete next[activeCutIndex];
       return next;
     });
+    setClipSources((prev) => {
+      const next = { ...prev };
+      delete next[activeCutIndex];
+      return next;
+    });
     setUploadedCuts((prev) => ({ ...prev, [activeCutIndex]: false }));
     setUploadingCuts((prev) => ({ ...prev, [activeCutIndex]: false }));
     setClipUploadErrors((prev) => {
@@ -2564,6 +3220,10 @@ function ReelsMakerInner() {
       setRecordingElapsedSeconds(null);
       setEditingCaptionId(null);
       resetCaptionGesture();
+      setIsMediaSourceOpen(false);
+      setIsTemplateGuideOpen(false);
+      setIsCaptionEditDecisionOpen(false);
+      setReplacementConfirm(null);
       if (isTrimOpen) {
         closeTrimModal();
       }
@@ -2577,12 +3237,17 @@ function ReelsMakerInner() {
     stopRecording,
   ]);
 
-  const handleComplete = () => {
+  const handleComplete = useCallback(() => {
     if (!allDone) return;
-    setStage('caption-edit');
-  };
+    setIsCaptionEditDecisionOpen(true);
+  }, [allDone]);
 
-  const handleFinalComplete = async () => {
+  const handleEditCaptionsBeforeComplete = useCallback(() => {
+    setIsCaptionEditDecisionOpen(false);
+    setStage('caption-edit');
+  }, []);
+
+  const handleFinalComplete = async (options?: FinalCompleteOptions) => {
     if (!sessionId) return;
     if (!allDone) return;
     if (isRegisteredUser) {
@@ -2609,13 +3274,16 @@ function ReelsMakerInner() {
     setStage('processing');
 
     try {
+      const completionAcceptedStaleClipIds =
+        options?.acceptedStaleAutoCaptionClipIds ??
+        acceptedStaleAutoCaptionClipIds;
       const response = await fetch(`/api/reels-maker/sessions/${sessionId}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           captionItems,
           captionsEnabled,
-          acceptedStaleAutoCaptionClipIds,
+          acceptedStaleAutoCaptionClipIds: completionAcceptedStaleClipIds,
         }),
       });
       const payload = (await response.json()) as
@@ -2656,6 +3324,21 @@ function ReelsMakerInner() {
       setStage('capture');
       alert(COMPLETE_START_FAILED_USER_MESSAGE);
     }
+  };
+
+  const handleSkipCaptionEditBeforeComplete = () => {
+    if (!allDone) return;
+    const nextAcceptedStaleClipIds = Array.from(
+      new Set([
+        ...acceptedStaleAutoCaptionClipIds,
+        ...currentStaleAutoCaptionClipIds,
+      ])
+    );
+    setIsCaptionEditDecisionOpen(false);
+    setAcceptedStaleAutoCaptionClipIds(nextAcceptedStaleClipIds);
+    void handleFinalComplete({
+      acceptedStaleAutoCaptionClipIds: nextAcceptedStaleClipIds,
+    });
   };
 
   useEffect(() => {
@@ -2986,6 +3669,15 @@ function ReelsMakerInner() {
       });
       return next;
     });
+    setClipSources((prev) => {
+      const next = { ...prev };
+      cuts.forEach((cut, index) => {
+        if (!cut.isFixed) {
+          delete next[index];
+        }
+      });
+      return next;
+    });
     setFixedClipErrors({});
     if (finalVideoUrl) {
       revokeBlobUrl(finalVideoUrl);
@@ -2996,16 +3688,20 @@ function ReelsMakerInner() {
     }
     setFinalVideoMimeType('video/mp4');
     setIsPreviewOpen(false);
-    setIsExampleOpen(false);
-    setIsReelOpen(false);
+    setIsTemplateGuideOpen(false);
+    setTemplateGuideStep('overview');
     setExampleReelIndex(0);
     setIsResetOpen(false);
     setDownloadToastMessage(null);
     setGalleryError(null);
     setIsGalleryProcessing(false);
+    setIsMediaSourceOpen(false);
+    setIsMediaPickerActive(false);
+    setMediaPickerTargetCutIndex(null);
+    setTrimTargetCutIndex(null);
+    setReplacementConfirm(null);
     setIsTrimOpen(false);
     resetTrimState();
-    setupCamera();
     if (templateId && requestedSessionId) {
       router.replace(
         buildReelsMakerHref({
@@ -3074,13 +3770,29 @@ function ReelsMakerInner() {
         <div className="max-w-sm text-center space-y-4">
           <p className="text-sm leading-6 text-white/70">{sessionError.message}</p>
           <div className="space-y-3">
-            {sessionError.type === 'auth' ? (
+            {sessionError.type === 'auth' || sessionError.type === 'template-login' ? (
               <button
                 type="button"
-                onClick={() => router.push(buildLoginHref(currentReelsMakerHref))}
+                onClick={() =>
+                  router.push(
+                    sessionError.type === 'template-login'
+                      ? buildTemplateLoginHref(
+                          isReelstampBetaEnabled() ? currentReelsMakerHref : undefined
+                        )
+                      : buildLoginHref(currentReelsMakerHref)
+                  )
+                }
                 className="w-full rounded-full bg-[#FF4D6D] px-4 py-3 text-sm font-semibold text-white shadow-lg"
               >
                 로그인하기
+              </button>
+            ) : sessionError.type === 'paid-template' ? (
+              <button
+                type="button"
+                onClick={() => router.push(TEMPLATE_PAYMENT_PATH)}
+                className="w-full rounded-full bg-[#FF4D6D] px-4 py-3 text-sm font-semibold text-white shadow-lg"
+              >
+                결제 페이지로 이동
               </button>
             ) : (
               <button
@@ -3107,7 +3819,6 @@ function ReelsMakerInner() {
   if (stage === 'caption-edit' && sessionId) {
     return (
       <AutoCaptionEditor
-        sessionId={sessionId}
         cuts={cuts}
         clips={clips}
         clipPosters={clipPosters}
@@ -3122,9 +3833,7 @@ function ReelsMakerInner() {
         remainingAttempts={
           autoCaptionJob?.remainingAttempts ?? autoCaptionRemainingAttempts
         }
-        staleClipIds={
-          autoCaptionJob?.staleClipIds ?? staleAutoCaptionClipIds
-        }
+        staleClipIds={currentStaleAutoCaptionClipIds}
         acceptedStaleClipIds={acceptedStaleAutoCaptionClipIds}
         job={autoCaptionJob}
         jobError={autoCaptionError}
@@ -3232,9 +3941,46 @@ function ReelsMakerInner() {
           isGuestUser={isGuestUser}
           isRegisteredUser={isRegisteredUser}
           loginHref={buildLoginHref(currentReelsMakerHref)}
-          buildLoginHref={buildLoginHref}
           onClose={() => setIsCaptureMenuOpen(false)}
           onRequestExit={requestExit}
+        />
+      )}
+      {isMediaSourceOpen && mediaPickerTargetCutIndex !== null && (
+        <CutMediaSourceModal
+          isBusy={isMediaPickerActive || isGalleryProcessing || isTrimPreparing}
+          onClose={closeCutMediaSource}
+          onSelectVideoCapture={() => selectVideoCaptureModeForIndex(mediaPickerTargetCutIndex)}
+          onSelectGallery={() => void openGalleryPickerForIndex(mediaPickerTargetCutIndex)}
+        />
+      )}
+      {replacementConfirm && (
+        <RetakeConfirmModal
+          title={
+            replacementConfirm.type === 'gallery'
+              ? '파일로 교체할까요?'
+              : '다시 촬영할까요?'
+          }
+          description={
+            replacementConfirm.type === 'gallery'
+              ? '촬영된 영상은 새 파일이 저장되면 교체됩니다.'
+              : '현재 컷의 기존 영상은 새 촬영이 저장되면 교체됩니다.'
+          }
+          confirmLabel={
+            replacementConfirm.type === 'gallery' ? '파일 선택' : '다시 촬영'
+          }
+          onCancel={() => setReplacementConfirm(null)}
+          onConfirm={() => {
+            const { cutIndex, type } = replacementConfirm;
+            setReplacementConfirm(null);
+            setActiveCutIndex(cutIndex);
+            if (type === 'gallery') {
+              void openGalleryPickerForIndex(cutIndex, {
+                skipReplacementConfirm: true,
+              });
+              return;
+            }
+            void startRecording({ replaceExisting: true });
+          }}
         />
       )}
       <header className="hidden h-[72px] shrink-0 grid-cols-[96px_minmax(0,1fr)_96px] items-center border-b border-[#263244] bg-[#111827] px-12 text-[#F8FAFC] lg:grid">
@@ -3343,13 +4089,18 @@ function ReelsMakerInner() {
                       </p>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsExampleOpen(true)}
-                    className="h-10 shrink-0 rounded-full bg-[#FF4D6D] px-4 text-xs font-semibold shadow-lg"
-                  >
-                    예시 보기
-                  </button>
+                  {canOpenActiveCutGuide && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTemplateGuideStep(activeCutIndex);
+                        setIsTemplateGuideOpen(true);
+                      }}
+                      className="h-10 shrink-0 rounded-full bg-[#FF4D6D] px-4 text-xs font-semibold shadow-lg"
+                    >
+                      가이드
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setIsCaptureMenuOpen(true)}
@@ -3417,7 +4168,8 @@ function ReelsMakerInner() {
                     <>
                       <CameraPreviewVideo
                         stream={stream}
-                        className="absolute inset-0 h-full w-full object-cover"
+                        className="absolute inset-0 h-full w-full"
+                        onPreviewMetrics={handleCameraPreviewMetrics}
                       />
                       {guideImageSrc && isGuideImageVisible && (
                         <>
@@ -3457,12 +4209,14 @@ function ReelsMakerInner() {
                           )}
                         </>
                       )}
-                      <div className="relative text-center text-white/40">
-                        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-white/20">
-                          <Camera className="h-6 w-6 text-white/60" />
+                      {!stream && (
+                        <div className="relative text-center text-white/40">
+                          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-white/20">
+                            <Camera className="h-6 w-6 text-white/60" />
+                          </div>
+                          카메라 뷰
                         </div>
-                        카메라 뷰
-                      </div>
+                      )}
                     </>
                   )}
 
@@ -3489,45 +4243,32 @@ function ReelsMakerInner() {
 
                   <div className="pointer-events-none absolute inset-x-0 top-0 z-30 space-y-2 bg-gradient-to-b from-black/35 via-black/10 to-transparent px-3 pb-6 pt-3">
                     <div className="pointer-events-auto">
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={handleGuideImageToggle}
-                          disabled={!guideImageSrc}
-                          className="h-10 min-w-0 w-full rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          가이드 이미지 {isGuideImageVisible ? 'ON' : 'OFF'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={addCaptionToActiveClip}
-                          disabled={
+                      <div className="flex items-start gap-2">
+                        {shouldShowGuideImageToggle && (
+                          <button
+                            type="button"
+                            onClick={handleGuideImageToggle}
+                            className="h-10 min-w-0 rounded-full border border-white/35 bg-white/15 px-3 text-[11px] leading-none font-semibold text-white whitespace-nowrap"
+                          >
+                            가이드 이미지 {isGuideImageVisible ? 'ON' : 'OFF'}
+                          </button>
+                        )}
+                        <CaptureCaptionMenu
+                          activeCutIndex={activeCutIndex}
+                          overlayCaptionCount={activeOverlayCaptionCount}
+                          maxCaptions={MAX_CAPTIONS_PER_CLIP}
+                          isBoxed={activeCaptionStyle.boxed}
+                          isAddDisabled={
                             !showCaptionStage ||
                             activeClipId == null ||
                             activeOverlayCaptionCount >= MAX_CAPTIONS_PER_CLIP
                           }
-                          className="flex h-10 min-w-0 w-full items-center justify-center gap-1 rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          자막 추가 {activeOverlayCaptionCount}/{MAX_CAPTIONS_PER_CLIP}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCaptionToggleBox}
-                          disabled={!showCaptionOverlay}
-                          className="h-10 min-w-0 w-full rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:opacity-40"
-                        >
-                          텍스트 박스 {activeCaptionStyle.boxed ? 'ON' : 'OFF'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={deleteSelectedCaption}
-                          disabled={!resolvedSelectedCaptionId}
-                          className="flex h-10 min-w-0 w-full items-center justify-center gap-1 rounded-full border border-white/35 bg-white/15 px-2 text-[11px] leading-none font-semibold text-white whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          선택 자막 삭제
-                        </button>
+                          isToggleBoxDisabled={!showCaptionOverlay}
+                          isDeleteDisabled={!resolvedSelectedCaptionId}
+                          onAddCaption={addCaptionToActiveClip}
+                          onToggleBox={handleCaptionToggleBox}
+                          onDeleteCaption={deleteSelectedCaption}
+                        />
                       </div>
                     </div>
 
@@ -3540,141 +4281,111 @@ function ReelsMakerInner() {
 
                   <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/35 via-black/10 to-transparent px-3 pb-4 pt-20">
                     <div className="pointer-events-auto space-y-3">
+                      <CaptureFlowAction
+                        variant={captureFlowAction}
+                        disabled={isCaptureFlowActionDisabled}
+                        onComplete={handleComplete}
+                      />
+
                       <div className="flex items-end justify-center gap-2">
                         {cuts.map((cut, index) => {
                           const clip = clips[index];
                           const isActive = index === activeCutIndex;
+                          const isUploadingCut = uploadingCuts[index];
+                          const shouldShowMediaPlus =
+                            !cut.isFixed && !fixedClipErrors[index] && (!clip || isActive);
+                          const isMediaPlusDisabled = Boolean(
+                            isUploadingCut || isMediaImportBlocked
+                          );
                           return (
-                            <button
+                            <div
                               key={cut.id}
-                              type="button"
-                              onClick={() => {
-                                if (fixedClipErrors[index]) {
-                                  retryFixedClip(index);
-                                  return;
-                                }
-                                if (recordingStatus === 'recording') return;
-                                setActiveCutIndex(index);
-                              }}
                               className={`relative h-[92px] w-[52px] overflow-hidden rounded-xl border-2 transition-all ${
                                 isActive ? 'border-[#FF4D6D] bg-white/10' : 'border-white/15 bg-black/30'
                               }`}
                             >
-                              {clip ? (
-                                <video
-                                  src={clip.url}
-                                  muted
-                                  playsInline
-                                  preload="metadata"
-                                  poster={clipPosters[index] || undefined}
-                                  className="absolute inset-0 h-full w-full object-cover"
-                                />
-                              ) : (
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                  <Plus className="h-6 w-6 text-white/45" />
-                                </div>
-                              )}
-                              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-white/85">
-                                {cut.label}
-                              </span>
-                              {clip && (
-                                <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
-                                  <Check className="h-3 w-3" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (fixedClipErrors[index]) {
+                                    retryFixedClip(index);
+                                    return;
+                                  }
+                                  if (recordingStatus === 'recording') return;
+                                  setActiveCutIndex(index);
+                                }}
+                                className="absolute inset-0 z-0"
+                                aria-label={`${index + 1}번 컷 선택`}
+                              >
+                                {clip ? (
+                                  <video
+                                    src={clip.url}
+                                    muted
+                                    playsInline
+                                    preload="metadata"
+                                    poster={clipPosters[index] || undefined}
+                                    className="absolute inset-0 h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="absolute inset-0 bg-transparent" />
+                                )}
+                                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-white/85">
+                                  {cut.label}
                                 </span>
+                                {clip && (
+                                  <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
+                                    <Check className="h-3 w-3" />
+                                  </span>
+                                )}
+                                {cut.isFixed && !clip && !fixedClipErrors[index] && (
+                                  <span className="absolute left-1.5 top-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] text-white/75">
+                                    고정
+                                  </span>
+                                )}
+                                {fixedClipErrors[index] && (
+                                  <span className="absolute left-1.5 top-1.5 rounded-full bg-rose-500/80 px-1.5 py-0.5 text-[10px] text-white">
+                                    오류
+                                  </span>
+                                )}
+                              </button>
+                              {shouldShowMediaPlus && (
+                                <button
+                                  type="button"
+                                  onClick={() => openCutMediaSource(index)}
+                                  disabled={isMediaPlusDisabled}
+                                  className="absolute left-1/2 top-1/2 z-10 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur transition-all hover:scale-105 hover:border-white/40 hover:bg-black/65 hover:shadow-[0_0_0_2px_rgba(255,255,255,0.12),0_6px_14px_rgba(0,0,0,0.38)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:scale-100 disabled:hover:border-white/20 disabled:hover:bg-black/45 disabled:hover:shadow-lg"
+                                  aria-label={`${index + 1}번 컷 미디어 추가`}
+                                >
+                                  {isUploadingCut ? (
+                                    <Loader2 className="h-5 w-5 animate-spin text-white/70" />
+                                  ) : (
+                                    <Plus className="h-5 w-5 text-white/75" />
+                                  )}
+                                </button>
                               )}
-                              {cut.isFixed && !clip && !fixedClipErrors[index] && (
-                                <span className="absolute left-1.5 top-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] text-white/75">
-                                  고정
-                                </span>
-                              )}
-                              {fixedClipErrors[index] && (
-                                <span className="absolute left-1.5 top-1.5 rounded-full bg-rose-500/80 px-1.5 py-0.5 text-[10px] text-white">
-                                  오류
-                                </span>
-                              )}
-                            </button>
+                            </div>
                           );
                         })}
                       </div>
 
-                      {allDone ? (
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setIsResetOpen(true)}
-                            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/35 bg-black/35 text-white/80"
-                            aria-label="촬영 다시 시도"
-                          >
-                            <RotateCcw className="h-5 w-5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleComplete}
-                            className="h-12 w-full rounded-full bg-[#FF4D6D] px-4 text-sm font-semibold shadow-lg"
-                          >
-                            ✓ 완료하기
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <div className="grid grid-cols-3 items-center">
-                            <div className="flex justify-start">
-                              <button
-                                type="button"
-                                onClick={openGalleryPicker}
-                                disabled={isGalleryDisabled}
-                                className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/35 bg-black/35 disabled:cursor-not-allowed disabled:opacity-45"
-                                aria-label="갤러리에서 불러오기"
-                              >
-                                {isGalleryProcessing || isTrimPreparing ? (
-                                  <Loader2 className="h-5 w-5 animate-spin text-white/75" />
-                                ) : clipPosters[activeCutIndex] ? (
-                                  <img
-                                    src={clipPosters[activeCutIndex]}
-                                    alt=""
-                                    aria-hidden
-                                    className="h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <ImageIcon className="h-5 w-5 text-white/80" />
-                                )}
-                              </button>
-                            </div>
-                            <div className="flex justify-center">
-                              <button
-                                type="button"
-                                onClick={recordingStatus === 'recording' ? stopRecording : startRecording}
-                                disabled={isRecordDisabled}
-                                className={`relative flex h-20 w-20 items-center justify-center rounded-full border-4 shadow-2xl ${
-                                  isRecordDisabled ? 'border-white/20' : 'border-[#FF4D6D]'
-                                }`}
-                              >
-                                <span
-                                  className={`transition-all ${
-                                    recordingStatus === 'recording'
-                                      ? 'h-8 w-8 rounded-lg bg-[#FF4D6D]'
-                                      : 'h-12 w-12 rounded-full bg-white'
-                                  }`}
-                                />
-                              </button>
-                            </div>
-                            <div className="flex justify-end">
-                              <button
-                                type="button"
-                                onClick={handleSwitchCamera}
-                                disabled={isSwitchCameraDisabled}
-                                className="flex h-12 w-12 items-center justify-center rounded-full border border-white/35 bg-black/35 disabled:cursor-not-allowed disabled:opacity-45"
-                                aria-label="전면/후면 카메라 전환"
-                              >
-                                <SwitchCamera className="h-5 w-5 text-white/80" />
-                              </button>
-                            </div>
-                          </div>
-                          {(galleryError || trimError) && (
-                            <p className="text-center text-xs text-rose-300">{galleryError || trimError}</p>
-                          )}
-                        </div>
-                      )}
+                      <div className="space-y-2">
+                        <CaptureActionControls
+                          recordingStatus={recordingStatus}
+                          galleryPreviewUrl={clipPosters[activeCutIndex] ?? null}
+                          canRetake={canRetakeActiveCut}
+                          isGalleryDisabled={isGalleryButtonDisabled}
+                          isRecordDisabled={isRecordDisabled}
+                          isSwitchCameraDisabled={isSwitchCameraDisabled}
+                          onOpenGallery={() => void openGalleryPickerForIndex(activeCutIndex)}
+                          onStartRecording={() => void startRecording()}
+                          onStopRecording={stopRecording}
+                          onRequestRetake={() => setIsResetOpen(true)}
+                          onSwitchCamera={handleSwitchCamera}
+                        />
+                        {(galleryError || trimError) && (
+                          <p className="text-center text-xs text-rose-300">{galleryError || trimError}</p>
+                        )}
+                      </div>
 
                       {recordingElapsedSeconds !== null && (
                         <div className="text-center">
@@ -3701,40 +4412,26 @@ function ReelsMakerInner() {
         </div>
       </div>
 
-      {isExampleOpen && (
-        <CutExampleModal
-          media={visibleActiveCutExampleMedia}
-          shouldShowMedia={shouldShowActiveCutExampleMedia}
-          isLoading={isActiveExampleMediaLoading}
-          isLoaded={isActiveExampleMediaLoaded}
-          hasExampleReels={hasExampleReels}
-          guideText={activeCutGuideText}
-          onClose={() => setIsExampleOpen(false)}
-          onMediaLoad={handleActiveExampleMediaLoad}
-          onMediaError={handleActiveExampleMediaError}
-          onOpenReels={() => {
-            if (!hasExampleReels) return;
-            setIsExampleOpen(false);
-            setExampleReelIndex(0);
-            setIsReelOpen(true);
-          }}
+      {isTemplateGuideOpen && template && (
+        <TemplateGuideModal
+          templateTitle={template.title}
+          templateOverview={template.subtitle}
+          cuts={cuts}
+          step={templateGuideStep}
+          exampleReels={exampleReels}
+          currentReelIndex={exampleReelIndex}
+          onClose={() => setIsTemplateGuideOpen(false)}
+          onSelectStep={setTemplateGuideStep}
+          onPrimaryAction={handleTemplateGuidePrimaryAction}
+          onSelectReel={setExampleReelIndex}
         />
       )}
 
-      {isReelOpen && (
-        <ExampleReelsModal
-          urls={exampleReelUrls}
-          currentUrl={currentExampleReelUrl}
-          currentIndex={exampleReelIndex}
-          isFirst={isFirstExampleReel}
-          isLast={isLastExampleReel}
-          onClose={() => {
-            setIsReelOpen(false);
-            setExampleReelIndex(0);
-          }}
-          onPrevious={handlePrevExampleReel}
-          onNext={handleNextExampleReel}
-          onSelect={setExampleReelIndex}
+      {isCaptionEditDecisionOpen && (
+        <CaptionEditDecisionModal
+          onSkip={handleSkipCaptionEditBeforeComplete}
+          onEdit={handleEditCaptionsBeforeComplete}
+          onCancel={() => setIsCaptionEditDecisionOpen(false)}
         />
       )}
 

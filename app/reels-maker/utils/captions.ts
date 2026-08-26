@@ -39,6 +39,7 @@ export const clampValue = (value: number, min: number, max: number) =>
 export const normalizeCaptionStyle = (
   style: CaptionStyle
 ): CaptionStyle => ({
+  ...style,
   xRatio: clampValue(style.xRatio, 0, 1),
   yRatio: clampValue(style.yRatio, 0, 1),
   scale: clampValue(style.scale, MIN_CAPTION_SCALE, MAX_CAPTION_SCALE),
@@ -55,6 +56,7 @@ export const normalizeCaptionStyle = (
     typeof style.maxLines === 'number' && Number.isFinite(style.maxLines)
       ? Math.max(1, Math.round(style.maxLines))
       : null,
+  anchorY: style.anchorY === 'BOTTOM' ? 'BOTTOM' : 'CENTER',
 });
 
 export const buildCaptionExportStyle = (
@@ -87,6 +89,7 @@ export const buildCaptionExportStyle = (
     overflowWrap: CAPTION_OVERFLOW_WRAP,
     wordBreak: CAPTION_WORD_BREAK,
     lineBreak: CAPTION_LINE_BREAK,
+    anchorY: normalized.anchorY,
   };
 };
 

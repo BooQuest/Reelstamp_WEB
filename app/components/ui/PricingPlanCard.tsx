@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import PlanCard, { type EventBenefit, type PlanFeature } from './PlanCard';
+import { buildLoginReturnHref } from '@/app/lib/auth/loginRedirect';
 
 interface PricingPlanCardProps {
   planId: string;
@@ -48,7 +49,7 @@ export default function PricingPlanCard({
     if (isDisabled) return;
     
     if (!isAuthenticated) {
-      router.push('/login');
+      router.push(buildLoginReturnHref('/pricing'));
       return;
     }
 

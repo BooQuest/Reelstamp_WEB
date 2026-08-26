@@ -21,6 +21,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import {
+  AUTO_CAPTION_DEFAULT_STYLE,
   DEFAULT_CAPTION_STYLE,
   MAX_CAPTIONS_PER_CLIP,
 } from '../constants';
@@ -30,19 +31,46 @@ import type {
   ClipInfo,
 } from '../types';
 import { createCaptionId } from '../utils/captions';
+import {
+  buildAutoCaptionChunks,
+  createCaptionTextMeasurer,
+  isAutoSpeechCaption,
+  isEditedAutoSpeechCaption,
+  promoteAutoSpeechCaptionForEdit,
+  waitForCaptionFontReady,
+} from '../utils/autoCaptionChunks';
 import CaptionOverlayStage from './CaptionOverlayStage';
 
 type Cut = {
   order: number;
   label: string;
+  durationSeconds: number;
   isFixed: boolean;
 };
 
-const isAutoSpeechCaption = (caption: CaptionItem) =>
-  caption.source === 'AUTO' && caption.role === 'SPEECH';
+const TERMINAL_AUTO_CAPTION_STATUSES = new Set([
+  'COMPLETED',
+  'PARTIAL',
+  'FAILED',
+  'STALE',
+]);
+
+const formatTimeRangeMs = (startMs?: number | null, endMs?: number | null) => {
+  if (typeof startMs !== 'number' || typeof endMs !== 'number') return '';
+  return `${(startMs / 1000).toFixed(1)}s-${(endMs / 1000).toFixed(1)}s`;
+};
+
+const formatTimelineMs = (valueMs: number) => {
+  const totalSeconds = Math.max(0, valueMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds - minutes * 60;
+  return `${minutes}:${seconds.toFixed(1).padStart(4, '0')}`;
+};
+
+const clampTimelineMs = (valueMs: number, totalDurationMs: number) =>
+  Math.max(0, Math.min(totalDurationMs, valueMs));
 
 type Props = {
-  sessionId: number;
   cuts: Cut[];
   clips: Array<ClipInfo | null>;
   clipPosters: Record<number, string>;
@@ -89,7 +117,6 @@ type Props = {
 };
 
 export default function AutoCaptionEditor({
-  sessionId,
   cuts,
   clips,
   clipPosters,
@@ -132,8 +159,74 @@ export default function AutoCaptionEditor({
   onToggleBox,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  const timelineScrubbingRef = useRef(false);
+  const pendingSeekRef = useRef<{
+    cutIndex: number;
+    localMs: number;
+    shouldPlay: boolean;
+  } | null>(null);
+  const autoCaptionRepackSignatureRef = useRef(new Map<number, string>());
+  const measureCaptionText = useMemo(() => createCaptionTextMeasurer(), []);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [showPrompt, setShowPrompt] = useState(false);
+  const [isTimelineScrubbing, setIsTimelineScrubbing] = useState(false);
+  const [playbackPosition, setPlaybackPosition] = useState({
+    cutIndex: activeCutIndex,
+    ms: 0,
+  });
+  const playbackMs =
+    playbackPosition.cutIndex === activeCutIndex ? playbackPosition.ms : 0;
+  const clipDurationsMs = useMemo(
+    () =>
+      cuts.map((cut, index) => {
+        const clipDuration = clips[index]?.duration;
+        const durationSeconds =
+          typeof clipDuration === 'number' && Number.isFinite(clipDuration)
+            ? clipDuration
+            : cut.durationSeconds;
+        return Math.max(0, Math.round(durationSeconds * 1000));
+      }),
+    [clips, cuts]
+  );
+  const timelineSegments = useMemo(() => {
+    return clipDurationsMs.reduce<{
+      cursor: number;
+      segments: Array<{
+        index: number;
+        startMs: number;
+        endMs: number;
+        durationMs: number;
+      }>;
+    }>(
+      (acc, durationMs, index) => {
+        const startMs = acc.cursor;
+      const endMs = startMs + durationMs;
+        return {
+          cursor: endMs,
+          segments: [
+            ...acc.segments,
+            { index, startMs, endMs, durationMs },
+          ],
+        };
+      },
+      { cursor: 0, segments: [] }
+    ).segments;
+  }, [clipDurationsMs]);
+  const totalDurationMs = useMemo(
+    () =>
+      timelineSegments.reduce(
+        (total, segment) => Math.max(total, segment.endMs),
+        0
+      ),
+    [timelineSegments]
+  );
+  const activeSegment = timelineSegments[activeCutIndex] ?? null;
+  const globalPlaybackMs = clampTimelineMs(
+    (activeSegment?.startMs ?? 0) + playbackMs,
+    totalDurationMs
+  );
+  const timelineProgressPercent =
+    totalDurationMs > 0 ? (globalPlaybackMs / totalDurationMs) * 100 : 0;
   const activeClipId = sessionClipMap[cuts[activeCutIndex]?.order] ?? null;
   const activeCaptions = useMemo(
     () =>
@@ -148,8 +241,31 @@ export default function AutoCaptionEditor({
             .sort((a, b) => a.zIndex - b.zIndex),
     [activeClipId, captions]
   );
+  const visibleActiveCaptions = useMemo(
+    () =>
+      activeCaptions.filter((caption) => {
+        if (!isAutoSpeechCaption(caption)) return true;
+        if (caption.placement.type !== 'CLIP') return true;
+        const startMs = caption.placement.startMs;
+        const endMs = caption.placement.endMs;
+        if (typeof startMs !== 'number' || typeof endMs !== 'number') {
+          return true;
+        }
+        return playbackMs >= startMs && playbackMs < endMs;
+      }),
+    [activeCaptions, playbackMs]
+  );
   const resultByClip = useMemo(
     () => new Map((job?.clips ?? []).map((result) => [result.clipId, result])),
+    [job?.clips]
+  );
+  const jobWordsByClip = useMemo(
+    () =>
+      new Map(
+        (job?.clips ?? [])
+          .filter((result) => result.status === 'COMPLETED' && result.words)
+          .map((result) => [result.clipId, result.words!])
+      ),
     [job?.clips]
   );
   const unresolvedStaleIds = staleClipIds.filter(
@@ -157,53 +273,352 @@ export default function AutoCaptionEditor({
   );
 
   useEffect(() => {
-    const key = `reelstamp:auto-caption-prompt:${sessionId}`;
-    const timer = window.setTimeout(() => {
-      if (
-        isRegisteredUser &&
-        autoCaptionAvailable &&
-        !job &&
-        !isProcessing &&
-        sessionStorage.getItem(key) !== 'seen'
-      ) {
-        setShowPrompt(true);
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [autoCaptionAvailable, isProcessing, isRegisteredUser, job, sessionId]);
+    if (!job || !TERMINAL_AUTO_CAPTION_STATUSES.has(job.status)) return;
+
+    let cancelled = false;
+    void waitForCaptionFontReady().then(() => {
+      if (cancelled) return;
+      setCaptions((current) => {
+        const next = [...current];
+        let changed = false;
+
+        (job.clips ?? []).forEach((result) => {
+          if (
+            result.status !== 'COMPLETED' ||
+            result.stale ||
+            !result.words ||
+            result.words.length === 0
+          ) {
+            return;
+          }
+
+          const existingClipCaptions = next.filter(
+            (caption) =>
+              caption.placement.type === 'CLIP' &&
+              caption.placement.clipId === result.clipId
+          );
+          if (existingClipCaptions.some(isAutoSpeechCaption)) return;
+
+          const nextZIndex =
+            existingClipCaptions.reduce(
+              (max, caption) => Math.max(max, caption.zIndex),
+              0
+            ) + 1;
+          const chunks = buildAutoCaptionChunks({
+            clipId: result.clipId,
+            words: result.words,
+            style: AUTO_CAPTION_DEFAULT_STYLE,
+            zIndex: nextZIndex,
+            measureText: measureCaptionText,
+          });
+          if (chunks.length === 0) return;
+          next.push(...chunks);
+          changed = true;
+        });
+
+        return changed ? next : current;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [captions, job, measureCaptionText, setCaptions]);
+
+  useEffect(() => {
+    if (!job || !TERMINAL_AUTO_CAPTION_STATUSES.has(job.status)) return;
+    if (jobWordsByClip.size === 0) return;
+
+    setCaptions((current) => {
+      let changed = false;
+      let next = current;
+      const clipIds = Array.from(
+        new Set(
+          current
+            .filter(
+              (caption) =>
+                caption.placement.type === 'CLIP' &&
+                isAutoSpeechCaption(caption)
+            )
+            .map((caption) =>
+              caption.placement.type === 'CLIP' ? caption.placement.clipId : -1
+            )
+            .filter((clipId) => clipId >= 0)
+        )
+      );
+
+      clipIds.forEach((clipId) => {
+        const words = jobWordsByClip.get(clipId);
+        if (!words || words.length === 0) return;
+        const autoCaptions = next.filter(
+          (caption) =>
+            caption.placement.type === 'CLIP' &&
+            caption.placement.clipId === clipId &&
+            isAutoSpeechCaption(caption)
+        );
+        if (autoCaptions.length === 0) return;
+        if (autoCaptions.some(isEditedAutoSpeechCaption)) return;
+
+        const base = autoCaptions[0];
+        const signature = JSON.stringify({
+          jobId: job.jobId,
+          clipId,
+          words: words.length,
+          xRatio: base.style.xRatio,
+          yRatio: base.style.yRatio,
+          scale: base.style.scale,
+          boxed: base.style.boxed,
+          maxWidthPx: base.style.maxWidthPx,
+          maxWidthRatio: base.style.maxWidthRatio,
+        });
+        if (autoCaptionRepackSignatureRef.current.get(clipId) === signature) {
+          return;
+        }
+
+        const minZIndex = autoCaptions.reduce(
+          (min, caption) => Math.min(min, caption.zIndex),
+          autoCaptions[0].zIndex
+        );
+        const rebuilt = buildAutoCaptionChunks({
+          clipId,
+          words,
+          style: base.style,
+          zIndex: minZIndex,
+          measureText: measureCaptionText,
+        });
+        const same =
+          rebuilt.length === autoCaptions.length &&
+          rebuilt.every((caption, index) => {
+            const currentCaption = autoCaptions[index];
+            return (
+              currentCaption.id === caption.id &&
+              currentCaption.text === caption.text &&
+              currentCaption.placement.type === 'CLIP' &&
+              caption.placement.type === 'CLIP' &&
+              currentCaption.placement.startMs === caption.placement.startMs &&
+              currentCaption.placement.endMs === caption.placement.endMs &&
+              currentCaption.style.scale === caption.style.scale &&
+              currentCaption.style.boxed === caption.style.boxed
+            );
+          });
+        autoCaptionRepackSignatureRef.current.set(clipId, signature);
+        if (same) return;
+
+        const rebuiltIds = new Set(autoCaptions.map((caption) => caption.id));
+        next = [
+          ...next.filter((caption) => !rebuiltIds.has(caption.id)),
+          ...rebuilt,
+        ].sort((a, b) => a.zIndex - b.zIndex);
+        changed = true;
+      });
+
+      return changed ? next : current;
+    });
+  }, [captions, job, jobWordsByClip, measureCaptionText, setCaptions]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.currentTime = 0;
-    if (isPlaying) void video.play().catch(() => setIsPlaying(false));
-  }, [activeCutIndex, isPlaying]);
+    const pendingSeek = pendingSeekRef.current;
+    const targetMs =
+      pendingSeek && pendingSeek.cutIndex === activeCutIndex
+        ? pendingSeek.localMs
+        : 0;
+    video.currentTime = targetMs / 1000;
+    if (pendingSeek && pendingSeek.cutIndex === activeCutIndex) {
+      if (pendingSeek.shouldPlay) {
+        void video.play().catch(() => setIsPlaying(false));
+      }
+      pendingSeekRef.current = null;
+    }
+  }, [activeCutIndex]);
 
-  const markPromptSeen = () => {
-    sessionStorage.setItem(`reelstamp:auto-caption-prompt:${sessionId}`, 'seen');
-    setShowPrompt(false);
+  const resolveGlobalPlayback = (targetGlobalMs: number) => {
+    const clampedGlobalMs = clampTimelineMs(targetGlobalMs, totalDurationMs);
+    if (timelineSegments.length === 0) {
+      return { cutIndex: 0, localMs: 0 };
+    }
+
+    const segment =
+      timelineSegments.find(
+        (item) =>
+          clampedGlobalMs >= item.startMs && clampedGlobalMs < item.endMs
+      ) ?? timelineSegments.at(-1)!;
+    const localMs =
+      segment.durationMs <= 0
+        ? 0
+        : clampTimelineMs(clampedGlobalMs - segment.startMs, segment.durationMs);
+    return { cutIndex: segment.index, localMs };
+  };
+
+  const seekToCut = (
+    cutIndex: number,
+    localMs: number = 0,
+    shouldPlay: boolean = isPlaying
+  ) => {
+    const safeCutIndex = Math.max(0, Math.min(cuts.length - 1, cutIndex));
+    const durationMs = clipDurationsMs[safeCutIndex] ?? 0;
+    const safeLocalMs = clampTimelineMs(localMs, durationMs);
+    pendingSeekRef.current = {
+      cutIndex: safeCutIndex,
+      localMs: safeLocalMs,
+      shouldPlay,
+    };
+    setPlaybackPosition({ cutIndex: safeCutIndex, ms: safeLocalMs });
+    setActiveCutIndex(safeCutIndex);
+
+    const video = videoRef.current;
+    if (video && safeCutIndex === activeCutIndex) {
+      video.currentTime = safeLocalMs / 1000;
+      if (shouldPlay) {
+        void video.play().catch(() => setIsPlaying(false));
+      } else if (!video.paused) {
+        video.pause();
+      }
+      pendingSeekRef.current = null;
+    }
+  };
+
+  const seekToGlobalMs = (
+    targetGlobalMs: number,
+    shouldPlay: boolean = isPlaying
+  ) => {
+    const target = resolveGlobalPlayback(targetGlobalMs);
+    seekToCut(target.cutIndex, target.localMs, shouldPlay);
+  };
+
+  const getTimelinePointerMs = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    const rect = timelineRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || totalDurationMs <= 0) return null;
+    const ratio = (event.clientX - rect.left) / rect.width;
+    return clampTimelineMs(ratio * totalDurationMs, totalDurationMs);
+  };
+
+  const handleTimelinePointerDown = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    const targetMs = getTimelinePointerMs(event);
+    if (targetMs == null) return;
+    event.preventDefault();
+    timelineScrubbingRef.current = true;
+    setIsTimelineScrubbing(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    seekToGlobalMs(targetMs, isPlaying);
+  };
+
+  const handleTimelinePointerMove = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    if (!timelineScrubbingRef.current) return;
+    const targetMs = getTimelinePointerMs(event);
+    if (targetMs == null) return;
+    seekToGlobalMs(targetMs, isPlaying);
+  };
+
+  const stopTimelineScrubbing = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    timelineScrubbingRef.current = false;
+    setIsTimelineScrubbing(false);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   const startAutoCaption = async (regenerate = false) => {
-    if (
-      regenerate &&
-      !window.confirm(
-        '기존 음성인식 자막만 새 결과로 교체합니다. 템플릿/사용자 자막은 유지됩니다.'
-      )
-    ) {
-      return;
+    if (regenerate) {
+      const hasEditedAutoCaptions = captions.some(isEditedAutoSpeechCaption);
+      const message = hasEditedAutoCaptions
+        ? '편집한 음성인식 자막이 새 결과로 교체됩니다. 템플릿/사용자 자막은 유지됩니다.'
+        : '기존 음성인식 자막만 새 결과로 교체합니다. 템플릿/사용자 자막은 유지됩니다.';
+      if (!window.confirm(message)) return;
     }
-    markPromptSeen();
     await onStartAutoCaption();
+    if (regenerate) {
+      setCaptions((current) =>
+        current.filter((caption) => !isAutoSpeechCaption(caption))
+      );
+      if (
+        selectedCaptionId &&
+        captions.some(
+          (caption) =>
+            caption.id === selectedCaptionId && isAutoSpeechCaption(caption)
+        )
+      ) {
+        setSelectedCaptionId(null);
+      }
+      setEditingCaptionId(null);
+    }
   };
 
   const updateCaptionText = (captionId: string, text: string) => {
     if (isProcessing) return;
+    const target = captions.find((caption) => caption.id === captionId);
+    const promoted =
+      target && isAutoSpeechCaption(target)
+        ? promoteAutoSpeechCaptionForEdit(target)
+        : target;
+    const nextCaptionId = promoted?.id ?? captionId;
     setCaptions((current) =>
       current.map((caption) =>
-        caption.id === captionId ? { ...caption, text } : caption
+        caption.id === captionId
+          ? {
+              ...promoteAutoSpeechCaptionForEdit(caption),
+              text,
+            }
+          : caption
       )
     );
+    if (nextCaptionId !== captionId) {
+      if (selectedCaptionId === captionId) setSelectedCaptionId(nextCaptionId);
+      if (editingCaptionId === captionId) setEditingCaptionId(nextCaptionId);
+    }
+  };
+
+  const updateAutoCaptionTiming = (
+    captionId: string,
+    field: 'startMs' | 'endMs',
+    value: string
+  ) => {
+    if (isProcessing) return;
+    const parsedSeconds = Number(value);
+    if (!Number.isFinite(parsedSeconds)) return;
+    const parsedMs = Math.max(0, Math.round(parsedSeconds * 1000));
+    const target = captions.find((caption) => caption.id === captionId);
+    const promoted =
+      target && isAutoSpeechCaption(target)
+        ? promoteAutoSpeechCaptionForEdit(target)
+        : target;
+    const nextCaptionId = promoted?.id ?? captionId;
+
+    setCaptions((current) =>
+      current.map((caption) => {
+        if (caption.id !== captionId || caption.placement.type !== 'CLIP') {
+          return caption;
+        }
+        const nextCaption = promoteAutoSpeechCaptionForEdit(caption);
+        const currentStartMs = nextCaption.placement.startMs ?? 0;
+        const currentEndMs = nextCaption.placement.endMs ?? currentStartMs + 100;
+        const nextStartMs =
+          field === 'startMs' ? Math.min(parsedMs, currentEndMs - 100) : currentStartMs;
+        const nextEndMs =
+          field === 'endMs' ? Math.max(parsedMs, currentStartMs + 100) : currentEndMs;
+        return {
+          ...nextCaption,
+          placement: {
+            ...nextCaption.placement,
+            startMs: Math.max(0, nextStartMs),
+            endMs: Math.max(100, nextEndMs),
+          },
+        };
+      })
+    );
+    if (nextCaptionId !== captionId) {
+      if (selectedCaptionId === captionId) setSelectedCaptionId(nextCaptionId);
+      if (editingCaptionId === captionId) setEditingCaptionId(nextCaptionId);
+    }
   };
 
   const deleteCaption = (captionId: string) => {
@@ -248,16 +663,18 @@ export default function AutoCaptionEditor({
   };
 
   const movePlayback = (direction: -1 | 1) => {
-    setActiveCutIndex((current) =>
-      Math.max(0, Math.min(cuts.length - 1, current + direction))
-    );
+    seekToCut(activeCutIndex + direction, 0, isPlaying);
   };
 
   const handleEnded = () => {
     if (activeCutIndex < cuts.length - 1) {
-      setActiveCutIndex(activeCutIndex + 1);
+      seekToCut(activeCutIndex + 1, 0, true);
       return;
     }
+    setPlaybackPosition({
+      cutIndex: activeCutIndex,
+      ms: clipDurationsMs[activeCutIndex] ?? playbackMs,
+    });
     setIsPlaying(false);
   };
 
@@ -307,6 +724,35 @@ export default function AutoCaptionEditor({
                 className="absolute inset-0 h-full w-full object-cover"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
+                onLoadedMetadata={(event) => {
+                  const pendingSeek = pendingSeekRef.current;
+                  const targetMs =
+                    pendingSeek && pendingSeek.cutIndex === activeCutIndex
+                      ? pendingSeek.localMs
+                      : playbackPosition.cutIndex === activeCutIndex
+                        ? playbackPosition.ms
+                        : 0;
+                  event.currentTarget.currentTime = targetMs / 1000;
+                  setPlaybackPosition({ cutIndex: activeCutIndex, ms: targetMs });
+                  if (pendingSeek && pendingSeek.cutIndex === activeCutIndex) {
+                    if (pendingSeek.shouldPlay) {
+                      void event.currentTarget
+                        .play()
+                        .catch(() => setIsPlaying(false));
+                    }
+                    pendingSeekRef.current = null;
+                  }
+                }}
+                onTimeUpdate={(event) => {
+                  const durationMs = clipDurationsMs[activeCutIndex] ?? 0;
+                  setPlaybackPosition({
+                    cutIndex: activeCutIndex,
+                    ms: clampTimelineMs(
+                      Math.round(event.currentTarget.currentTime * 1000),
+                      durationMs
+                    ),
+                  });
+                }}
                 onEnded={handleEnded}
               />
             ) : (
@@ -314,9 +760,9 @@ export default function AutoCaptionEditor({
                 영상을 불러오는 중입니다.
               </div>
             )}
-            {captionsEnabled && activeCaptions.length > 0 && (
+            {captionsEnabled && visibleActiveCaptions.length > 0 && (
               <CaptionOverlayStage
-                captions={activeCaptions}
+                captions={visibleActiveCaptions}
                 selectedCaptionId={selectedCaptionId}
                 editingCaptionId={editingCaptionId}
                 previewScale={captionPreviewScale}
@@ -353,6 +799,55 @@ export default function AutoCaptionEditor({
                   }`}
                 />
               </button>
+            </div>
+          </div>
+
+          <div className="mx-auto mt-3 max-w-[390px] rounded-2xl bg-white px-4 py-3 shadow-sm">
+            <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-500">
+              <span>{formatTimelineMs(globalPlaybackMs)}</span>
+              <span>{formatTimelineMs(totalDurationMs)}</span>
+            </div>
+            <div
+              ref={timelineRef}
+              role="slider"
+              tabIndex={0}
+              aria-label="전체 미리보기 타임라인"
+              aria-valuemin={0}
+              aria-valuemax={Math.round(totalDurationMs)}
+              aria-valuenow={Math.round(globalPlaybackMs)}
+              onPointerDown={handleTimelinePointerDown}
+              onPointerMove={handleTimelinePointerMove}
+              onPointerUp={stopTimelineScrubbing}
+              onPointerCancel={stopTimelineScrubbing}
+              className={`relative h-6 cursor-pointer touch-none ${
+                totalDurationMs <= 0 ? 'pointer-events-none opacity-40' : ''
+              }`}
+            >
+              <div className="absolute left-0 right-0 top-1/2 h-2 -translate-y-1/2 rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-blue-600"
+                  style={{ width: `${timelineProgressPercent}%` }}
+                />
+              </div>
+              {timelineSegments.slice(1).map((segment) => (
+                <span
+                  key={segment.index}
+                  className="absolute top-1/2 h-3 w-px -translate-y-1/2 bg-white/80"
+                  style={{
+                    left: `${
+                      totalDurationMs > 0
+                        ? (segment.startMs / totalDurationMs) * 100
+                        : 0
+                    }%`,
+                  }}
+                />
+              ))}
+              <span
+                className={`absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-600 shadow transition ${
+                  isTimelineScrubbing ? 'scale-110' : ''
+                }`}
+                style={{ left: `${timelineProgressPercent}%` }}
+              />
             </div>
           </div>
 
@@ -409,7 +904,9 @@ export default function AutoCaptionEditor({
               <button
                 type="button"
                 disabled={isProcessing || remainingAttempts <= 0}
-                onClick={() => void startAutoCaption(Boolean(job))}
+                onClick={() =>
+                  void startAutoCaption(Boolean(job) || captions.some(isAutoSpeechCaption))
+                }
                 className="flex items-center gap-2 rounded-full border border-blue-500 px-4 py-2 text-sm font-bold text-blue-600 disabled:opacity-40"
               >
                 {isProcessing ? (
@@ -417,7 +914,9 @@ export default function AutoCaptionEditor({
                 ) : (
                   <Mic className="h-4 w-4" />
                 )}
-                {job ? '다시 생성' : '음성으로 만들기'} ({remainingAttempts})
+                {job || captions.some(isAutoSpeechCaption)
+                  ? '다시 생성'
+                  : '음성으로 만들기'} ({remainingAttempts})
               </button>
             ) : (
               <a
@@ -463,9 +962,11 @@ export default function AutoCaptionEditor({
                     caption.placement.clipId === clipId
                 )
                 .sort((a, b) => a.zIndex - b.zIndex);
-              const overlayCaptionCount = clipCaptions.filter(
+              const autoCaptions = clipCaptions.filter(isAutoSpeechCaption);
+              const overlayCaptions = clipCaptions.filter(
                 (caption) => !isAutoSpeechCaption(caption)
-              ).length;
+              );
+              const overlayCaptionCount = overlayCaptions.length;
               const result = resultByClip.get(clipId);
               const stale = staleClipIds.includes(clipId);
               return (
@@ -476,13 +977,13 @@ export default function AutoCaptionEditor({
                       ? 'border-blue-500 ring-2 ring-blue-100'
                       : 'border-slate-200'
                   }`}
-                  onClick={() => setActiveCutIndex(index)}
+                  onClick={() => seekToCut(index, 0, isPlaying)}
                 >
                   <div className="flex gap-3">
                     <button
                       type="button"
                       className="h-20 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-200"
-                      onClick={() => setActiveCutIndex(index)}
+                      onClick={() => seekToCut(index, 0, isPlaying)}
                     >
                       {clipPosters[index] ? (
                         <img
@@ -526,52 +1027,140 @@ export default function AutoCaptionEditor({
                           </button>
                         </div>
                       ) : (
-                        clipCaptions.map((caption) => (
-                          <div key={caption.id} className="flex items-start gap-2">
-                            <div className="min-w-0 flex-1">
-                              <div className="mb-1 flex items-center gap-1">
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                                    isAutoSpeechCaption(caption)
-                                      ? 'bg-blue-50 text-blue-600'
-                                      : 'bg-slate-100 text-slate-500'
-                                  }`}
-                                >
-                                  {isAutoSpeechCaption(caption)
-                                    ? '음성인식'
-                                    : caption.source === 'TEMPLATE'
+                        <>
+                          {overlayCaptions.map((caption) => (
+                            <div key={caption.id} className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="mb-1 flex items-center gap-1">
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                                    {caption.source === 'TEMPLATE'
                                       ? '기본 자막'
                                       : '사용자 자막'}
-                                </span>
+                                  </span>
+                                </div>
+                                <textarea
+                                  value={caption.text}
+                                  onFocus={() => {
+                                    seekToCut(index, 0, isPlaying);
+                                    setSelectedCaptionId(caption.id);
+                                  }}
+                                  onChange={(event) =>
+                                    updateCaptionText(caption.id, event.target.value)
+                                  }
+                                  disabled={isProcessing}
+                                  rows={Math.max(1, caption.text.split('\n').length)}
+                                  className="min-h-10 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50"
+                                />
                               </div>
-                              <textarea
-                                value={caption.text}
-                                onFocus={() => {
-                                  setActiveCutIndex(index);
-                                  setSelectedCaptionId(caption.id);
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  deleteCaption(caption.id);
                                 }}
-                                onChange={(event) =>
-                                  updateCaptionText(caption.id, event.target.value)
-                                }
                                 disabled={isProcessing}
-                                rows={Math.max(1, caption.text.split('\n').length)}
-                                className="min-h-10 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50"
-                              />
+                                className="p-2 text-slate-400 hover:text-rose-600 disabled:opacity-30"
+                                aria-label="자막 삭제"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                deleteCaption(caption.id);
-                              }}
-                              disabled={isProcessing}
-                              className="p-2 text-slate-400 hover:text-rose-600 disabled:opacity-30"
-                              aria-label="자막 삭제"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ))
+                          ))}
+                          {autoCaptions.length > 0 && (
+                            <details className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                              <summary className="cursor-pointer text-sm font-bold text-blue-700">
+                                음성인식 자막 {autoCaptions.length}개 청크
+                              </summary>
+                              <div className="mt-3 space-y-3">
+                                {autoCaptions.map((caption) => (
+                                  <div
+                                    key={caption.id}
+                                    className="rounded-xl bg-white p-2"
+                                  >
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600">
+                                        음성인식
+                                      </span>
+                                      <span className="text-[11px] text-slate-400">
+                                        {caption.placement.type === 'CLIP'
+                                          ? formatTimeRangeMs(
+                                              caption.placement.startMs,
+                                              caption.placement.endMs
+                                            )
+                                          : ''}
+                                      </span>
+                                    </div>
+                                    <textarea
+                                      value={caption.text}
+                                      onFocus={() => {
+                                        seekToCut(index, 0, isPlaying);
+                                        setSelectedCaptionId(caption.id);
+                                      }}
+                                      onChange={(event) =>
+                                        updateCaptionText(
+                                          caption.id,
+                                          event.target.value
+                                        )
+                                      }
+                                      disabled={isProcessing}
+                                      rows={Math.max(
+                                        1,
+                                        caption.text.split('\n').length
+                                      )}
+                                      className="min-h-10 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50"
+                                    />
+                                    {caption.placement.type === 'CLIP' && (
+                                      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-500">
+                                        <label>
+                                          시작(s)
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="0.1"
+                                            value={(
+                                              (caption.placement.startMs ?? 0) /
+                                              1000
+                                            ).toFixed(1)}
+                                            onChange={(event) =>
+                                              updateAutoCaptionTiming(
+                                                caption.id,
+                                                'startMs',
+                                                event.target.value
+                                              )
+                                            }
+                                            disabled={isProcessing}
+                                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 disabled:bg-slate-50"
+                                          />
+                                        </label>
+                                        <label>
+                                          종료(s)
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="0.1"
+                                            value={(
+                                              (caption.placement.endMs ?? 0) /
+                                              1000
+                                            ).toFixed(1)}
+                                            onChange={(event) =>
+                                              updateAutoCaptionTiming(
+                                                caption.id,
+                                                'endMs',
+                                                event.target.value
+                                              )
+                                            }
+                                            disabled={isProcessing}
+                                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1 disabled:bg-slate-50"
+                                          />
+                                        </label>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
+                          )}
+                        </>
                       )}
                       {clipCaptions.length > 0 &&
                         overlayCaptionCount < MAX_CAPTIONS_PER_CLIP && (
@@ -597,34 +1186,6 @@ export default function AutoCaptionEditor({
         </section>
       </main>
 
-      {showPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
-            <Mic className="mb-3 h-8 w-8 text-blue-600" />
-            <h2 className="text-xl font-bold">음성으로 자막을 만들까요?</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              촬영한 영상의 오디오가 음성인식 서비스로 전송됩니다. 생성된
-              자막은 컷별로 직접 수정할 수 있습니다.
-            </p>
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={markPromptSeen}
-                className="rounded-full border border-slate-300 py-3 text-sm font-bold"
-              >
-                나중에
-              </button>
-              <button
-                type="button"
-                onClick={() => void startAutoCaption(false)}
-                className="rounded-full bg-blue-600 py-3 text-sm font-bold text-white"
-              >
-                지금 만들기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

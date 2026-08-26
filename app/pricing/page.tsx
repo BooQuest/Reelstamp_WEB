@@ -3,7 +3,7 @@
 
 import { getCurrentUser } from '@/app/lib/api/auth';
 import { getSubscriptionStatusAction } from '@/app/actions/auth';
-import { freePlanFeatures, basicPlanFeatures, proPlanFeatures, masterPlanFeatures, freePlanEventBenefit, basicPlanEventBenefit } from '@/app/lib/constants/plans';
+import { freePlanFeatures, basicPlanFeatures, proPlanFeatures, masterPlanFeatures, freePlanEventBenefit, basicPlanEventBenefit, PRICING_BETA_NOTICE } from '@/app/lib/constants/plans';
 import PlanCard from '@/app/components/ui/PlanCard';
 import PricingPlanCard from '@/app/components/ui/PricingPlanCard';
 
@@ -36,94 +36,112 @@ export default async function PricingPage() {
           </h1>
         </div>
 
-        {/* 플랜 카드 컨테이너 */}
-        <div className="flex flex-col lg:flex-row justify-center items-stretch gap-6 lg:gap-8">
-          {/* Free 플랜 카드 */}
-          <PlanCard
-            planName="Free"
-            price="₩0"
-            features={freePlanFeatures}
-            eventBenefit={freePlanEventBenefit}
-            buttonType="link"
-            buttonText="무료 플랜 시작하기"
-            buttonHref={isAuthenticated ? '/contents/script-creation' : '/login'}
-            hideButton={true}
-            buttonClassName="bg-gray-700 text-white hover:bg-gray-800"
-          />
+        <div className="relative overflow-hidden rounded-[28px]">
+          {/* 플랜 카드 컨테이너 */}
+          <div className="pointer-events-none flex select-none flex-col items-stretch justify-center gap-6 opacity-35 blur-[5px] grayscale lg:flex-row lg:gap-8">
+            {/* Free 플랜 카드 */}
+            <PlanCard
+              planName="Free"
+              price="₩0"
+              features={freePlanFeatures}
+              eventBenefit={freePlanEventBenefit}
+              buttonType="link"
+              buttonText="무료 플랜 시작하기"
+              buttonHref={isAuthenticated ? '/contents/script-creation' : '/login'}
+              hideButton={true}
+              buttonClassName="bg-gray-700 text-white hover:bg-gray-800"
+            />
 
-          {/* Basic 플랜 카드 */}
-          <PricingPlanCard
-            planId="basic"
-            planName="Basic"
-            price="₩4,900"
-            priceNumber={1000}
-            discountInfo={{
-              percentage: '75%',
-              originalPrice: '19,900원',
-            }}
-            features={basicPlanFeatures}
-            eventBenefit={basicPlanEventBenefit}
-            isAuthenticated={isAuthenticated}
-            isCurrentPlan={isAuthenticated && currentPlanCode === 'basic' && isActive}
-            isDisabled={true}
-            blurDetails={true}
-            buttonText={
-              isAuthenticated && currentPlanCode === 'basic' && isActive 
-                ? '현재 플랜' 
-                : isPaidSubscription 
-                  ? '플랜 변경' 
-                  : '구독하기'
-            }
-          />
+            {/* Basic 플랜 카드 */}
+            <PricingPlanCard
+              planId="basic"
+              planName="Basic"
+              price="₩4,900"
+              priceNumber={1000}
+              discountInfo={{
+                percentage: '75%',
+                originalPrice: '19,900원',
+              }}
+              features={basicPlanFeatures}
+              eventBenefit={basicPlanEventBenefit}
+              isAuthenticated={isAuthenticated}
+              isCurrentPlan={isAuthenticated && currentPlanCode === 'basic' && isActive}
+              isDisabled={true}
+              blurDetails={true}
+              buttonText={
+                isAuthenticated && currentPlanCode === 'basic' && isActive
+                  ? '현재 플랜'
+                  : isPaidSubscription
+                    ? '플랜 변경'
+                    : '구독하기'
+              }
+            />
 
-          {/* Pro 플랜 카드 */}
-          <PricingPlanCard
-            planId="pro"
-            planName="Pro"
-            price="₩9,900"
-            priceNumber={9900}
-            discountInfo={{
-              percentage: '80%',
-              originalPrice: '49,900원',
-            }}
-            features={proPlanFeatures}
-            isPopular={true}
-            isAuthenticated={isAuthenticated}
-            isCurrentPlan={isAuthenticated && currentPlanCode === 'pro' && isActive}
-            isDisabled={true}
-            blurDetails={true}
-            buttonText={
-              isAuthenticated && currentPlanCode === 'pro' && isActive 
-                ? '현재 플랜' 
-                : isPaidSubscription 
-                  ? '플랜 변경' 
-                  : '구독하기'
-            }
-          />
+            {/* Pro 플랜 카드 */}
+            <PricingPlanCard
+              planId="pro"
+              planName="Pro"
+              price="₩9,900"
+              priceNumber={9900}
+              discountInfo={{
+                percentage: '80%',
+                originalPrice: '49,900원',
+              }}
+              features={proPlanFeatures}
+              isPopular={true}
+              isAuthenticated={isAuthenticated}
+              isCurrentPlan={isAuthenticated && currentPlanCode === 'pro' && isActive}
+              isDisabled={true}
+              blurDetails={true}
+              buttonText={
+                isAuthenticated && currentPlanCode === 'pro' && isActive
+                  ? '현재 플랜'
+                  : isPaidSubscription
+                    ? '플랜 변경'
+                    : '구독하기'
+              }
+            />
 
-          {/* Master 플랜 카드 */}
-          <PricingPlanCard
-            planId="master"
-            planName="Master"
-            price="₩49,900"
-            priceNumber={49900}
-            discountInfo={{
-              percentage: '75%',
-              originalPrice: '199,900원',
-            }}
-            features={masterPlanFeatures}
-            isAuthenticated={isAuthenticated}
-            isCurrentPlan={isAuthenticated && currentPlanCode === 'master' && isActive}
-            isDisabled={true}
-            blurDetails={true}
-            buttonText={
-              isAuthenticated && currentPlanCode === 'master' && isActive 
-                ? '현재 플랜' 
-                : isPaidSubscription 
-                  ? '플랜 변경' 
-                  : '구독하기'
-            }
-          />
+            {/* Master 플랜 카드 */}
+            <PricingPlanCard
+              planId="master"
+              planName="Master"
+              price="₩49,900"
+              priceNumber={49900}
+              discountInfo={{
+                percentage: '75%',
+                originalPrice: '199,900원',
+              }}
+              features={masterPlanFeatures}
+              isAuthenticated={isAuthenticated}
+              isCurrentPlan={isAuthenticated && currentPlanCode === 'master' && isActive}
+              isDisabled={true}
+              blurDetails={true}
+              buttonText={
+                isAuthenticated && currentPlanCode === 'master' && isActive
+                  ? '현재 플랜'
+                  : isPaidSubscription
+                    ? '플랜 변경'
+                    : '구독하기'
+              }
+            />
+          </div>
+
+          <div className="pointer-events-none absolute inset-0 z-[5] bg-gray-200/70" />
+
+          <div className="absolute inset-0 z-10 flex items-start justify-center px-4 pt-10 sm:pt-14 lg:items-center lg:pt-0">
+            <div className="w-full max-w-[560px] rounded-3xl border border-[#FFD4DD] bg-white/95 px-6 py-7 text-center shadow-2xl shadow-[#FF496D]/10 backdrop-blur sm:px-8 sm:py-8">
+              <p className="text-2xl font-extrabold leading-tight text-[#373A46] sm:text-3xl">
+                {PRICING_BETA_NOTICE.title}
+              </p>
+              <p className="mt-4 text-base font-semibold leading-7 text-gray-700 sm:text-lg">
+                {PRICING_BETA_NOTICE.description}
+              </p>
+              <p className="mt-3 text-sm font-medium leading-6 text-[#FF496D] sm:text-base">
+                {PRICING_BETA_NOTICE.supportingText}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

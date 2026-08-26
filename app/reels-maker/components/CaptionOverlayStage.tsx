@@ -1,12 +1,13 @@
 'use client';
 
+import { useRef } from 'react';
 import type {
   MutableRefObject,
   PointerEvent as ReactPointerEvent,
 } from 'react';
 import {
   CAPTION_BASE_FONT_SIZE_PX,
-  CAPTION_BOX_BACKGROUND_OPACITY,
+  CAPTION_BOX_BACKGROUND_COLOR,
   CAPTION_BOX_BORDER_RADIUS_PX,
   CAPTION_BOX_PADDING_X_PX,
   CAPTION_BOX_PADDING_Y_PX,
@@ -30,6 +31,15 @@ import {
   CAPTION_WORD_BREAK,
 } from '../constants';
 import type { CaptionItem } from '../types';
+
+const CAPTION_TAP_MOVE_TOLERANCE_PX = 6;
+
+type CaptionPointerIntent = {
+  captionId: string;
+  startX: number;
+  startY: number;
+  moved: boolean;
+};
 
 type Props = {
   captions: CaptionItem[];
@@ -73,6 +83,15 @@ export default function CaptionOverlayStage({
   onResizePointerMove,
   onResizePointerEnd,
 }: Props) {
+  const pointerIntentRef = useRef<CaptionPointerIntent | null>(null);
+  const suppressedClickCaptionIdRef = useRef<string | null>(null);
+
+  const shouldSuppressClick = (captionId: string) => {
+    if (suppressedClickCaptionIdRef.current !== captionId) return false;
+    suppressedClickCaptionIdRef.current = null;
+    return true;
+  };
+
   return (
     <div
       ref={stageRef}
@@ -89,6 +108,10 @@ export default function CaptionOverlayStage({
         const isEditing = !readOnly && caption.id === editingCaptionId;
         const hasText = caption.text.trim().length > 0;
         const style = caption.style;
+        const anchorTransform =
+          style.anchorY === 'BOTTOM'
+            ? 'translate(-50%, -100%)'
+            : 'translate(-50%, -50%)';
 
         return (
           <div
@@ -97,6 +120,7 @@ export default function CaptionOverlayStage({
             onClick={(event) => {
               event.stopPropagation();
               if (readOnly) return;
+              if (shouldSuppressClick(caption.id)) return;
               if (isSelected) onEdit(caption.id);
               else {
                 onSelect(caption.id);
@@ -104,24 +128,56 @@ export default function CaptionOverlayStage({
               }
             }}
             onPointerDown={(event) => {
-              if (!readOnly) onCaptionPointerDown(event, caption);
+              if (readOnly) return;
+              suppressedClickCaptionIdRef.current = null;
+              pointerIntentRef.current = {
+                captionId: caption.id,
+                startX: event.clientX,
+                startY: event.clientY,
+                moved: false,
+              };
+              onCaptionPointerDown(event, caption);
             }}
             onPointerMove={(event) => {
-              if (!readOnly) onCaptionPointerMove(event);
+              if (readOnly) return;
+              const pointerIntent = pointerIntentRef.current;
+              if (pointerIntent) {
+                const distance = Math.hypot(
+                  event.clientX - pointerIntent.startX,
+                  event.clientY - pointerIntent.startY
+                );
+                if (distance > CAPTION_TAP_MOVE_TOLERANCE_PX) {
+                  pointerIntent.moved = true;
+                }
+              }
+              onCaptionPointerMove(event);
             }}
             onPointerUp={(event) => {
-              if (!readOnly) onCaptionPointerEnd(event);
+              if (readOnly) return;
+              const pointerIntent = pointerIntentRef.current;
+              if (pointerIntent) {
+                if (pointerIntent.moved) {
+                  suppressedClickCaptionIdRef.current = pointerIntent.captionId;
+                }
+                pointerIntentRef.current = null;
+              }
+              onCaptionPointerEnd(event);
             }}
             onPointerCancel={(event) => {
-              if (!readOnly) onCaptionPointerEnd(event);
+              if (readOnly) return;
+              const pointerIntent = pointerIntentRef.current;
+              if (pointerIntent) {
+                pointerIntentRef.current = null;
+              }
+              onCaptionPointerEnd(event);
             }}
             className="pointer-events-auto absolute select-none"
             style={{
               left: `${style.xRatio * CAPTION_RENDER_WIDTH}px`,
               top: `${style.yRatio * CAPTION_RENDER_HEIGHT}px`,
-              transform: 'translate(-50%, -50%)',
+              transform: anchorTransform,
               zIndex: caption.zIndex,
-              maxWidth: `${CAPTION_MAX_WIDTH_PX}px`,
+              maxWidth: `${style.maxWidthPx ?? CAPTION_MAX_WIDTH_PX}px`,
               touchAction: 'none',
               cursor: readOnly ? 'default' : isEditing ? 'text' : 'move',
               color: CAPTION_TEXT_COLOR,
@@ -140,7 +196,7 @@ export default function CaptionOverlayStage({
                 : '0px',
               borderRadius: `${CAPTION_BOX_BORDER_RADIUS_PX * style.scale}px`,
               backgroundColor: style.boxed
-                ? `rgba(0, 0, 0, ${CAPTION_BOX_BACKGROUND_OPACITY})`
+                ? CAPTION_BOX_BACKGROUND_COLOR
                 : 'transparent',
               boxShadow: style.boxed
                 ? `0 ${CAPTION_SHADOW_OFFSET_Y_PX * style.scale}px ${

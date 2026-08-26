@@ -8,22 +8,26 @@ type TemplateMediaPreviewProps = {
   title: string;
   thumbnailUrl?: string | null;
   embedUrl?: string | null;
+  instagramOnly?: boolean;
   imageClassName?: string;
   embedClassName?: string;
   fallbackClassName?: string;
   disableEmbedInteraction?: boolean;
   preferEmbed?: boolean;
+  onPlaybackFallbackVisibilityChange?: (isVisible: boolean) => void;
 };
 
 export default function TemplateMediaPreview({
   title,
   thumbnailUrl,
   embedUrl,
+  instagramOnly = false,
   imageClassName = '',
   embedClassName = '',
   fallbackClassName = '',
   disableEmbedInteraction = false,
   preferEmbed = false,
+  onPlaybackFallbackVisibilityChange,
 }: TemplateMediaPreviewProps) {
   const thumbnailSrc = thumbnailUrl?.trim();
   const embedSrc = embedUrl?.trim();
@@ -38,6 +42,9 @@ export default function TemplateMediaPreview({
         <InstagramEmbed
           url={embedSrc}
           className={`h-full w-full rounded-none ${embedClassName}`}
+          instagramOnly={instagramOnly}
+          showPlaybackFallback={!disableEmbedInteraction}
+          onPlaybackFallbackVisibilityChange={onPlaybackFallbackVisibilityChange}
         />
       </div>
     );

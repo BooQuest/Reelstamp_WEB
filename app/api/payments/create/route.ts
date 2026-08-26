@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPayAppRecurringLink } from '@/app/lib/api/payapp';
 import { getCurrentUser } from '@/app/lib/api/auth';
+import { PRICING_BETA_NOTICE, PRICING_LOCKED_FOR_BETA } from '@/app/lib/constants/plans';
 
 /**
  * PayApp 결제 요청 생성 API
@@ -15,6 +16,13 @@ import { getCurrentUser } from '@/app/lib/api/auth';
  */
 export async function POST(request: NextRequest) {
   try {
+    if (PRICING_LOCKED_FOR_BETA) {
+      return NextResponse.json(
+        { success: false, message: PRICING_BETA_NOTICE.lockedMessage },
+        { status: 403 }
+      );
+    }
+
     // 1. 유저 인증 확인
     const user = await getCurrentUser();
     if (!user) {
@@ -148,8 +156,10 @@ export async function POST(request: NextRequest) {
           );
         }
 
-      } catch (billingError: any) {
-        console.error('[Billing Start API Error]', billingError.message);
+      } catch (billingError: unknown) {
+        const billingErrorMessage =
+          billingError instanceof Error ? billingError.message : String(billingError);
+        console.error('[Billing Start API Error]', billingErrorMessage);
         return NextResponse.json(
           {
             success: false,

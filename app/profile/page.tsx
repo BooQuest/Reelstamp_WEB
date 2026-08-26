@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser, type WebApiResponse } from '@/app/lib/api/auth';
+import { buildLoginReturnHref } from '@/app/lib/auth/loginRedirect';
 import { getServerApiClient } from '@/app/lib/api/server-client';
 import ProfileClient from './ProfileClient';
 
@@ -87,7 +88,7 @@ export default async function ProfilePage() {
   const user = await getCurrentUser();
 
   if (!user) {
-    redirect('/login');
+    redirect(buildLoginReturnHref('/profile'));
   }
 
   let stats = EMPTY_PROFILE_STATS;
