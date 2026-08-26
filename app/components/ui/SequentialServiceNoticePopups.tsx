@@ -6,17 +6,15 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type ComponentType,
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, Sparkles, Wrench } from 'lucide-react';
+import { Check } from 'lucide-react';
 
 type ServiceNotice = {
   id: string;
   title: string;
-  icon: ComponentType<{ className?: string }>;
   content: ReactNode;
 };
 
@@ -31,7 +29,6 @@ const TEMPORARY_SERVICE_NOTICES: ServiceNotice[] = [
   {
     id: 'beta-service-period',
     title: '베타 서비스 기간 안내(8/26~9/8)',
-    icon: Sparkles,
     content: (
       <>
         <p>
@@ -51,7 +48,6 @@ const TEMPORARY_SERVICE_NOTICES: ServiceNotice[] = [
   {
     id: 'feature-stabilization',
     title: '일부 기능 안정화 작업 안내',
-    icon: Wrench,
     content: (
       <p>
         현재 자막 편집 기능 및 촬영 화질 개선 작업 진행 중으로 해당 기능 사용 시 원활하지
@@ -166,8 +162,6 @@ export default function SequentialServiceNoticePopups({
     return null;
   }
 
-  const Icon = currentNotice.icon;
-
   return createPortal(
     <AnimatePresence mode="wait">
       <motion.div
@@ -190,20 +184,15 @@ export default function SequentialServiceNoticePopups({
         >
           <div className="h-1.5 bg-gradient-to-r from-[#FF496D] via-[#EB48B1] to-[#F59A39]" />
           <div className="px-6 pb-5 pt-6 sm:px-7 sm:pb-6 sm:pt-7">
-            <div className="flex items-start gap-4">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#FF496D]/10 text-[#FF496D]">
-                <Icon className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h2
-                  id={`service-notice-title-${currentNotice.id}`}
-                  className="text-xl font-extrabold leading-7 text-gray-950 [word-break:keep-all] sm:text-2xl sm:leading-8"
-                >
-                  {currentNotice.title}
-                </h2>
-                <div className="mt-4 space-y-3 text-[15px] leading-7 text-gray-700 [word-break:keep-all]">
-                  {currentNotice.content}
-                </div>
+            <div>
+              <h2
+                id={`service-notice-title-${currentNotice.id}`}
+                className="text-xl font-extrabold leading-7 text-gray-950 [word-break:keep-all] sm:text-2xl sm:leading-8"
+              >
+                {currentNotice.title}
+              </h2>
+              <div className="mt-4 space-y-3 text-[15px] leading-7 text-gray-700 [word-break:keep-all]">
+                {currentNotice.content}
               </div>
             </div>
 

@@ -59,6 +59,8 @@ type TemplateRequestResponse = {
   requestCount: number;
 };
 
+const TODAY_TREND_RECOMMENDATION_LIMIT = 5;
+
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
 
@@ -371,7 +373,10 @@ export default function TemplatesClient() {
     };
   }, []);
 
-  const recommendations = useMemo(() => cards.slice(0, 3), [cards]);
+  const recommendations = useMemo(
+    () => cards.slice(0, TODAY_TREND_RECOMMENDATION_LIMIT),
+    [cards]
+  );
   const activeCard = useMemo(
     () => recommendations[activeIndex] ?? null,
     [recommendations, activeIndex]
