@@ -8,6 +8,7 @@ import Header from "@/app/components/ui/Header";
 import Footer from "@/app/components/ui/Footer";
 import AppToast from "@/app/components/ui/AppToast";
 import GuestNoticeToast from "@/app/components/ui/GuestNoticeToast";
+import SequentialServiceNoticePopups from "@/app/components/ui/SequentialServiceNoticePopups";
 import QueryProvider from "@/app/providers/QueryProvider";
 import { AuthProvider } from "@/app/components/providers/AuthProvider";
 import { getCurrentUser } from "@/app/lib/api/auth";
@@ -80,6 +81,7 @@ export default async function RootLayout({
             </div>
             <AppToast />
             <GuestNoticeToast />
+            <SequentialServiceNoticePopups />
           </AuthProvider>
         </QueryProvider>
 
