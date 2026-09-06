@@ -207,7 +207,7 @@ export default function TemplateGuideModal({
           </button>
         </div>
 
-        <div className="mx-4 mt-5">
+        <div className="mx-4 mt-4">
           <div
             className="mx-auto flex items-center justify-center"
             style={guideNavStyle}
@@ -254,9 +254,9 @@ export default function TemplateGuideModal({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3">
           <div className="relative -mx-4">
-            <div className="relative mx-auto aspect-[9/16] w-full max-w-[220px] overflow-hidden rounded-[20px] bg-black sm:max-w-[230px]">
+            <div className="relative mx-auto aspect-[9/16] w-full max-w-[148px] overflow-hidden rounded-[16px] bg-black sm:max-w-[154px]">
               {cutMedia ? (
                 cutMedia.type === 'image' ? (
                   <>
@@ -306,7 +306,7 @@ export default function TemplateGuideModal({
           </div>
 
           {!cutMedia && exampleReels.length > 1 && currentReel && (
-            <div className="mt-3 flex items-center justify-center gap-2">
+            <div className="mt-2 flex items-center justify-center gap-2">
               {exampleReels.map((reel, index) => (
                 <button
                   key={`${reel.url}-${index}`}
@@ -322,7 +322,7 @@ export default function TemplateGuideModal({
             </div>
           )}
 
-          <div className="mt-5">
+          <div className="mt-4">
             <h3 className="text-base font-bold text-white">{title}</h3>
             <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-white/65">
               {body}

@@ -51,6 +51,10 @@ import useCaptionEditor from '@/app/reels-maker/hooks/useCaptionEditor';
 import useAutoCaption from '@/app/reels-maker/hooks/useAutoCaption';
 import useDraftAutosave from '@/app/reels-maker/hooks/useDraftAutosave';
 import {
+  formatDurationSeconds,
+  formatDurationSecondsLabel,
+} from '@/app/reels-maker/utils/duration';
+import {
   AUTO_CAPTION_DEFAULT_STYLE,
   COMPLETE_START_FAILED_USER_MESSAGE,
   DEFAULT_CAPTION_STYLE,
@@ -88,6 +92,7 @@ import { findNextIncompleteCaptureCutIndex } from '@/app/reels-maker/utils/captu
 import {
   buildCaptionExportStyle,
   clampValue,
+  normalizeCaptionText,
   normalizeCaptionStyle,
 } from '@/app/reels-maker/utils/captions';
 import {
@@ -101,9 +106,11 @@ import {
 import { getErrorMessage } from '@/app/reels-maker/utils/errors';
 import {
   buildTemplateLoginHref,
+  isComingSoonTemplate,
   PAID_TEMPLATE_REQUIRED_ERROR_CODE,
   TEMPLATE_LOGIN_REQUIRED_ERROR_CODE,
   TEMPLATE_LOGIN_REQUIRED_MESSAGE,
+  TEMPLATE_NOT_AVAILABLE_MESSAGE,
   TEMPLATE_PAYMENT_PATH,
 } from '@/app/lib/templates/access';
 import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
@@ -264,6 +271,9 @@ const normalizeSessionCaptions = (
     const role = source === 'AUTO' ? 'SPEECH' : 'OVERLAY';
     return {
       ...caption,
+      text: normalizeCaptionText(caption.text, {
+        restoreEscapedNewlines: true,
+      }),
       source,
       role,
       style: normalizeCaptionStyle(
@@ -493,19 +503,22 @@ function ReelsMakerInner() {
         (cut.durationMode ?? '').trim().toUpperCase() === DURATION_MODE_FORCED
           ? DURATION_MODE_FORCED
           : DURATION_MODE_RECOMMENDED;
+      const durationLabel = formatDurationSecondsLabel(duration);
       return {
         id: `${template.id}-cut-${order}`,
         order,
         durationSeconds: duration,
         durationMode: isFixed ? null : durationMode,
         label: isFixed
-          ? `${duration}초`
-          : `${duration}초 [${durationMode === DURATION_MODE_FORCED ? '강제' : '권장'}]`,
+          ? durationLabel
+          : `${durationLabel} [${durationMode === DURATION_MODE_FORCED ? '강제' : '권장'}]`,
         guideText: cut.guideText ?? cut['guide_text'] ?? '',
         guideImageUrl: cut.guideImageUrl ?? cut['guide_image_url'] ?? null,
         exampleImageUrl: cut.exampleImageUrl ?? null,
         exampleVideoUrl: cut.exampleVideoUrl ?? null,
-        defaultCaption: cut.defaultCaption ?? '',
+        defaultCaption: normalizeCaptionText(cut.defaultCaption, {
+          restoreEscapedNewlines: true,
+        }),
         captureType,
         fixedVideoUrl: cut.fixedVideoUrl ?? null,
         fixedPreviewImageUrl: cut.fixedPreviewImageUrl ?? null,
@@ -590,6 +603,7 @@ function ReelsMakerInner() {
     handleResizeHandlePointerDown,
     handleCaptionTextChange,
     handleCaptionToggleBox,
+    handleCaptionScaleChange,
   } = useCaptionEditor({
     activeClipId,
     showCaptionStage,
@@ -1103,6 +1117,9 @@ function ReelsMakerInner() {
         const data = payload.data;
         if (!data) {
           throw new Error(payload?.message || '템플릿 정보를 불러오지 못했습니다.');
+        }
+        if (isComingSoonTemplate(data)) {
+          throw new Error(TEMPLATE_NOT_AVAILABLE_MESSAGE);
         }
         const normalizedExampleReels: TemplateExampleReel[] = Array.isArray(data?.exampleReels)
           ? data.exampleReels
@@ -3260,6 +3277,10 @@ function ReelsMakerInner() {
     }
 
     const captionItems = captions
+      .map((caption) => ({
+        ...caption,
+        text: normalizeCaptionText(caption.text),
+      }))
       .filter((caption) => caption.text.trim().length > 0)
       .map((caption) => ({
         id: caption.id,
@@ -4265,9 +4286,12 @@ function ReelsMakerInner() {
                           }
                           isToggleBoxDisabled={!showCaptionOverlay}
                           isDeleteDisabled={!resolvedSelectedCaptionId}
+                          captionScale={activeCaptionStyle.scale}
+                          isSizeDisabled={!showCaptionOverlay}
                           onAddCaption={addCaptionToActiveClip}
                           onToggleBox={handleCaptionToggleBox}
                           onDeleteCaption={deleteSelectedCaption}
+                          onCaptionScaleChange={handleCaptionScaleChange}
                         />
                       </div>
                     </div>
@@ -4398,8 +4422,8 @@ function ReelsMakerInner() {
                             }`}
                           >
                             {activeCutDurationMode === DURATION_MODE_FORCED
-                              ? `${forcedRemainingSeconds}s 남음`
-                              : `${elapsedSeconds}s 경과`}
+                              ? `${formatDurationSecondsLabel(forcedRemainingSeconds)} 남음`
+                              : `${formatDurationSeconds(elapsedSeconds)}초 경과`}
                           </p>
                         </div>
                       )}

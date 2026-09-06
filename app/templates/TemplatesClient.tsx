@@ -59,8 +59,6 @@ type TemplateRequestResponse = {
   requestCount: number;
 };
 
-const TODAY_TREND_RECOMMENDATION_LIMIT = 5;
-
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
 
@@ -116,11 +114,10 @@ export default function TemplatesClient() {
 
   const handleNext = () => {
     setPlaybackFallbackCardId(null);
-    const limit = Math.min(cards.length, 3);
-    if (limit === 0) {
+    if (cards.length === 0) {
       return;
     }
-    setActiveIndex((prev) => Math.min(limit - 1, prev + 1));
+    setActiveIndex((prev) => Math.min(cards.length - 1, prev + 1));
   };
 
   const handleCarouselPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -373,10 +370,7 @@ export default function TemplatesClient() {
     };
   }, []);
 
-  const recommendations = useMemo(
-    () => cards.slice(0, TODAY_TREND_RECOMMENDATION_LIMIT),
-    [cards]
-  );
+  const recommendations = cards;
   const activeCard = useMemo(
     () => recommendations[activeIndex] ?? null,
     [recommendations, activeIndex]

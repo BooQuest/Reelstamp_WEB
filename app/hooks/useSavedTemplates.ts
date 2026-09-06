@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { WebApiResponse } from '@/app/lib/api/auth';
-import type { TemplateAccessType } from '@/app/lib/templates/access';
+import type { TemplateAccessType, TemplateStatus } from '@/app/lib/templates/access';
 
 export type TemplateSummary = {
   id: string;
@@ -15,6 +15,7 @@ export type TemplateSummary = {
   instagramOnly?: boolean;
   tags: string[];
   accessType?: TemplateAccessType | null;
+  status?: TemplateStatus | null;
 };
 
 type TemplateListResponse = {

@@ -30,7 +30,7 @@ import type {
   CaptionItem,
   ClipInfo,
 } from '../types';
-import { createCaptionId } from '../utils/captions';
+import { createCaptionId, normalizeCaptionText } from '../utils/captions';
 import {
   buildAutoCaptionChunks,
   createCaptionTextMeasurer,
@@ -97,7 +97,7 @@ type Props = {
   handleFrameRef: (element: HTMLDivElement | null) => void;
   captionStageRef: MutableRefObject<HTMLDivElement | null>;
   captionOverlayRef: MutableRefObject<HTMLDivElement | null>;
-  captionInputRef: MutableRefObject<HTMLInputElement | null>;
+  captionInputRef: MutableRefObject<HTMLTextAreaElement | null>;
   captionPreviewScale: number;
   selectedCaptionId: string | null;
   editingCaptionId: string | null;
@@ -566,7 +566,7 @@ export default function AutoCaptionEditor({
         caption.id === captionId
           ? {
               ...promoteAutoSpeechCaptionForEdit(caption),
-              text,
+              text: normalizeCaptionText(text),
             }
           : caption
       )
@@ -1048,7 +1048,11 @@ export default function AutoCaptionEditor({
                                     updateCaptionText(caption.id, event.target.value)
                                   }
                                   disabled={isProcessing}
-                                  rows={Math.max(1, caption.text.split('\n').length)}
+                                  rows={Math.max(
+                                    2,
+                                    normalizeCaptionText(caption.text).split('\n')
+                                      .length
+                                  )}
                                   className="min-h-10 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50"
                                 />
                               </div>
@@ -1104,8 +1108,9 @@ export default function AutoCaptionEditor({
                                       }
                                       disabled={isProcessing}
                                       rows={Math.max(
-                                        1,
-                                        caption.text.split('\n').length
+                                        2,
+                                        normalizeCaptionText(caption.text).split('\n')
+                                          .length
                                       )}
                                       className="min-h-10 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-slate-50"
                                     />
