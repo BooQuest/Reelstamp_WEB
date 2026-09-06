@@ -28,6 +28,7 @@ import type {
 import {
   clampValue,
   createCaptionId,
+  normalizeCaptionText,
   normalizeCaptionStyle,
 } from '../utils/captions';
 import {
@@ -93,7 +94,7 @@ export default function useCaptionEditor({
 }: Props) {
   const captionStageRef = useRef<HTMLDivElement | null>(null);
   const captionOverlayRef = useRef<HTMLDivElement | null>(null);
-  const captionInputRef = useRef<HTMLInputElement | null>(null);
+  const captionInputRef = useRef<HTMLTextAreaElement | null>(null);
   const captionGestureRef = useRef<CaptionGestureState>({
     mode: 'none',
     captionId: null,
@@ -229,7 +230,7 @@ export default function useCaptionEditor({
         nextCaptionId = promoted.id;
         return {
           ...promoted,
-          text,
+          text: normalizeCaptionText(text),
         };
       });
       if (
@@ -602,6 +603,16 @@ export default function useCaptionEditor({
     }));
   }, [updateActiveCaptionStyle]);
 
+  const handleCaptionScaleChange = useCallback(
+    (scale: number) => {
+      updateActiveCaptionStyle((current) => ({
+        ...current,
+        scale,
+      }));
+    },
+    [updateActiveCaptionStyle]
+  );
+
   const ensureActiveCaptionInFrame = useCallback(() => {
     if (!activeCaptionItem) return;
     const nextStyle = applyClampedCaptionStyle(activeCaptionItem.style);
@@ -720,5 +731,6 @@ export default function useCaptionEditor({
     handleResizeHandlePointerDown,
     handleCaptionTextChange,
     handleCaptionToggleBox,
+    handleCaptionScaleChange,
   };
 }

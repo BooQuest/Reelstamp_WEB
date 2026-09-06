@@ -36,6 +36,21 @@ export const createCaptionId = () =>
 export const clampValue = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
+type NormalizeCaptionTextOptions = {
+  restoreEscapedNewlines?: boolean;
+};
+
+export const normalizeCaptionText = (
+  value: string | null | undefined,
+  options: NormalizeCaptionTextOptions = {}
+) => {
+  const normalized = (value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!options.restoreEscapedNewlines || normalized.includes('\n')) {
+    return normalized;
+  }
+  return normalized.replace(/\\n/g, '\n');
+};
+
 export const normalizeCaptionStyle = (
   style: CaptionStyle
 ): CaptionStyle => ({
@@ -104,6 +119,10 @@ export const buildDraftSignature = (
     activeClipOrder,
     captionsEnabled,
     captionItems: captions
+      .map((caption) => ({
+        ...caption,
+        text: normalizeCaptionText(caption.text),
+      }))
       .filter((caption) => caption.text.trim().length > 0)
       .map((caption) => ({
         id: caption.id,

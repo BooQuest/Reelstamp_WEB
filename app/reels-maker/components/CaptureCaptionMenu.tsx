@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Plus, Trash2, Type } from 'lucide-react';
+import { MAX_CAPTION_SCALE, MIN_CAPTION_SCALE } from '../constants';
 
 type Props = {
   activeCutIndex: number;
@@ -11,9 +12,12 @@ type Props = {
   isAddDisabled: boolean;
   isToggleBoxDisabled: boolean;
   isDeleteDisabled: boolean;
+  captionScale: number;
+  isSizeDisabled: boolean;
   onAddCaption: () => void;
   onToggleBox: () => void;
   onDeleteCaption: () => void;
+  onCaptionScaleChange: (scale: number) => void;
 };
 
 export default function CaptureCaptionMenu({
@@ -24,9 +28,12 @@ export default function CaptureCaptionMenu({
   isAddDisabled,
   isToggleBoxDisabled,
   isDeleteDisabled,
+  captionScale,
+  isSizeDisabled,
   onAddCaption,
   onToggleBox,
   onDeleteCaption,
+  onCaptionScaleChange,
 }: Props) {
   const [openCutIndex, setOpenCutIndex] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -61,6 +68,7 @@ export default function CaptureCaptionMenu({
 
   const menuItemClass =
     'flex h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-white/35 disabled:hover:bg-transparent';
+  const captionScalePercent = Math.round(captionScale * 100);
 
   return (
     <div ref={menuRef} className="relative ml-auto shrink-0">
@@ -99,6 +107,38 @@ export default function CaptureCaptionMenu({
             <Type className="h-4 w-4 shrink-0" />
             텍스트 박스 {isBoxed ? 'ON' : 'OFF'}
           </button>
+          <div
+            className={`rounded-xl px-3 py-2 text-xs font-semibold text-white ${
+              isSizeDisabled ? 'opacity-35' : ''
+            }`}
+          >
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2">
+                <Type className="h-4 w-4 shrink-0" />
+                자막 크기
+              </span>
+              <span className="tabular-nums text-white/70">
+                {captionScalePercent}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={MIN_CAPTION_SCALE}
+              max={MAX_CAPTION_SCALE}
+              step={0.1}
+              value={captionScale}
+              disabled={isSizeDisabled}
+              aria-label="자막 크기"
+              aria-valuetext={`${captionScalePercent}%`}
+              onChange={(event) => {
+                const nextScale = Number(event.target.value);
+                if (Number.isFinite(nextScale)) {
+                  onCaptionScaleChange(nextScale);
+                }
+              }}
+              className="block w-full accent-[#FF4D6D] disabled:cursor-not-allowed"
+            />
+          </div>
           <button
             type="button"
             onClick={() => runAction(onDeleteCaption)}

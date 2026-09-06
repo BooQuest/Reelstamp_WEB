@@ -17,6 +17,7 @@ import type {
 import {
   buildCaptionExportStyle,
   buildDraftSignature,
+  normalizeCaptionText,
 } from '../utils/captions';
 
 type CutLike = {
@@ -109,6 +110,10 @@ export default function useDraftAutosave({
         const activeOrder =
           cuts[activeCutIndexRef.current]?.order ?? cuts[0]?.order ?? null;
         const captionItems = captionsRef.current
+          .map((caption) => ({
+            ...caption,
+            text: normalizeCaptionText(caption.text),
+          }))
           .filter((caption) => caption.text.trim().length > 0)
           .map((caption) => ({
             id: caption.id,

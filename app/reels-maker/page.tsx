@@ -88,6 +88,7 @@ import { findNextIncompleteCaptureCutIndex } from '@/app/reels-maker/utils/captu
 import {
   buildCaptionExportStyle,
   clampValue,
+  normalizeCaptionText,
   normalizeCaptionStyle,
 } from '@/app/reels-maker/utils/captions';
 import {
@@ -264,6 +265,9 @@ const normalizeSessionCaptions = (
     const role = source === 'AUTO' ? 'SPEECH' : 'OVERLAY';
     return {
       ...caption,
+      text: normalizeCaptionText(caption.text, {
+        restoreEscapedNewlines: true,
+      }),
       source,
       role,
       style: normalizeCaptionStyle(
@@ -505,7 +509,9 @@ function ReelsMakerInner() {
         guideImageUrl: cut.guideImageUrl ?? cut['guide_image_url'] ?? null,
         exampleImageUrl: cut.exampleImageUrl ?? null,
         exampleVideoUrl: cut.exampleVideoUrl ?? null,
-        defaultCaption: cut.defaultCaption ?? '',
+        defaultCaption: normalizeCaptionText(cut.defaultCaption, {
+          restoreEscapedNewlines: true,
+        }),
         captureType,
         fixedVideoUrl: cut.fixedVideoUrl ?? null,
         fixedPreviewImageUrl: cut.fixedPreviewImageUrl ?? null,
@@ -590,6 +596,7 @@ function ReelsMakerInner() {
     handleResizeHandlePointerDown,
     handleCaptionTextChange,
     handleCaptionToggleBox,
+    handleCaptionScaleChange,
   } = useCaptionEditor({
     activeClipId,
     showCaptionStage,
@@ -3260,6 +3267,10 @@ function ReelsMakerInner() {
     }
 
     const captionItems = captions
+      .map((caption) => ({
+        ...caption,
+        text: normalizeCaptionText(caption.text),
+      }))
       .filter((caption) => caption.text.trim().length > 0)
       .map((caption) => ({
         id: caption.id,
@@ -4265,9 +4276,12 @@ function ReelsMakerInner() {
                           }
                           isToggleBoxDisabled={!showCaptionOverlay}
                           isDeleteDisabled={!resolvedSelectedCaptionId}
+                          captionScale={activeCaptionStyle.scale}
+                          isSizeDisabled={!showCaptionOverlay}
                           onAddCaption={addCaptionToActiveClip}
                           onToggleBox={handleCaptionToggleBox}
                           onDeleteCaption={deleteSelectedCaption}
+                          onCaptionScaleChange={handleCaptionScaleChange}
                         />
                       </div>
                     </div>
