@@ -1,6 +1,7 @@
 import type { PointerEvent, RefObject } from 'react';
 import { Loader2, Pause, Play, X } from 'lucide-react';
 import type { TrimDragMode, VideoMetadata } from '../types';
+import { formatDurationSecondsLabel } from '../utils/duration';
 
 type Props = {
   viewportRef: RefObject<HTMLDivElement | null>;
@@ -223,8 +224,8 @@ export default function TrimModal({
                 {scrubSeconds.toFixed(1)}s
               </p>
               <p className="text-center text-xs text-white/70">
-                선택 구간 {durationSeconds.toFixed(1)}초 / 권장{' '}
-                {recommendedSeconds.toFixed(1)}초
+                선택 구간 {formatDurationSecondsLabel(durationSeconds)} / 권장{' '}
+                {formatDurationSecondsLabel(recommendedSeconds)}
               </p>
             </div>
 

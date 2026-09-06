@@ -51,6 +51,10 @@ import useCaptionEditor from '@/app/reels-maker/hooks/useCaptionEditor';
 import useAutoCaption from '@/app/reels-maker/hooks/useAutoCaption';
 import useDraftAutosave from '@/app/reels-maker/hooks/useDraftAutosave';
 import {
+  formatDurationSeconds,
+  formatDurationSecondsLabel,
+} from '@/app/reels-maker/utils/duration';
+import {
   AUTO_CAPTION_DEFAULT_STYLE,
   COMPLETE_START_FAILED_USER_MESSAGE,
   DEFAULT_CAPTION_STYLE,
@@ -499,14 +503,15 @@ function ReelsMakerInner() {
         (cut.durationMode ?? '').trim().toUpperCase() === DURATION_MODE_FORCED
           ? DURATION_MODE_FORCED
           : DURATION_MODE_RECOMMENDED;
+      const durationLabel = formatDurationSecondsLabel(duration);
       return {
         id: `${template.id}-cut-${order}`,
         order,
         durationSeconds: duration,
         durationMode: isFixed ? null : durationMode,
         label: isFixed
-          ? `${duration}초`
-          : `${duration}초 [${durationMode === DURATION_MODE_FORCED ? '강제' : '권장'}]`,
+          ? durationLabel
+          : `${durationLabel} [${durationMode === DURATION_MODE_FORCED ? '강제' : '권장'}]`,
         guideText: cut.guideText ?? cut['guide_text'] ?? '',
         guideImageUrl: cut.guideImageUrl ?? cut['guide_image_url'] ?? null,
         exampleImageUrl: cut.exampleImageUrl ?? null,
@@ -4417,8 +4422,8 @@ function ReelsMakerInner() {
                             }`}
                           >
                             {activeCutDurationMode === DURATION_MODE_FORCED
-                              ? `${forcedRemainingSeconds}s 남음`
-                              : `${elapsedSeconds}s 경과`}
+                              ? `${formatDurationSecondsLabel(forcedRemainingSeconds)} 남음`
+                              : `${formatDurationSeconds(elapsedSeconds)}초 경과`}
                           </p>
                         </div>
                       )}
