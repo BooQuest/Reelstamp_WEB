@@ -18,9 +18,9 @@ type ServiceNotice = {
   content: ReactNode;
 };
 
-// Temporary beta notices: active from 2026-08-26 00:00 through 2026-09-08 KST.
-const NOTICE_START_AT = '2026-08-25T15:00:00.000Z';
-const NOTICE_END_AT = '2026-09-08T15:00:00.000Z';
+// Temporary beta notices: active from 2026-09-07 00:00 through 2026-09-27 KST.
+const NOTICE_START_AT = '2026-09-06T15:00:00.000Z';
+const NOTICE_END_AT = '2026-09-27T15:00:00.000Z';
 
 export const SERVICE_NOTICE_STORAGE_KEY_PREFIX =
   'reelstamp:temporary-service-notice-dismissed:2026-beta-v1';
@@ -28,9 +28,13 @@ export const SERVICE_NOTICE_STORAGE_KEY_PREFIX =
 const TEMPORARY_SERVICE_NOTICES: ServiceNotice[] = [
   {
     id: 'beta-service-period',
-    title: '베타 서비스 기간 안내(8/26~9/8)',
+    title: '베타 서비스 기간 안내(9/7~9/27)',
     content: (
       <>
+        <p>
+          릴스탬프는 9월 7일부터 9월 27일까지 베타 서비스로 운영되며, 9월 28일 정식
+          출시 예정입니다.
+        </p>
         <p>
           베타 서비스 기간에는 릴스탬프의 모든 템플릿을 무료로 이용하실 수 있습니다.
           다만 기능 추가 및 보완 작업으로 인해{' '}
