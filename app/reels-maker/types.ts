@@ -53,6 +53,7 @@ export type TemplateDetailResponse = {
   exampleReels?: TemplateExampleReel[];
   tags?: string[];
   accessType?: 'FREE' | 'PAID' | null;
+  status?: 'AVAILABLE' | 'COMING_SOON' | null;
   cuts: TemplateCut[];
 };
 

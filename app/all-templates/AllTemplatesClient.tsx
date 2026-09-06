@@ -17,14 +17,18 @@ import TemplateAccessBadge from '@/app/components/ui/TemplateAccessBadge';
 import {
   buildTemplateLoginHref,
   canUseTemplate,
+  isComingSoonTemplate,
   isGuestTemplateUser,
   isPaidTemplate,
   resolveTemplateAccessType,
+  resolveTemplateStatus,
   resolveRestrictedTemplateLoginReturnUrl,
   shouldWaitForPaidTemplateSubscription,
   TEMPLATE_LOGIN_REQUIRED_MESSAGE,
+  TEMPLATE_NOT_AVAILABLE_MESSAGE,
   TEMPLATE_PAYMENT_PATH,
   type TemplateAccessType,
+  type TemplateStatus,
 } from '@/app/lib/templates/access';
 import { showAppToast } from '@/app/lib/ui/toast';
 
@@ -37,6 +41,7 @@ type TemplateItem = {
   instagramOnly?: boolean;
   tags: string[];
   accessType?: TemplateAccessType | null;
+  status?: TemplateStatus | null;
 };
 
 type TemplateCategory = {
@@ -61,6 +66,7 @@ const normalizeTemplate = (template: TemplateItem): TemplateItem => ({
   embedUrl: template.embedUrl ?? null,
   instagramOnly: Boolean(template.instagramOnly),
   tags: Array.isArray(template.tags) ? template.tags : [],
+  status: resolveTemplateStatus(template),
 });
 
 const normalizeCategory = (category: TemplateCategory): TemplateCategory => ({
@@ -153,6 +159,9 @@ export default function AllTemplatesClient() {
   }, [isAuthenticated, redirectToTemplateLogin, router, user]);
 
   const ensureTemplateAccess = useCallback((template: TemplateItem, destination?: string) => {
+    if (isComingSoonTemplate(template)) {
+      return false;
+    }
     if (!isPaidTemplate(template)) {
       return true;
     }
@@ -175,6 +184,14 @@ export default function AllTemplatesClient() {
 
   const openTemplateGuideFlow = useCallback(
     (template: TemplateItem) => {
+      if (isComingSoonTemplate(template)) {
+        showAppToast({
+          message: TEMPLATE_NOT_AVAILABLE_MESSAGE,
+          tone: 'error',
+        });
+        return false;
+      }
+
       const destination = buildReelsMakerHref(template.id, returnUrl);
       if (!ensureTemplateAccess(template, destination)) {
         return false;
@@ -278,7 +295,10 @@ export default function AllTemplatesClient() {
     }
   ) => {
     const isSaved = savedSet.has(template.id);
+    const isComingSoon = isComingSoonTemplate(template);
     const isAccessLoading = isTemplateAccessLoading(template);
+    const isDisabled = isComingSoon || isAccessLoading;
+    const comingSoonTags = template.tags.filter((tag) => tag.trim().length > 0).slice(0, 2);
 
     return (
       <div key={template.id} className={`group ${options.className}`}>
@@ -286,49 +306,80 @@ export default function AllTemplatesClient() {
           <button
             type="button"
             onClick={() => openTemplateGuideFlow(template)}
-            disabled={isAccessLoading}
-            className={`${options.mediaClassName} block text-left disabled:cursor-not-allowed disabled:opacity-60`}
-            aria-label={`${template.title} 템플릿으로 릴스 만들기`}
+            disabled={isDisabled}
+            className={`${options.mediaClassName} block text-left disabled:cursor-not-allowed ${isAccessLoading ? 'disabled:opacity-60' : ''}`}
+            aria-label={
+              isComingSoon
+                ? `${template.title} 추가 예정 템플릿`
+                : `${template.title} 템플릿으로 릴스 만들기`
+            }
           >
-            <TemplateAccessBadge
-              accessType={resolveTemplateAccessType(template)}
-              className="absolute left-2 top-2 z-10 sm:left-3 sm:top-3"
-            />
+            {!isComingSoon && (
+              <TemplateAccessBadge
+                accessType={resolveTemplateAccessType(template)}
+                className="absolute left-2 top-2 z-10 sm:left-3 sm:top-3"
+              />
+            )}
             <TemplateMediaPreview
               title={template.title}
               thumbnailUrl={template.thumbnailUrl}
               embedUrl={template.embedUrl}
               instagramOnly={template.instagramOnly}
               disableEmbedInteraction
-              imageClassName="transition-transform duration-300 group-hover:scale-[1.03]"
+              imageClassName={
+                isComingSoon
+                  ? 'saturate-[0.75]'
+                  : 'transition-transform duration-300 group-hover:scale-[1.03]'
+              }
             />
+            {isComingSoon && (
+              <span className="absolute inset-0 bg-black/25" aria-hidden="true" />
+            )}
             {isAccessLoading && (
               <span className="absolute inset-x-3 bottom-3 z-10 rounded-full bg-black/55 px-3 py-2 text-center text-xs font-semibold text-white">
                 권한 확인 중...
               </span>
             )}
           </button>
-          <button
-            type="button"
-            onClick={() => toggleSave(template)}
-            aria-pressed={isSaved}
-            aria-label={isSaved ? `${template.title} 저장 취소` : `${template.title} 저장`}
-            className="absolute right-2 top-2 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur transition hover:bg-black/50 sm:right-3 sm:top-3"
-          >
-            <Bookmark
-              className={`h-4 w-4 ${isSaved ? 'text-[#FF4D6D]' : 'text-white/85'}`}
-              fill={isSaved ? '#FF4D6D' : 'none'}
-            />
-          </button>
+          {isComingSoon ? (
+            <span className="absolute right-2 top-2 z-20 flex h-9 items-center rounded-full bg-white/90 px-3 text-[11px] font-extrabold text-gray-900 shadow-sm ring-1 ring-black/10 sm:right-3 sm:top-3 sm:text-xs">
+              추가 예정
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => toggleSave(template)}
+              aria-pressed={isSaved}
+              aria-label={isSaved ? `${template.title} 저장 취소` : `${template.title} 저장`}
+              className="absolute right-2 top-2 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur transition hover:bg-black/50 sm:right-3 sm:top-3"
+            >
+              <Bookmark
+                className={`h-4 w-4 ${isSaved ? 'text-[#FF4D6D]' : 'text-white/85'}`}
+                fill={isSaved ? '#FF4D6D' : 'none'}
+              />
+            </button>
+          )}
         </div>
         <button
           type="button"
           onClick={() => openTemplateGuideFlow(template)}
-          disabled={isAccessLoading}
+          disabled={isDisabled}
           className={`${options.titleClassName} disabled:cursor-not-allowed disabled:opacity-60`}
         >
           {template.title}
         </button>
+        {isComingSoon && comingSoonTags.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1 sm:mt-2">
+            {comingSoonTags.map((tag) => (
+              <span
+                key={tag}
+                className="max-w-full truncate rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold leading-4 text-gray-600 sm:text-xs"
+              >
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     );
   };

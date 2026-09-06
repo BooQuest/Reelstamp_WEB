@@ -1,9 +1,11 @@
 import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
 
 export type TemplateAccessType = 'FREE' | 'PAID';
+export type TemplateStatus = 'AVAILABLE' | 'COMING_SOON';
 
 export type TemplateAccessSource = {
   accessType?: string | null;
+  status?: string | null;
   tags?: string[] | null;
 };
 
@@ -24,9 +26,21 @@ export type TemplateAccessSubscription = {
 const FREE_TEMPLATE_TAG = '후킹';
 
 export const TEMPLATE_LOGIN_REQUIRED_MESSAGE = '로그인 시 이용 가능한 기능입니다.';
+export const TEMPLATE_NOT_AVAILABLE_MESSAGE = '아직 추가 예정인 템플릿입니다.';
 export const TEMPLATE_PAYMENT_PATH = '/pricing';
 export const TEMPLATE_LOGIN_REQUIRED_ERROR_CODE = 'TEMPLATE_LOGIN_REQUIRED';
 export const PAID_TEMPLATE_REQUIRED_ERROR_CODE = 'PAID_TEMPLATE_REQUIRED';
+export const TEMPLATE_NOT_AVAILABLE_ERROR_CODE = 'TEMPLATE_NOT_AVAILABLE';
+
+export const resolveTemplateStatus = (
+  template: TemplateAccessSource | null | undefined
+): TemplateStatus => {
+  const normalizedStatus = template?.status?.trim().toUpperCase();
+  return normalizedStatus === 'COMING_SOON' ? 'COMING_SOON' : 'AVAILABLE';
+};
+
+export const isComingSoonTemplate = (template: TemplateAccessSource | null | undefined) =>
+  resolveTemplateStatus(template) === 'COMING_SOON';
 
 export const resolveTemplateAccessType = (
   template: TemplateAccessSource | null | undefined
@@ -65,6 +79,10 @@ export const canUseTemplate = ({
   user: TemplateAccessUser;
   subscription: TemplateAccessSubscription;
 }) => {
+  if (isComingSoonTemplate(template)) {
+    return false;
+  }
+
   if (!isPaidTemplate(template)) {
     return true;
   }
@@ -94,6 +112,7 @@ export const shouldWaitForPaidTemplateSubscription = ({
 }) =>
   Boolean(
     template &&
+      !isComingSoonTemplate(template) &&
       isPaidTemplate(template) &&
       !isReelstampBetaEnabled() &&
       isAuthenticated &&

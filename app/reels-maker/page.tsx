@@ -102,9 +102,11 @@ import {
 import { getErrorMessage } from '@/app/reels-maker/utils/errors';
 import {
   buildTemplateLoginHref,
+  isComingSoonTemplate,
   PAID_TEMPLATE_REQUIRED_ERROR_CODE,
   TEMPLATE_LOGIN_REQUIRED_ERROR_CODE,
   TEMPLATE_LOGIN_REQUIRED_MESSAGE,
+  TEMPLATE_NOT_AVAILABLE_MESSAGE,
   TEMPLATE_PAYMENT_PATH,
 } from '@/app/lib/templates/access';
 import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
@@ -1110,6 +1112,9 @@ function ReelsMakerInner() {
         const data = payload.data;
         if (!data) {
           throw new Error(payload?.message || '템플릿 정보를 불러오지 못했습니다.');
+        }
+        if (isComingSoonTemplate(data)) {
+          throw new Error(TEMPLATE_NOT_AVAILABLE_MESSAGE);
         }
         const normalizedExampleReels: TemplateExampleReel[] = Array.isArray(data?.exampleReels)
           ? data.exampleReels
