@@ -292,6 +292,7 @@ export default function AllTemplatesClient() {
       className: string;
       mediaClassName: string;
       titleClassName: string;
+      showComingSoonTags?: boolean;
     }
   ) => {
     const isSaved = savedSet.has(template.id);
@@ -368,7 +369,7 @@ export default function AllTemplatesClient() {
         >
           {template.title}
         </button>
-        {isComingSoon && comingSoonTags.length > 0 && (
+        {isComingSoon && options.showComingSoonTags !== false && comingSoonTags.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1 sm:mt-2">
             {comingSoonTags.map((tag) => (
               <span
@@ -442,6 +443,7 @@ export default function AllTemplatesClient() {
                           'relative aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-100 ring-1 ring-black/5 sm:rounded-2xl',
                         titleClassName:
                           'mt-1 block w-full truncate text-left text-[12px] font-bold leading-tight text-gray-950 min-[390px]:text-[13px] sm:mt-3 sm:text-lg',
+                        showComingSoonTags: false,
                       })
                     )}
                   </div>
