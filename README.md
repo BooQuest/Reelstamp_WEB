@@ -8,28 +8,9 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 프로젝트를 실행하기 전에 필요한 환경 변수를 설정해야 합니다.
 
-#### Vercel Blob 설정
+현재 WEB은 Backend API를 통해 서비스를 이용합니다. `NEXT_PUBLIC_WEB_API_BASE_URL`을 실행 환경에 맞게 설정하세요.
 
-영상 업로드 기능을 사용하려면 Vercel Blob 토큰이 필요합니다:
-
-1. **Vercel 대시보드에서 Blob 스토어 생성**
-   - Vercel 대시보드 → 프로젝트 → Storage → Create Database → Blob 선택
-   - Blob 스토어 생성 후 자동으로 `BLOB_READ_WRITE_TOKEN`이 생성됩니다
-
-2. **로컬 개발 환경 변수 설정**
-   ```bash
-   # Vercel CLI를 사용하여 환경 변수 가져오기
-   vercel env pull
-   ```
-   
-   또는 `.env.local` 파일에 직접 추가:
-   ```env
-   BLOB_READ_WRITE_TOKEN=vercel_blob_xxxxxxxxxxxxx
-   ```
-
-3. **Vercel 배포 환경**
-   - Vercel 대시보드 → 프로젝트 → Settings → Environment Variables
-   - `BLOB_READ_WRITE_TOKEN` 환경 변수가 자동으로 설정됩니다
+구형 AI 대본 제작과 전용 Blob 업로드는 제거되었습니다. 기존 Blob 파일·저장소·토큰은 이 변경으로 삭제하거나 폐기하지 않습니다.
 
 ### 개발 서버 실행
 

@@ -1,4 +1,4 @@
-export const LOGIN_HOME_PATH = '/all-templates';
+export const LOGIN_HOME_PATH = '/templates';
 
 const LOGIN_RETURN_URL_STORAGE_KEY = 'reelstamp:login-return-url';
 const LEGACY_LOGIN_RETURN_URL_STORAGE_KEY = 'previousPath';

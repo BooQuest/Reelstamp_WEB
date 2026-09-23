@@ -146,16 +146,6 @@ export default function CaptureMenu({
           {SHOW_DISABLED_CAPTURE_MENU_ITEMS && (
             <>
               <Link
-                href="/contents/script-creation"
-                onClick={(event) => {
-                  event.preventDefault();
-                  requestExit('/contents/script-creation');
-                }}
-                className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
-              >
-                릴스 제작
-              </Link>
-              <Link
                 href="/ranking"
                 onClick={(event) => {
                   event.preventDefault();

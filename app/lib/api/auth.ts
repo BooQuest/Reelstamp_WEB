@@ -64,34 +64,11 @@ export interface SubscriptionStatusResponse {
     plan: string;
     name: string;
     description: string;
-    textEnabled: boolean;
-    videoEnabled: boolean;
-    textSessionLimit: number;
-    videoSessionLimit: number;
-    revisionLimit: number;
     price: {
       fakePrice: number;
       regularPrice: number;
       openPrice: number;
     };
-  };
-  videoSessionUsage: {
-    limit: number;
-    used: number;
-    remaining: number;
-    unlimited: boolean;
-  };
-  textSessionUsage: {
-    limit: number;
-    used: number;
-    remaining: number;
-    unlimited: boolean;
-  };
-  revisionUsage: {
-    limit: number;
-    used: number;
-    remaining: number;
-    unlimited: boolean;
   };
 }
 

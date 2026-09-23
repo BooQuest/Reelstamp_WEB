@@ -3,10 +3,15 @@ import {
   buildLoginReturnHref,
   buildLoginOauthState,
   getSafeLoginReturnUrl,
+  LOGIN_HOME_PATH,
   parseLoginOauthState,
 } from './loginRedirect';
 
 describe('login redirect helpers', () => {
+  it('uses today trends as the default page after login', () => {
+    expect(LOGIN_HOME_PATH).toBe('/templates');
+  });
+
   it('allows only internal non-login return urls', () => {
     expect(getSafeLoginReturnUrl('/pricing')).toBe('/pricing');
     expect(getSafeLoginReturnUrl('/reels-maker?templateId=tpl-1')).toBe(

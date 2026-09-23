@@ -47,7 +47,6 @@ export default async function PricingPage() {
               eventBenefit={freePlanEventBenefit}
               buttonType="link"
               buttonText="무료 플랜 시작하기"
-              buttonHref={isAuthenticated ? '/contents/script-creation' : '/login'}
               hideButton={true}
               buttonClassName="bg-gray-700 text-white hover:bg-gray-800"
             />

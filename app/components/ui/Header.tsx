@@ -48,12 +48,6 @@ const isNavItemVisible = (item: { isDisabled?: boolean }) => !item.isDisabled ||
 // 메뉴 항목 상수
 const MENU_ITEMS: MenuItem[] = [
   {
-    href: '/contents/script-creation',
-    label: '릴스 제작',
-    matchPattern: (pathname) => pathname.startsWith('/contents'),
-    isDisabled: true,
-  },
-  {
     href: '/ranking',
     label: '인기 급상승 릴스',
     isDisabled: true,
@@ -77,12 +71,6 @@ const DESKTOP_MENU_ITEMS: MenuItem[] = [
     href: '/trending-reels',
     label: '(구)오늘의 릴스 트렌드',
     requiresAuth: true,
-    isDisabled: true,
-  },
-  {
-    href: '/contents/script-creation',
-    label: '릴스 제작',
-    matchPattern: (pathname) => pathname.startsWith('/contents'),
     isDisabled: true,
   },
   {
@@ -177,6 +165,9 @@ export default function Header() {
   const simpleHeader = SIMPLE_HEADER_CONFIG[pathname];
   const isDarkHeader = pathname === '/reels-maker';
   const buildLoginHref = (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`;
+  const currentPageLoginHref = pathname.startsWith('/login')
+    ? '/login'
+    : buildLoginHref(pathname);
   const videoCreditLabel = 'free';
   const hasVisibleLegacyMenuItems = MENU_ITEMS.some(isNavItemVisible);
   const isMenuItemAvailable = (item: { requiresAuth?: boolean }) =>
@@ -525,7 +516,7 @@ export default function Header() {
                             {isGuestUser && (
                               <>
                                 <Link
-                                  href="/login"
+                                  href={currentPageLoginHref}
                                   onClick={() => setIsProfileMenuOpen(false)}
                                   className="mx-3 mb-2 px-4 py-3 flex items-center justify-center rounded-lg bg-[#FF496D] text-white text-sm font-semibold hover:bg-[#E63E62] transition-colors"
                                 >
@@ -608,7 +599,7 @@ export default function Header() {
                 ) : (
                   // 비로그인 상태: 로그인/회원가입 버튼
                   <Link
-                    href="/login"
+                    href={currentPageLoginHref}
                     className="px-5 py-2 text-base font-medium text-white rounded-xl transition-all hover:bg-[#1F2128] hover:shadow-lg flex items-center justify-center"
                     style={{ backgroundColor: '#2B2D37' }}
                     aria-label="로그인/회원가입"
@@ -681,7 +672,7 @@ export default function Header() {
                   <div className="flex-1 flex flex-col p-6">
                     {isGuestUser && (
                       <Link
-                        href="/login"
+                        href={currentPageLoginHref}
                         onClick={() => setIsMobileMenuOpen(false)}
                         className="w-full mb-4 px-5 py-3 text-base font-semibold text-white rounded-xl transition-all hover:bg-[#E63E62] text-center"
                         style={{ backgroundColor: '#FF496D' }}
@@ -691,7 +682,7 @@ export default function Header() {
                     )}
                     {!isAuthenticated && (
                       <Link
-                        href="/login"
+                        href={currentPageLoginHref}
                         onClick={() => setIsMobileMenuOpen(false)}
                         className="w-full mb-4 px-5 py-3 text-base font-semibold text-white rounded-xl transition-all hover:bg-[#FF496D]/90 text-center"
                         style={{ backgroundColor: '#FF496D' }}
