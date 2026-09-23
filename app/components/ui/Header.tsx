@@ -48,12 +48,6 @@ const isNavItemVisible = (item: { isDisabled?: boolean }) => !item.isDisabled ||
 // 메뉴 항목 상수
 const MENU_ITEMS: MenuItem[] = [
   {
-    href: '/contents/script-creation',
-    label: '릴스 제작',
-    matchPattern: (pathname) => pathname.startsWith('/contents'),
-    isDisabled: true,
-  },
-  {
     href: '/ranking',
     label: '인기 급상승 릴스',
     isDisabled: true,
@@ -77,12 +71,6 @@ const DESKTOP_MENU_ITEMS: MenuItem[] = [
     href: '/trending-reels',
     label: '(구)오늘의 릴스 트렌드',
     requiresAuth: true,
-    isDisabled: true,
-  },
-  {
-    href: '/contents/script-creation',
-    label: '릴스 제작',
-    matchPattern: (pathname) => pathname.startsWith('/contents'),
     isDisabled: true,
   },
   {

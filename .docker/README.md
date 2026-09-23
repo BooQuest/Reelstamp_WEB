@@ -58,7 +58,6 @@ docker buildx build \
   --sbom=false \
   --build-arg NEXT_PUBLIC_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL}" \
   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${NEXT_PUBLIC_SUPABASE_ANON_KEY}" \
-  --build-arg NEXT_PUBLIC_AI_API_BASE_URL="${NEXT_PUBLIC_AI_API_BASE_URL}" \
   --build-arg NEXT_PUBLIC_WEB_API_BASE_URL="${NEXT_PUBLIC_WEB_API_BASE_URL}" \
   --build-arg NEXT_PUBLIC_GA_MEASUREMENT_ID="${NEXT_PUBLIC_GA_MEASUREMENT_ID}" \
   --build-arg NEXT_PUBLIC_BASE_URL="${NEXT_PUBLIC_BASE_URL}" \
@@ -78,7 +77,6 @@ export $(cat .env.local | grep -v '^#' | grep -v '^$' | xargs)
 docker build \
   --build-arg NEXT_PUBLIC_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL}" \
   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${NEXT_PUBLIC_SUPABASE_ANON_KEY}" \
-  --build-arg NEXT_PUBLIC_AI_API_BASE_URL="${NEXT_PUBLIC_AI_API_BASE_URL}" \
   --build-arg NEXT_PUBLIC_WEB_API_BASE_URL="${NEXT_PUBLIC_WEB_API_BASE_URL}" \
   --build-arg NEXT_PUBLIC_GA_MEASUREMENT_ID="${NEXT_PUBLIC_GA_MEASUREMENT_ID}" \
   --build-arg NEXT_PUBLIC_BASE_URL="${NEXT_PUBLIC_BASE_URL}" \
@@ -96,7 +94,6 @@ docker run -p 3000:3000 --env-file .env.local reelstamp:latest
 **빌드 시 필수 (NEXT_PUBLIC_*):**
 - `NEXT_PUBLIC_SUPABASE_URL`: Supabase 프로젝트 URL (필수)
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase Anon Key (필수)
-- `NEXT_PUBLIC_AI_API_BASE_URL`: AI API 기본 URL (선택, 기본값 있음)
 - `NEXT_PUBLIC_WEB_API_BASE_URL`: Web API 기본 URL (선택, 기본값 있음)
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID`: Google Analytics 측정 ID (선택)
 - `NEXT_PUBLIC_BASE_URL`: 애플리케이션 기본 URL (선택)

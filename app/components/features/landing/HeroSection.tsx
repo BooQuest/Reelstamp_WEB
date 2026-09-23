@@ -95,9 +95,11 @@ export default function HeroSection() {
               </p>
             </motion.div>
 
-            <motion.a
-              href="/contents/script-creation"
-              className="inline-flex items-center justify-center gap-2 px-8 py-4 text-lg sm:text-xl font-bold text-white rounded-full transition-all hover:opacity-90"
+            <motion.button
+              type="button"
+              disabled
+              aria-describedby="hero-script-retired"
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 text-lg sm:text-xl font-bold text-white rounded-full cursor-not-allowed opacity-60"
               style={{
                 background: 'linear-gradient(90deg, #FF496D 0%, #FFB4C7 100%)',
                 borderRadius: '135px',
@@ -105,14 +107,15 @@ export default function HeroSection() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.4, ease: 'easeOut' }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
             >
               <span className="whitespace-nowrap">지금 무료로 시작하기</span>
               <svg className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
-            </motion.a>
+            </motion.button>
+            <p id="hero-script-retired" className="mt-3 text-sm text-gray-600">
+              구형 AI 대본 제작 기능이 종료되었습니다.
+            </p>
           </div>
         </div>
       </div>

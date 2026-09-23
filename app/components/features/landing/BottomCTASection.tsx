@@ -20,14 +20,19 @@ export default function BottomCTASection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="flex flex-col items-center text-center space-y-6 sm:space-y-8">
           <p className="text-xl sm:text-2xl text-gray-700">이미 N명의 크리에이터가 <span className="sm:hidden"><br /></span>릴스탬프로 시간을 아끼고 있습니다</p>
-          <Link
-            href="/contents/script-creation"
-            className="inline-flex items-center justify-center gap-2 px-8 py-4 text-lg sm:text-xl font-bold text-white rounded-full transition-all hover:opacity-90"
+          <button
+            type="button"
+            disabled
+            aria-describedby="bottom-script-retired"
+            className="inline-flex items-center justify-center gap-2 px-8 py-4 text-lg sm:text-xl font-bold text-white rounded-full cursor-not-allowed opacity-60"
             style={{ background: 'linear-gradient(90deg, #FF496D 0%, #FFB4C7 100%)', borderRadius: '135px' }}
           >
             지금 무료로 릴스탬프 시작하기
             <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6" />
-          </Link>
+          </button>
+          <p id="bottom-script-retired" className="text-sm text-gray-600">
+            구형 AI 대본 제작 기능이 종료되었습니다.
+          </p>
           <Link
             href="https://forms.gle/Sp2nQE9L7yx7k99b6"
             target="_blank"

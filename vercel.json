@@ -2,16 +2,5 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
-  "framework": "nextjs",
-  "functions": {
-    "app/ai/generate-reel-script/route.ts": {
-      "maxDuration": 300
-    },
-    "app/ai/revise-reel-script/route.ts": {
-      "maxDuration": 300
-    },
-    "app/ai/revise-reel-script-full/route.ts": {
-      "maxDuration": 300
-    }
-  }
+  "framework": "nextjs"
 }
