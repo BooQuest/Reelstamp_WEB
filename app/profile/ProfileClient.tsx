@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { User, Mail, Building, HelpCircle, LogOut, Settings, Crown, CreditCard, MessageCircle, UserPlus } from 'lucide-react';
+import { User, Mail, LogOut, Settings, Crown, CreditCard, MessageCircle, UserPlus } from 'lucide-react';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { UserInfo } from '@/app/lib/api/auth';
 
@@ -24,7 +24,6 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
   const isGuestUser = Boolean(displayUser.guest || displayUser.provider === 'GUEST');
   const displayName = displayUser.nickname || displayUser.socialNickname || '릴스탬프 사용자';
   const displayEmail = displayUser.email || (isGuestUser ? '가입 없이 이용 중' : '이메일 정보 없음');
-  const displayBusiness = '릴스탬프 카페';
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -61,15 +60,9 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 text-gray-600">
-              <Mail className="w-5 h-5" />
-              <span className="text-sm">{displayEmail}</span>
-            </div>
-            <div className="flex items-center gap-3 text-gray-600">
-              <Building className="w-5 h-5" />
-              <span className="text-sm">{displayBusiness}</span>
-            </div>
+          <div className="flex items-center gap-3 text-gray-600">
+            <Mail className="w-5 h-5" />
+            <span className="text-sm">{displayEmail}</span>
           </div>
         </div>
 
@@ -141,14 +134,6 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
           >
             <MessageCircle className="w-5 h-5 text-gray-500" />
             <span className="font-semibold text-gray-900">고객센터</span>
-          </button>
-
-          <button
-            onClick={() => router.push('/help')}
-            className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:bg-gray-50 transition-all flex items-center gap-3"
-          >
-            <HelpCircle className="w-5 h-5 text-gray-500" />
-            <span className="font-semibold text-gray-900">도움말</span>
           </button>
 
           <button
