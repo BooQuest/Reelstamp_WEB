@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import { Crown, Sparkles } from 'lucide-react';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 
+// 업그레이드 안내 문구가 확정되면 수정 후 다시 표시합니다.
+const SHOW_UPGRADE_BENEFITS = false;
+
 export default function PlanClient() {
   const router = useRouter();
   const { subscription, isLoadingSubscription } = useAuth();
@@ -68,17 +71,19 @@ export default function PlanClient() {
 
         {isFreePlan && (
           <div className="bg-gradient-to-r from-[#EB48B1]/10 to-[#F59A39]/10 rounded-2xl p-5 border border-[#F4D6E5] mb-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-3">
+            <h3 className={`text-base font-semibold text-gray-900${SHOW_UPGRADE_BENEFITS ? ' mb-3' : ''}`}>
               Reelstamp Plus로 업그레이드하세요!
             </h3>
-            <ul className="space-y-2">
-              {planBenefits.map((benefit, index) => (
-                <li key={index} className="flex items-start gap-3">
-                  <benefit.icon className="w-5 h-5 text-[#EB48B1] flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-700">{benefit.text}</span>
-                </li>
-              ))}
-            </ul>
+            {SHOW_UPGRADE_BENEFITS && (
+              <ul className="space-y-2">
+                {planBenefits.map((benefit, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <benefit.icon className="w-5 h-5 text-[#EB48B1] flex-shrink-0 mt-0.5" />
+                    <span className="text-sm text-gray-700">{benefit.text}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
             <button
               onClick={() => router.push('/pricing')}
               className="mt-4 w-full px-4 py-3 text-sm font-semibold text-white rounded-xl transition-all hover:opacity-90"
@@ -88,24 +93,6 @@ export default function PlanClient() {
             </button>
           </div>
         )}
-
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <h3 className="text-base font-semibold text-gray-900 mb-3">플랜 혜택</h3>
-          <ul className="space-y-2 text-sm text-gray-700">
-            <li className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#FF496D]" />
-              AI 대본 생성
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#FF496D]" />
-              템플릿 추천 및 제작 가이드
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#FF496D]" />
-              저장/완료 릴스 관리
-            </li>
-          </ul>
-        </div>
       </div>
     </div>
   );
