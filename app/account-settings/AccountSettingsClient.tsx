@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Mail, Building, LogOut } from 'lucide-react';
+import { User, Mail, LogOut } from 'lucide-react';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { UserInfo } from '@/app/lib/api/auth';
 
@@ -19,7 +19,6 @@ export default function AccountSettingsClient({ initialUser }: AccountSettingsCl
   const isGuestUser = Boolean(displayUser.guest || displayUser.provider === 'GUEST');
   const displayName = displayUser.nickname || displayUser.socialNickname || '릴스탬프 사용자';
   const displayEmail = displayUser.email || (isGuestUser ? '가입 없이 이용 중' : '이메일 정보 없음');
-  const displayBusiness = '릴스탬프 카페';
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -36,15 +35,7 @@ export default function AccountSettingsClient({ initialUser }: AccountSettingsCl
       <div className="max-w-md mx-auto px-4 py-6">
         {/* Profile Info */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-900">내 정보</h2>
-            <button
-              onClick={() => router.push('/edit-profile')}
-              className="text-sm text-[#FF496D] font-medium hover:text-[#FF496D]/80"
-            >
-              수정하기
-            </button>
-          </div>
+          <h2 className="text-lg font-bold text-gray-900 mb-4">내 정보</h2>
 
           <div className="space-y-4">
             <div>
@@ -60,14 +51,6 @@ export default function AccountSettingsClient({ initialUser }: AccountSettingsCl
               <div className="flex items-center gap-3 text-gray-900">
                 <Mail className="w-5 h-5 text-gray-400" />
                 <span>{displayEmail}</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm text-gray-500 mb-1 block">비즈니스</label>
-              <div className="flex items-center gap-3 text-gray-900">
-                <Building className="w-5 h-5 text-gray-400" />
-                <span>{displayBusiness}</span>
               </div>
             </div>
           </div>
