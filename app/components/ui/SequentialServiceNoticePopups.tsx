@@ -18,33 +18,36 @@ type ServiceNotice = {
   content: ReactNode;
 };
 
-// Temporary beta notices: active from 2026-09-07 00:00 through 2026-09-27 KST.
+// Temporary beta notices: active from 2026-09-07 00:00 until 2026-10-05 00:00 KST.
 const NOTICE_START_AT = '2026-09-06T15:00:00.000Z';
-const NOTICE_END_AT = '2026-09-27T15:00:00.000Z';
+const NOTICE_END_AT = '2026-10-04T15:00:00.000Z';
 
 export const SERVICE_NOTICE_STORAGE_KEY_PREFIX =
   'reelstamp:temporary-service-notice-dismissed:2026-beta-v1';
 
 const TEMPORARY_SERVICE_NOTICES: ServiceNotice[] = [
   {
-    id: 'beta-service-period',
-    title: '베타 서비스 기간 안내(9/7~9/27)',
+    id: 'launch-schedule-change',
+    title: '정식 출시 일정 변경 안내 (10/5 출시 예정)',
     content: (
       <>
         <p>
-          릴스탬프는 9월 7일부터 9월 27일까지 베타 서비스로 운영되며, 9월 28일 정식
-          출시 예정입니다.
+          보다 안정적인 서비스 제공을 위한 기능 점검으로 인해 정식 출시 일정을{' '}
+          <strong className="font-bold text-gray-950">10월 5일로</strong> 변경하게
+          되었습니다. 남은 기간 동안 기능 안정성과 사용성을 더욱 꼼꼼히 점검하여 더
+          나은 모습으로 찾아뵙겠습니다.
         </p>
         <p>
-          베타 서비스 기간에는 릴스탬프의 모든 템플릿을 무료로 이용하실 수 있습니다.
-          다만 기능 추가 및 보완 작업으로 인해{' '}
-          <strong className="font-bold text-gray-950">일부 기능이 불안정</strong>할 수
-          있으니 양해 부탁드립니다.
+          <strong className="font-bold text-gray-950">
+            정식 출시 전까지는 현재 베타 서비스를 계속 자유롭게 이용하실 수 있으며,
+            릴스탬프의 모든 템플릿을 무료로 사용하실 수 있습니다.
+          </strong>
         </p>
         <p>
           오류 제보 및 기능 개선 요청은{' '}
           <strong className="font-bold text-gray-950">마이페이지 &gt; 고객센터</strong>를
-          이용해주세요. 보내주시는 의견을 적극 반영하여 만족스러운 서비스로 찾아뵙겠습니다.
+          이용해주세요. 보내주시는 의견을 적극 반영하여 더욱 만족스러운 서비스를
+          만들어가겠습니다.
         </p>
       </>
     ),
@@ -180,7 +183,7 @@ export default function SequentialServiceNoticePopups({
       >
         <div className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" aria-hidden="true" />
         <motion.div
-          className="relative w-full max-w-[440px] overflow-hidden rounded-lg border border-gray-100 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.26)]"
+          className="relative max-h-[calc(100dvh-3rem)] w-full max-w-[440px] overflow-y-auto rounded-lg border border-gray-100 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.26)]"
           initial={{ opacity: 0, y: 16, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 12, scale: 0.98 }}
