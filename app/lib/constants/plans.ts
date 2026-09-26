@@ -5,9 +5,9 @@ export const PRICING_LOCKED_FOR_BETA = isReelstampBetaEnabled();
 export const PRICING_BETA_NOTICE = {
   title: '현재는 베타 무료 이용 기간입니다',
   description:
-    '릴스탬프는 2026년 9월 7일부터 9월 27일까지 베타 기간으로 운영되며, 9월 28일 정식 출시 예정입니다. 정식 요금제는 출시일에 공개됩니다.',
-  supportingText: '베타 기간 동안은 로그인 후 모든 템플릿을 무료로 이용하실 수 있습니다.',
-  lockedMessage: '정식 요금제는 2026년 9월 28일 공개됩니다.',
+    '보다 안정적인 서비스 제공을 위한 기능 점검으로 정식 출시 일정이 2026년 10월 5일로 변경되었습니다. 정식 요금제는 출시일에 공개됩니다.',
+  supportingText: '정식 출시 전까지는 현재 베타 서비스를 계속 자유롭게 이용하실 수 있으며, 로그인 후 모든 템플릿을 무료로 사용하실 수 있습니다.',
+  lockedMessage: '정식 요금제는 2026년 10월 5일 공개됩니다.',
 } as const;
 
 // 플랜 기능 리스트 상수
