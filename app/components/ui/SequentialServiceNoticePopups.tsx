@@ -153,7 +153,7 @@ export default function SequentialServiceNoticePopups({
       return;
     }
 
-    confirmButtonRef.current?.focus();
+    confirmButtonRef.current?.focus({ preventScroll: true });
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -173,7 +173,7 @@ export default function SequentialServiceNoticePopups({
     <AnimatePresence mode="wait">
       <motion.div
         key={currentNotice.id}
-        className="fixed inset-0 z-[10020] flex items-center justify-center px-4 py-6"
+        className="fixed inset-0 z-[10020] flex items-center justify-center px-4 py-3 sm:py-6"
         role="dialog"
         aria-modal="true"
         aria-labelledby={`service-notice-title-${currentNotice.id}`}
@@ -183,28 +183,28 @@ export default function SequentialServiceNoticePopups({
       >
         <div className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" aria-hidden="true" />
         <motion.div
-          className="relative max-h-[calc(100dvh-3rem)] w-full max-w-[440px] overflow-y-auto rounded-lg border border-gray-100 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.26)]"
+          className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[440px] overflow-y-auto rounded-lg border border-gray-100 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.26)] sm:max-h-[calc(100dvh-3rem)]"
           initial={{ opacity: 0, y: 16, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 12, scale: 0.98 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
         >
           <div className="h-1.5 bg-gradient-to-r from-[#FF496D] via-[#EB48B1] to-[#F59A39]" />
-          <div className="px-6 pb-5 pt-6 sm:px-7 sm:pb-6 sm:pt-7">
+          <div className="p-4 sm:p-6">
             <div>
               <h2
                 id={`service-notice-title-${currentNotice.id}`}
-                className="text-xl font-extrabold leading-7 text-gray-950 [word-break:keep-all] sm:text-2xl sm:leading-8"
+                className="text-lg font-extrabold leading-6 text-gray-950 [word-break:keep-all] sm:text-xl sm:leading-7 [@media(max-height:600px)]:text-base [@media(max-height:600px)]:leading-[22px]"
               >
                 {currentNotice.title}
               </h2>
-              <div className="mt-4 space-y-3 text-[15px] leading-7 text-gray-700 [word-break:keep-all]">
+              <div className="mt-3 space-y-2 text-[13px] leading-5 text-gray-700 [word-break:keep-all] sm:text-sm sm:leading-6 [@media(max-height:600px)]:text-xs [@media(max-height:600px)]:leading-[18px]">
                 {currentNotice.content}
               </div>
             </div>
 
-            <div className="mt-6 flex flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <label className="inline-flex select-none items-center gap-2.5 text-sm font-semibold text-gray-600">
+            <div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100 pt-3">
+              <label className="inline-flex select-none items-center gap-2 whitespace-nowrap text-xs font-semibold text-gray-600 sm:text-sm">
                 <input
                   type="checkbox"
                   checked={dontShowAgain}
@@ -217,7 +217,7 @@ export default function SequentialServiceNoticePopups({
                 ref={confirmButtonRef}
                 type="button"
                 onClick={closeCurrentNotice}
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#FF496D] px-5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#E63E60] focus:outline-none focus:ring-2 focus:ring-[#FF496D]/35 focus:ring-offset-2 sm:w-auto sm:min-w-28"
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#FF496D] px-5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#E63E60] focus:outline-none focus:ring-2 focus:ring-[#FF496D]/35 focus:ring-offset-2 sm:min-w-28"
               >
                 <Check className="h-4 w-4" aria-hidden="true" />
                 확인
