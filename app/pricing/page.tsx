@@ -1,131 +1,36 @@
-// Pricing 페이지: Free, Basic, Pro, Master 플랜 비교 및 업그레이드
-// SSG를 위해 서버 컴포넌트로 구현되어 빌드 타임에 정적 HTML이 생성됩니다.
+import Link from 'next/link';
+import PassCatalog from '@/app/components/features/passes/PassCatalog';
+import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
+// 출시 전 커버 복원 시 아래 import와 보존한 JSX를 함께 활성화합니다.
+// import { PRICING_BETA_NOTICE } from '@/app/lib/constants/plans';
 
-import { getCurrentUser } from '@/app/lib/api/auth';
-import { getSubscriptionStatusAction } from '@/app/actions/auth';
-import { freePlanFeatures, basicPlanFeatures, proPlanFeatures, masterPlanFeatures, freePlanEventBenefit, basicPlanEventBenefit, PRICING_BETA_NOTICE } from '@/app/lib/constants/plans';
-import PlanCard from '@/app/components/ui/PlanCard';
-import PricingPlanCard from '@/app/components/ui/PricingPlanCard';
-
-export default async function PricingPage() {
-  // 서버에서 인증 및 구독 정보 조회
-  const user = await getCurrentUser();
-  const isAuthenticated = !!user;
-  
-  let subscription = null;
-  
-  if (isAuthenticated) {
-    const subscriptionResult = await getSubscriptionStatusAction();
-    if (subscriptionResult.success && subscriptionResult.data) {
-      subscription = subscriptionResult.data;
-    }
-  }
-
-  // 현재 구독 중인 플랜 코드 확인
-  const currentPlanCode = subscription?.subscriptionPlan?.plan || 'free';
-  const isActive = subscription?.subscription?.active || false;
-  const isPaidSubscription = isAuthenticated && isActive && currentPlanCode !== 'free';
-
+export default function PricingPage() {
   return (
     <div className="min-h-screen bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
-        {/* 상단 타이틀 및 안내 문구 */}
-        <div className="text-center mb-12 lg:mb-16">
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-[#373A46] mb-4">
-            요금제 안내
-          </h1>
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8 lg:py-20">
+        <div className="mb-12 text-center lg:mb-14">
+          <p className="mb-3 text-sm font-semibold text-[#FF496D]">REELSTAMP PASS</p>
+          <h1 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">릴스탬프 이용권</h1>
+          <Link
+            href="/plan"
+            className="mt-6 inline-block text-sm font-semibold text-[#D93256] underline underline-offset-4"
+          >
+            내 이용권 · 결제 내역
+          </Link>
         </div>
-
+        {isReelstampBetaEnabled() && (
+          <p className="mb-7 text-center text-sm leading-6 text-gray-500">
+            현재는 베타 무료 이용 기간입니다. 이용권 판매 시작 전까지 베타 서비스를 계속 이용하실 수
+            있습니다.
+          </p>
+        )}
         <div className="relative overflow-hidden rounded-[28px]">
-          {/* 플랜 카드 컨테이너 */}
-          <div className="pointer-events-none flex select-none flex-col items-stretch justify-center gap-6 opacity-35 blur-[5px] grayscale lg:flex-row lg:gap-8">
-            {/* Free 플랜 카드 */}
-            <PlanCard
-              planName="Free"
-              price="₩0"
-              features={freePlanFeatures}
-              eventBenefit={freePlanEventBenefit}
-              buttonType="link"
-              buttonText="무료 플랜 시작하기"
-              hideButton={true}
-              buttonClassName="bg-gray-700 text-white hover:bg-gray-800"
-            />
-
-            {/* Basic 플랜 카드 */}
-            <PricingPlanCard
-              planId="basic"
-              planName="Basic"
-              price="₩4,900"
-              priceNumber={1000}
-              discountInfo={{
-                percentage: '75%',
-                originalPrice: '19,900원',
-              }}
-              features={basicPlanFeatures}
-              eventBenefit={basicPlanEventBenefit}
-              isAuthenticated={isAuthenticated}
-              isCurrentPlan={isAuthenticated && currentPlanCode === 'basic' && isActive}
-              isDisabled={true}
-              blurDetails={true}
-              buttonText={
-                isAuthenticated && currentPlanCode === 'basic' && isActive
-                  ? '현재 플랜'
-                  : isPaidSubscription
-                    ? '플랜 변경'
-                    : '구독하기'
-              }
-            />
-
-            {/* Pro 플랜 카드 */}
-            <PricingPlanCard
-              planId="pro"
-              planName="Pro"
-              price="₩9,900"
-              priceNumber={9900}
-              discountInfo={{
-                percentage: '80%',
-                originalPrice: '49,900원',
-              }}
-              features={proPlanFeatures}
-              isPopular={true}
-              isAuthenticated={isAuthenticated}
-              isCurrentPlan={isAuthenticated && currentPlanCode === 'pro' && isActive}
-              isDisabled={true}
-              blurDetails={true}
-              buttonText={
-                isAuthenticated && currentPlanCode === 'pro' && isActive
-                  ? '현재 플랜'
-                  : isPaidSubscription
-                    ? '플랜 변경'
-                    : '구독하기'
-              }
-            />
-
-            {/* Master 플랜 카드 */}
-            <PricingPlanCard
-              planId="master"
-              planName="Master"
-              price="₩49,900"
-              priceNumber={49900}
-              discountInfo={{
-                percentage: '75%',
-                originalPrice: '199,900원',
-              }}
-              features={masterPlanFeatures}
-              isAuthenticated={isAuthenticated}
-              isCurrentPlan={isAuthenticated && currentPlanCode === 'master' && isActive}
-              isDisabled={true}
-              blurDetails={true}
-              buttonText={
-                isAuthenticated && currentPlanCode === 'master' && isActive
-                  ? '현재 플랜'
-                  : isPaidSubscription
-                    ? '플랜 변경'
-                    : '구독하기'
-              }
-            />
-          </div>
-
+          {/* 기존 카드 영역 커버 설정 보존 (복원 시 새 카드의 grid 배치는 유지):
+            className="pointer-events-none flex select-none flex-col items-stretch justify-center gap-6 opacity-35 blur-[5px] grayscale lg:flex-row lg:gap-8"
+            기존 PricingPlanCard 개별 흐림 설정: blurDetails={true}
+          */}
+          <PassCatalog />
+          {/* 출시 전 재적용할 회색 커버 및 원본 출시 안내 JSX 보존:
           <div className="pointer-events-none absolute inset-0 z-[5] bg-gray-200/70" />
 
           <div className="absolute inset-0 z-10 flex items-start justify-center px-4 pt-10 sm:pt-14 lg:items-center lg:pt-0">
@@ -141,6 +46,7 @@ export default async function PricingPage() {
               </p>
             </div>
           </div>
+          */}
         </div>
       </div>
     </div>

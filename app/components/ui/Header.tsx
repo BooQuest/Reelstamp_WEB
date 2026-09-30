@@ -138,7 +138,8 @@ const MOBILE_INFO_ITEMS: MobileMenuItem[] = [
 const SIMPLE_HEADER_CONFIG: Record<string, { title: string; backHref: string }> = {
   '/reels-maker': { title: '릴스 제작', backHref: '/templates' },
   '/profile': { title: '내 정보', backHref: '/' },
-  '/plan': { title: '이용 중인 플랜', backHref: '/profile' },
+  '/plan': { title: '내 이용권', backHref: '/profile' },
+  '/plan/payments': { title: '결제 내역', backHref: '/plan' },
   '/account-settings': { title: '계정 설정', backHref: '/profile' },
 };
 

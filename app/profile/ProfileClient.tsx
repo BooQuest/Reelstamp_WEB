@@ -113,7 +113,7 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
             className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:bg-gray-50 transition-all flex items-center gap-3"
           >
             <Crown className="w-5 h-5 flex-shrink-0 text-gray-500" />
-            <span className="font-semibold text-gray-900">이용 중인 플랜</span>
+            <span className="font-semibold text-gray-900">내 이용권</span>
           </button>
 
           <button
