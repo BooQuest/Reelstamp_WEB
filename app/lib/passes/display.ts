@@ -15,7 +15,7 @@ export interface PaymentRecord {
   name: string;
   amount: number | null;
   paidAt: string | null;
-  status: 'pending' | 'paid' | 'failed' | 'canceled' | 'unknown';
+  status: 'pending' | 'paid' | 'failed' | 'canceled' | 'refunded' | 'partial_refund' | 'waiting_deposit' | 'unknown';
 }
 
 const LEGACY_NAMES: Record<string, string> = {

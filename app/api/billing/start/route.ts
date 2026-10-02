@@ -1,3 +1,4 @@
+import { isInternalRequest } from '@/app/lib/passes/payment-server';
 // 빌링 시작 API: 내부 API 서버로 빌링 정보 전송
 import { NextRequest, NextResponse } from 'next/server';
 import { API_CONFIG } from '@/app/lib/constants/api';
@@ -14,6 +15,7 @@ import axios from 'axios';
  * - orderId: 주문 ID (mul_no)
  */
 export async function POST(request: NextRequest) {
+  if (!isInternalRequest(request)) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   try {
     // 1. 요청 바디 파싱
     const body = await request.json();
@@ -66,7 +68,11 @@ export async function POST(request: NextRequest) {
       success: true,
       data: response.data,
     });
-  } catch (error: any) {
+  } catch (caught: unknown) {
+          const error = axios.isAxiosError(caught) ? caught : {
+            message: caught instanceof Error ? caught.message : String(caught),
+            response: undefined, request: undefined, config: undefined,
+          };
     console.error('[Billing Start API Error]', error);
 
     // Axios 에러 처리

@@ -15,6 +15,7 @@ const { getUser, subscription, history, redirect, refresh } = vi.hoisted(() => (
 }));
 vi.mock('@/app/lib/api/auth', () => ({ getCurrentUser: getUser }));
 vi.mock('@/app/actions/auth', () => ({ getSubscriptionStatusAction: subscription }));
+vi.mock('@/app/lib/passes/server', () => ({ getPassGrants: async () => ({ grants: [], now: 0 }) }));
 vi.mock('@/app/lib/passes/queries', () => ({ getPaymentHistory: history }));
 vi.mock('next/navigation', () => ({ redirect, useRouter: () => ({ refresh }) }));
 

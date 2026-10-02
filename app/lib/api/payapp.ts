@@ -8,7 +8,7 @@ export interface PayAppPaymentRequest {
   linkkey: string;     // API 연동 키
   goodname: string;    // 상품명
   price: number;       // 결제 금액
-  recvphone?: string;  // 구매자 휴대폰번호 (필요시)
+  recvphone: string;   // REST 결제 요청 필수
   memo?: string;       // 결제 메모
   returnurl: string;   // 결제 완료 후 이동할 URL (브라우저 리다이렉트)
   feedbackurl: string; // 결제 결과 통보 URL (서버 간 Webhook)
@@ -42,6 +42,7 @@ export interface PayAppRecurringRequest {
 export interface PayAppPaymentResponse {
   state: string;       // 요청 결과 (1:성공, 0:실패)
   errorMessage?: string;
+  uncertain?: boolean;
   mul_no?: string;      // 결제 고유번호 (orderId)
   payurl?: string;      // 결제 페이지 URL
   /**
@@ -58,12 +59,15 @@ export interface PayAppPaymentResponse {
 export async function createPayAppPaymentLink(params: PayAppPaymentRequest): Promise<PayAppPaymentResponse> {
   try {
     const formData = new URLSearchParams();
+    if (!/^01[016789][0-9]{7,8}$/.test(params.recvphone)) throw new Error('Invalid phone');
     formData.append('cmd', 'payrequest');
+    formData.append('checkretry', 'y');
+    formData.append('smsuse', 'n');
     formData.append('userid', params.userid);
     formData.append('linkkey', params.linkkey);
     formData.append('goodname', params.goodname);
     formData.append('price', String(params.price));
-    // recvphone은 선택적 파라미터 (값이 있을 때만 전송)
+    // REST 결제 요청에서 필수인 휴대전화번호를 전달합니다.
     if (params.recvphone) {
       formData.append('recvphone', params.recvphone);
     }
@@ -80,6 +84,7 @@ export async function createPayAppPaymentLink(params: PayAppPaymentRequest): Pro
 
     const response = await fetch(apiUrl, {
       method: 'POST',
+      signal: AbortSignal.timeout(15000),
       body: formData,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -88,6 +93,7 @@ export async function createPayAppPaymentLink(params: PayAppPaymentRequest): Pro
       },
     });
 
+    if (!response.ok) throw new Error('PayApp HTTP error');
     const text = await response.text();
     
     // 응답 형식: state=1&errorMessage=&mul_no=...&payurl=...
@@ -95,6 +101,7 @@ export async function createPayAppPaymentLink(params: PayAppPaymentRequest): Pro
     
     return {
       state: result.get('state') || '0',
+      uncertain: !result.has('state'),
       errorMessage: result.get('errorMessage') || '',
       mul_no: result.get('mul_no') || '', // order id
       payurl: result.get('payurl') || '',
@@ -103,6 +110,7 @@ export async function createPayAppPaymentLink(params: PayAppPaymentRequest): Pro
     console.error('[PayApp Utility Error]', error);
     return {
       state: '0',
+      uncertain: true,
       errorMessage: 'PayApp 서버와의 통신 중 오류가 발생했습니다.',
     };
   }

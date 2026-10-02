@@ -1,3 +1,4 @@
+import { isInternalRequest } from '@/app/lib/passes/payment-server';
 // 빌링 상태 저장 API: 내부 API 서버로 빌링 상태 정보 전송
 import { NextRequest, NextResponse } from 'next/server';
 import { API_CONFIG } from '@/app/lib/constants/api';
@@ -18,6 +19,7 @@ import axios from 'axios';
  * - pgStatusCode: PG사 상태 코드 (PayApp의 pay_state)
  */
 export async function POST(request: NextRequest) {
+  if (!isInternalRequest(request)) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   try {
     // 1. 요청 바디 파싱
     const body = await request.json();
@@ -76,7 +78,11 @@ export async function POST(request: NextRequest) {
       message: response.data?.message || '빌링 상태가 성공적으로 저장되었습니다.',
       data: response.data?.data || response.data,
     });
-  } catch (error: any) {
+  } catch (caught: unknown) {
+          const error = axios.isAxiosError(caught) ? caught : {
+            message: caught instanceof Error ? caught.message : String(caught),
+            response: undefined, request: undefined, config: undefined,
+          };
     console.error('[Billing Status API Error]', {
       message: error.message,
       status: error.response?.status,

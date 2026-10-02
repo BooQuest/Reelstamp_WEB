@@ -4,6 +4,9 @@ import { formatPassDate, formatWon, type PaymentRecord } from '@/app/lib/passes/
 
 const STATUS_LABELS: Record<PaymentRecord['status'], string> = {
   paid: '결제 완료',
+  refunded: '전액 환불',
+  partial_refund: '부분 환불 · 확인 필요',
+  waiting_deposit: '입금 대기',
   pending: '결제 대기',
   failed: '결제 실패',
   canceled: '결제 취소',

@@ -165,7 +165,7 @@ export default function Header() {
   const currentPageLoginHref = pathname.startsWith('/login')
     ? '/login'
     : buildLoginHref(pathname);
-  const videoCreditLabel = 'free';
+  const videoCreditLabel = subscription?.passActive ? 'pass' : 'free';
   const hasVisibleLegacyMenuItems = MENU_ITEMS.some(isNavItemVisible);
   const isMenuItemAvailable = (item: { requiresAuth?: boolean }) =>
     !item.requiresAuth || isAuthenticated;

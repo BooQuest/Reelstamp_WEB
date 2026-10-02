@@ -10,14 +10,18 @@ beforeEach(() => {
 
 describe('existing payment history query', () => {
   it('reads through the authenticated server client and only returns display fields', async () => {
-    get.mockResolvedValue({
+    get.mockResolvedValueOnce({
       data: {
         success: true,
         data: [{ id: 1, status: 'paid', price: 1000, billingKey: 'private' }],
       },
     });
+    get.mockResolvedValueOnce({ data: { success: true, data: [{ orderId: 'PASS-test', productName: '구매 당시 이름', price: 4900, status: 'REFUNDED', paidAt: '2026-09-30T00:00:00Z' }] } });
     const result = await getPaymentHistory();
-    expect(get).toHaveBeenCalledExactlyOnceWith('/api/subscription/payments');
+    expect(get).toHaveBeenNthCalledWith(1, '/api/subscription/payments');
+    expect(get).toHaveBeenNthCalledWith(2, '/api/passes/orders');
+    expect(JSON.stringify(result)).toContain('구매 당시 이름');
+    expect(JSON.stringify(result)).toContain('refunded');
     expect(result.status).toBe('ready');
     expect(JSON.stringify(result)).not.toContain('private');
   });

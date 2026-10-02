@@ -15,6 +15,7 @@ export type TemplateAccessUser = {
 } | null | undefined;
 
 export type TemplateAccessSubscription = {
+  passActive?: boolean;
   subscription?: {
     active?: boolean | null;
   } | null;
@@ -65,7 +66,7 @@ export const hasActivePaidSubscription = (
   subscription: TemplateAccessSubscription
 ) => {
   const planCode = subscription?.subscriptionPlan?.plan?.trim().toLowerCase();
-  return Boolean(subscription?.subscription?.active && planCode && planCode !== 'free');
+  return Boolean(subscription?.passActive || (subscription?.subscription?.active && planCode && planCode !== 'free'));
 };
 
 export const canUseTemplate = ({

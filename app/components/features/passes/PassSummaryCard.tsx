@@ -9,7 +9,7 @@ const STATUS_LABELS: Record<PassSummary['status'], string> = {
   unknown: '정보 확인 필요',
 };
 
-export default function PassSummaryCard({ summary }: { summary: PassSummary }) {
+export default function PassSummaryCard({ summary, hideEmpty = false }: { summary: PassSummary; hideEmpty?: boolean }) {
   return (
     <div className="space-y-5">
       {summary.betaEnabled && (
@@ -21,7 +21,7 @@ export default function PassSummaryCard({ summary }: { summary: PassSummary }) {
           </p>
         </aside>
       )}
-      <section
+      {!(hideEmpty && summary.status === 'none') && <section
         aria-label="보유 이용권"
         className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8"
       >
@@ -56,7 +56,7 @@ export default function PassSummaryCard({ summary }: { summary: PassSummary }) {
             현재 응답으로는 이용권 정보를 확인할 수 없습니다. 결제 내역을 확인해주세요.
           </p>
         )}
-      </section>
+      </section>}
       <div className="grid gap-3 sm:grid-cols-2">
         <Link
           href="/pricing"
