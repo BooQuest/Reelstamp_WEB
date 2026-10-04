@@ -18,13 +18,6 @@ export interface PassOrder {
   paidAt: string | null;
   payUrl: string | null;
 }
-export interface PassGrant {
-  orderId: string;
-  productName: string;
-  startsAt: string;
-  endsAt: string;
-  revokedAt: string | null;
-}
 export function durationLabel(
   product: Pick<PassProduct, 'durationValue' | 'durationUnit'>,
 ) {

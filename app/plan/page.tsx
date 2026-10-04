@@ -38,7 +38,7 @@ export default async function PlanPage() {
   }
   return (
     <PlanClient state={state} hasPasses={!!passData?.grants.length}>
-      <PassGrants grants={passData?.grants ?? null} now={passData?.now ?? 0} />
+      <PassGrants summary={passData?.summary} grants={passData?.grants ?? null} now={passData?.now ?? 0} />
     </PlanClient>
   );
 }

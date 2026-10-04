@@ -1,7 +1,9 @@
 import 'server-only';
 import { API_CONFIG } from '@/app/lib/constants/api';
 import { getServerApiClient } from '@/app/lib/api/server-client';
-import { parseProducts, type PassGrant } from './catalog';
+import { getEntitlements } from '@/app/lib/coupons/server';
+import type { EntitlementSummary } from '@/app/lib/coupons/types';
+import { parseProducts } from './catalog';
 export async function getPassProducts() {
   const response = await fetch(
     `${API_CONFIG.WEB_BASE_URL}/api/subscription/plans`,
@@ -38,12 +40,15 @@ export async function getPassAvailability() {
   }
 }
 export async function getPassGrants(): Promise<{
-  grants: PassGrant[];
+  grants: EntitlementSummary['grants'];
   now: number;
+  summary: EntitlementSummary;
 }> {
-  const api = await getServerApiClient();
-  const { data } = await api.get('/api/passes/grants');
-  if (!data.success || !Array.isArray(data.data))
-    throw new Error('Grants unavailable');
-  return { grants: data.data, now: Date.now() };
+  const summary = await getEntitlements();
+  return {
+    // The legacy subscription retains its existing summary card below the grants.
+    grants: summary.grants.filter((grant) => grant.source !== 'LEGACY'),
+    now: Date.parse(summary.serverNow),
+    summary,
+  };
 }

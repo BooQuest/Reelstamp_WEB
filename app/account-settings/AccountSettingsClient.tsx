@@ -4,15 +4,28 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { User, Mail, LogOut } from 'lucide-react';
 import { useAuth } from '@/app/components/providers/AuthProvider';
+import CouponRegistration from './components/CouponRegistration';
+import AccountPeriod from './components/AccountPeriod';
+import type { CouponAvailability, CouponResult, EntitlementSummary } from '@/app/lib/coupons/types';
+import { buildLoginReturnHref } from '@/app/lib/auth/loginRedirect';
 import type { UserInfo } from '@/app/lib/api/auth';
 
 interface AccountSettingsClientProps {
   initialUser: UserInfo;
+  initialEntitlements: EntitlementSummary | null;
+  initialCouponAvailability: CouponAvailability | null;
 }
 
-export default function AccountSettingsClient({ initialUser }: AccountSettingsClientProps) {
+export default function AccountSettingsClient({ initialUser, initialEntitlements, initialCouponAvailability }: AccountSettingsClientProps) {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, refreshSubscription } = useAuth();
+  const [registered, setRegistered] = useState<{ initial: EntitlementSummary | null; summary: EntitlementSummary } | null>(null);
+  const entitlements = registered?.initial === initialEntitlements ? registered.summary : initialEntitlements;
+  const handleRegistered = (result: CouponResult) => {
+    setRegistered({ initial: initialEntitlements, summary: result.entitlements });
+    void refreshSubscription();
+    router.refresh();
+  };
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const displayUser = user ?? initialUser;
@@ -53,11 +66,14 @@ export default function AccountSettingsClient({ initialUser }: AccountSettingsCl
                 <span>{displayEmail}</span>
               </div>
             </div>
+            <AccountPeriod summary={entitlements} onRetry={() => router.refresh()} />
           </div>
         </div>
 
         {/* Actions */}
         <div className="space-y-3 mb-20">
+          <CouponRegistration initialAvailability={initialCouponAvailability} isGuest={isGuestUser}
+            onLogin={() => router.push(buildLoginReturnHref('/account-settings'))} onRegistered={handleRegistered} />
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
