@@ -59,6 +59,7 @@ export interface SubscriptionData {
 }
 
 export interface SubscriptionStatusResponse {
+  passActive?: boolean;
   subscription: SubscriptionData;
   subscriptionPlan: {
     plan: string;

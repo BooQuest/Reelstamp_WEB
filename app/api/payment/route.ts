@@ -1,3 +1,4 @@
+import { equalSecret } from '@/app/lib/passes/payment-server';
 import { NextRequest, NextResponse } from 'next/server';
 import { API_CONFIG } from '@/app/lib/constants/api';
 import axios from 'axios';
@@ -57,6 +58,9 @@ export async function POST(request: NextRequest) {
     } = payload;
 
     const state = String(pay_state);
+    if (!equalSecret(payload.linkkey, process.env.PAYAPP_LINKKEY)
+      || !equalSecret(payload.linkval, process.env.PAYAPP_LINKVAL))
+      return new NextResponse('INVALID_AUTH', { status: 403 });
 
     // 2. 판매자 아이디 검증 (보안)
     if (userid !== process.env.PAYAPP_USERID) {
@@ -132,7 +136,7 @@ export async function POST(request: NextRequest) {
         try {
           const subscriptionStatus = status === BILLING_STATUS.PAID ? SUBSCRIPTION_STATUS.ACTIVE : SUBSCRIPTION_STATUS.CANCELED;
           
-          const subscriptionRequestBody: any = {
+          const subscriptionRequestBody: { userId: number; status: string; planCode?: string } = {
             userId: Number(userId),
             status: subscriptionStatus,
           };
@@ -162,7 +166,11 @@ export async function POST(request: NextRequest) {
             status: subscriptionStatus,
             planCode: subscriptionRequestBody.planCode || undefined,
           });
-        } catch (subscriptionError: any) {
+        } catch (caught: unknown) {
+          const subscriptionError = axios.isAxiosError(caught) ? caught : {
+            message: caught instanceof Error ? caught.message : String(caught),
+            response: undefined, request: undefined, config: undefined,
+          };
           console.error('[PayApp Webhook] 구독 상태 업데이트 실패:', {
             message: subscriptionError.message,
             status: subscriptionError.response?.status,
@@ -236,13 +244,21 @@ export async function POST(request: NextRequest) {
                           }
                         );
                         console.log('[PayApp Webhook] 기존 구독 CANCELED 상태 업데이트 성공');
-                      } catch (subscriptionCancelError: any) {
+                      } catch (caught: unknown) {
+          const subscriptionCancelError = axios.isAxiosError(caught) ? caught : {
+            message: caught instanceof Error ? caught.message : String(caught),
+            response: undefined, request: undefined, config: undefined,
+          };
                         console.error('[PayApp Webhook] 기존 구독 CANCELED 상태 업데이트 실패:', {
                           message: subscriptionCancelError.message,
                           status: subscriptionCancelError.response?.status,
                         });
                       }
-                    } catch (updateError: any) {
+                    } catch (caught: unknown) {
+          const updateError = axios.isAxiosError(caught) ? caught : {
+            message: caught instanceof Error ? caught.message : String(caught),
+            response: undefined, request: undefined, config: undefined,
+          };
                       console.error('[PayApp Webhook] 기존 구독 canceled 상태 업데이트 실패:', {
                         message: updateError.message,
                         status: updateError.response?.status,
@@ -253,13 +269,21 @@ export async function POST(request: NextRequest) {
                   console.warn('[PayApp Webhook] 기존 구독 자동 해지 실패:', cancelResponse.errorMessage);
                 }
               }
-            } catch (cancelError: any) {
+            } catch (caught: unknown) {
+          const cancelError = axios.isAxiosError(caught) ? caught : {
+            message: caught instanceof Error ? caught.message : String(caught),
+            response: undefined, request: undefined, config: undefined,
+          };
               console.error('[PayApp Webhook] 기존 구독 해지 중 오류:', cancelError.message);
               // 해지 실패해도 웹훅은 성공으로 응답 (나중에 수동 처리 가능)
             }
           }
         }
-      } catch (updateError: any) {
+      } catch (caught: unknown) {
+          const updateError = axios.isAxiosError(caught) ? caught : {
+            message: caught instanceof Error ? caught.message : String(caught),
+            response: undefined, request: undefined, config: undefined,
+          };
         console.error('[PayApp Webhook] 빌링 상태 저장 API 호출 실패:', {
           message: updateError.message,
           url: updateError.config?.url,

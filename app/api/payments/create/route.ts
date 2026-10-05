@@ -1,3 +1,4 @@
+import { isInternalRequest } from '@/app/lib/passes/payment-server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createPayAppRecurringLink } from '@/app/lib/api/payapp';
 import { getCurrentUser } from '@/app/lib/api/auth';
@@ -15,6 +16,8 @@ import { PRICING_BETA_NOTICE, PRICING_LOCKED_FOR_BETA } from '@/app/lib/constant
  * 5) 프론트에 payurl 반환 → PayApp 결제 페이지로 이동
  */
 export async function POST(request: NextRequest) {
+  // 이전 정기등록 구현은 보존하되 공개 구매는 새 서버 가격 확정 경로만 사용합니다.
+  if (!isInternalRequest(request)) return NextResponse.json({ message: "이용권 화면에서 구매를 진행해 주세요." }, { status: 410 });
   try {
     if (PRICING_LOCKED_FOR_BETA) {
       return NextResponse.json(
@@ -119,6 +122,7 @@ export async function POST(request: NextRequest) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-Internal-Secret': process.env.X_INTERNAL_SECRET || '',
           },
           body: JSON.stringify({
             userId: user.id,
