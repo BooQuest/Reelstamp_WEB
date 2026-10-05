@@ -7,9 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent as ReactChangeEvent,
-  type PointerEvent as ReactPointerEvent,
-  type RefObject,
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -47,6 +44,11 @@ import TemplateGuideModal, {
   type TemplateGuideStep,
 } from '@/app/reels-maker/components/TemplateGuideModal';
 import TrimModal from '@/app/reels-maker/components/TrimModal';
+import useCameraCapture from './hooks/useCameraCapture';
+import useGalleryImport from './hooks/useGalleryImport';
+import useVideoTrim from './hooks/useVideoTrim';
+import useClipLibrary from './hooks/useClipLibrary';
+import { revokeBlobUrl } from './utils/media/previews';
 import useCaptionEditor from '@/app/reels-maker/hooks/useCaptionEditor';
 import useAutoCaption from '@/app/reels-maker/hooks/useAutoCaption';
 import useDraftAutosave from '@/app/reels-maker/hooks/useDraftAutosave';
@@ -58,51 +60,33 @@ import {
   AUTO_CAPTION_DEFAULT_STYLE,
   COMPLETE_START_FAILED_USER_MESSAGE,
   DEFAULT_CAPTION_STYLE,
-  DEFAULT_GALLERY_CLIP_DURATION_SECONDS,
   DURATION_MODE_FORCED,
   DURATION_MODE_RECOMMENDED,
   MAX_CAPTIONS_PER_CLIP,
-  MIN_TRIM_DURATION_SECONDS,
   PROCESSING_FAILED_USER_MESSAGE,
   PROCESSING_STATUS_TIMEOUT_MS,
   PROCESSING_TIMEOUT_USER_MESSAGE,
-  RECOMMENDED_AUTO_STOP_SECONDS,
-  TIMELINE_THUMBNAIL_COUNT,
 } from '@/app/reels-maker/constants';
 import type {
-  CameraFacingMode,
   CaptionItem,
-  ClipInfo,
-  RecorderStatus,
-  ReelsMakerClipPresignResponse,
+  ClipSource,
+  PreparedClip,
   ReelsMakerErrorResponse,
   ReelsMakerSessionResponse,
   ReelsMakerStatusResponse,
   Stage,
   TemplateDetailResponse,
   TemplateExampleReel,
-  TrimDragMode,
-  TrimDragStartState,
-  VideoMetadata,
 } from '@/app/reels-maker/types';
 import {
   parseGuideImageEntries,
 } from '@/app/reels-maker/utils/assets';
-import { findNextIncompleteCaptureCutIndex } from '@/app/reels-maker/utils/captureProgression';
 import {
   buildCaptionExportStyle,
-  clampValue,
   normalizeCaptionText,
   normalizeCaptionStyle,
 } from '@/app/reels-maker/utils/captions';
-import {
-  buildCameraEnhancementConstraints,
-  buildCameraMediaConstraintCandidates,
-  buildFallbackCameraMediaConstraints,
-  isPortraitMediaTrackSettings,
-  selectPreferredRearCameraDevice,
-  type CameraPreviewMetrics,
-} from '@/app/reels-maker/utils/camera';
+import type { CameraPreviewMetrics } from '@/app/reels-maker/utils/camera';
 import { getErrorMessage } from '@/app/reels-maker/utils/errors';
 import {
   buildTemplateLoginHref,
@@ -151,25 +135,6 @@ const buildReelsMakerHref = ({
   return `/reels-maker?${params.toString()}`;
 };
 
-type FilePickerAcceptOption = {
-  description?: string;
-  accept: Record<string, string[]>;
-};
-
-type FileSystemFileHandleLike = {
-  getFile: () => Promise<File>;
-};
-
-type WindowWithOpenFilePicker = Window & {
-  showOpenFilePicker?: (options?: {
-    multiple?: boolean;
-    excludeAcceptAllOption?: boolean;
-    types?: FilePickerAcceptOption[];
-  }) => Promise<FileSystemFileHandleLike[]>;
-};
-
-type ClipSource = 'recording' | 'file';
-
 type ReplacementConfirmState =
   | {
       type: 'recording' | 'gallery';
@@ -180,16 +145,6 @@ type ReplacementConfirmState =
 type FinalCompleteOptions = {
   acceptedStaleAutoCaptionClipIds?: number[];
 };
-
-const GALLERY_FILE_PICKER_TYPES: FilePickerAcceptOption[] = [
-  {
-    description: '사진 또는 영상',
-    accept: {
-      'image/*': ['.jpg', '.jpeg', '.png', '.webp', '.heic'],
-      'video/*': ['.mp4', '.mov', '.webm', '.m4v'],
-    },
-  },
-];
 
 type SessionErrorState = {
   type: 'auth' | 'template-login' | 'paid-template' | 'generic';
@@ -285,50 +240,6 @@ const normalizeSessionCaptions = (
   });
 };
 
-const RECORDER_VIDEO_BITS_PER_SECOND = 12_000_000;
-const RECORDER_AUDIO_BITS_PER_SECOND = 192_000;
-const RECORDER_PREFERRED_MIME_TYPES = [
-  'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
-  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-  'video/mp4',
-  'video/webm;codecs=vp9,opus',
-  'video/webm;codecs=vp8,opus',
-  'video/webm',
-];
-
-const isValidMediaDimension = (value: number) =>
-  Number.isFinite(value) && value > 0;
-
-const isValidMediaSize = (width: number, height: number) =>
-  isValidMediaDimension(width) && isValidMediaDimension(height);
-
-const getSupportedRecorderMimeType = () => {
-  if (typeof window === 'undefined' || !window.MediaRecorder) return null;
-  return (
-    RECORDER_PREFERRED_MIME_TYPES.find((type) =>
-      window.MediaRecorder.isTypeSupported(type)
-    ) || null
-  );
-};
-
-const buildRecorderOptions = (
-  mimeType: string | null,
-  stream: MediaStream
-): MediaRecorderOptions => {
-  const options: MediaRecorderOptions = {
-    videoBitsPerSecond: RECORDER_VIDEO_BITS_PER_SECOND,
-  };
-
-  if (mimeType) {
-    options.mimeType = mimeType;
-  }
-  if (stream.getAudioTracks().length > 0) {
-    options.audioBitsPerSecond = RECORDER_AUDIO_BITS_PER_SECOND;
-  }
-
-  return options;
-};
-
 function ReelsMakerInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -343,37 +254,16 @@ function ReelsMakerInner() {
   );
   const explicitCompletionReturnUrl = returnUrlParam ? completionReturnUrl : null;
   const cameraFrameRef = useRef<HTMLDivElement | null>(null);
-  const galleryFileInputRef = useRef<HTMLInputElement | null>(null);
-  const trimPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
-  const trimViewportRef = useRef<HTMLDivElement | null>(null);
-  const trimMeasureRef = useRef<HTMLDivElement | null>(null);
-  const trimPreviewContainerRef = useRef<HTMLDivElement | null>(null);
-  const trimTimelineRef = useRef<HTMLDivElement | null>(null);
-  const trimPlaybackRafRef = useRef<number | null>(null);
-  const trimDragPointerIdRef = useRef<number | null>(null);
-  const trimDragStartRef = useRef<TrimDragStartState | null>(null);
-  const trimBoundsRef = useRef({ start: 0, end: 0, scrub: 0 });
+
   const captureViewportRef = useRef<HTMLDivElement | null>(null);
   const captureContentRef = useRef<HTMLDivElement | null>(null);
   const captureMeasureRef = useRef<HTMLDivElement | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
-  const recordTimeoutRef = useRef<number | null>(null);
-  const countdownTimerRef = useRef<number | null>(null);
-  const recordingCutRef = useRef<number>(0);
-  const recordingMimeTypeRef = useRef<string>('video/webm');
-  const cameraSetupInProgressRef = useRef(false);
-  const switchCameraInProgressRef = useRef(false);
-  const latestClipsRef = useRef<Array<ClipInfo | null>>([]);
-  const uploadedCutsRef = useRef<Record<number, boolean>>({});
-  const mediaPickerTargetIndexRef = useRef<number | null>(null);
-  const mediaPickerFocusTimeoutRef = useRef<number | null>(null);
+
   const sessionHydratedRef = useRef(false);
   const sessionInitKeyRef = useRef<string | null>(null);
 
   const [stage, setStage] = useState<Stage>('capture');
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [cameraError, setCameraError] = useState<string | null>(null);
+
   const [template, setTemplate] = useState<TemplateDetailResponse | null>(null);
   const [isTemplateLoading, setIsTemplateLoading] = useState(true);
   const [templateError, setTemplateError] = useState<string | null>(null);
@@ -385,14 +275,9 @@ function ReelsMakerInner() {
   const [pendingExitHref, setPendingExitHref] = useState('/my-projects');
   const [isExitSaving, setIsExitSaving] = useState(false);
   const [showGuestDraftNotice, setShowGuestDraftNotice] = useState(false);
-  const [uploadedCuts, setUploadedCuts] = useState<Record<number, boolean>>({});
-  const [uploadingCuts, setUploadingCuts] = useState<Record<number, boolean>>({});
-  const [clipUploadErrors, setClipUploadErrors] = useState<Record<number, string>>({});
+
   const [activeCutIndex, setActiveCutIndex] = useState(0);
-  const [recordingStatus, setRecordingStatus] = useState<RecorderStatus>('idle');
-  const [recordingElapsedSeconds, setRecordingElapsedSeconds] = useState<number | null>(null);
-  const [clips, setClips] = useState<Array<ClipInfo | null>>([]);
-  const [clipSources, setClipSources] = useState<Record<number, ClipSource>>({});
+
   const [captions, setCaptions] = useState<CaptionItem[]>([]);
   const [captionsEnabled, setCaptionsEnabled] = useState(true);
   const [autoCaptionAvailable, setAutoCaptionAvailable] = useState(false);
@@ -423,32 +308,16 @@ function ReelsMakerInner() {
   const [finalPosterUrl, setFinalPosterUrl] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
-  const [fixedClipErrors, setFixedClipErrors] = useState<Record<number, string>>({});
-  const [clipPosters, setClipPosters] = useState<Record<number, string>>({});
-  const [cameraFacingMode, setCameraFacingMode] = useState<CameraFacingMode>('environment');
-  const [galleryError, setGalleryError] = useState<string | null>(null);
-  const [isGalleryProcessing, setIsGalleryProcessing] = useState(false);
+
   const [isMediaSourceOpen, setIsMediaSourceOpen] = useState(false);
-  const [isMediaPickerActive, setIsMediaPickerActive] = useState(false);
+
   const [mediaPickerTargetCutIndex, setMediaPickerTargetCutIndex] = useState<number | null>(
     null
   );
-  const [trimTargetCutIndex, setTrimTargetCutIndex] = useState<number | null>(null);
+
   const [replacementConfirm, setReplacementConfirm] =
     useState<ReplacementConfirmState>(null);
-  const [isTrimOpen, setIsTrimOpen] = useState(false);
-  const [trimSourceFile, setTrimSourceFile] = useState<File | null>(null);
-  const [trimSourceUrl, setTrimSourceUrl] = useState<string | null>(null);
-  const [trimSourceMetadata, setTrimSourceMetadata] = useState<VideoMetadata | null>(null);
-  const [trimStartSeconds, setTrimStartSeconds] = useState(0);
-  const [trimEndSeconds, setTrimEndSeconds] = useState(0);
-  const [trimScrubSeconds, setTrimScrubSeconds] = useState(0);
-  const [isTrimPlaying, setIsTrimPlaying] = useState(false);
-  const [activeTrimDrag, setActiveTrimDrag] = useState<TrimDragMode>('none');
-  const [trimPreviewMaxHeight, setTrimPreviewMaxHeight] = useState<number | null>(null);
-  const [trimThumbnails, setTrimThumbnails] = useState<string[]>([]);
-  const [isTrimPreparing, setIsTrimPreparing] = useState(false);
-  const [trimError, setTrimError] = useState<string | null>(null);
+
   const [captureScale, setCaptureScale] = useState(1);
   const [isCaptureMenuOpen, setIsCaptureMenuOpen] = useState(false);
 
@@ -552,6 +421,66 @@ function ReelsMakerInner() {
     sessionHydratedRef,
   });
 
+  const {
+    clips, clipSources, clipPosters, uploadedCuts, uploadingCuts, clipUploadErrors, fixedClipErrors,
+    save: saveClip, hydrate: hydrateClips, reset: resetClips, resetCut, retryFixedClip, reportUploadError,
+  } = useClipLibrary({ cuts, sessionId, sessionClipMap });
+  const trim = useVideoTrim({ cuts, activeCutIndex, onSubmit: saveClipAtIndex, logVideoDebug });
+  const {
+    isTrimOpen, isTrimPreparing, trimSourceFile, trimSourceUrl, trimSourceMetadata,
+    trimStartSeconds, trimEndSeconds, trimScrubSeconds, isTrimPlaying, activeTrimDrag,
+    trimPreviewMaxHeight, trimThumbnails, trimError, trimDurationSeconds, trimSliderMax,
+    recommendedTrimSeconds, trimViewportRef, trimMeasureRef, trimPreviewContainerRef,
+    trimPreviewVideoRef, trimTimelineRef, closeTrimModal, handleTrimPlayToggle,
+    handleTrimScrubPointerDown, handleTrimPointerDown, secondsToTimelineX, handleTrimConfirm,
+    reset: resetTrimState, clearError: clearTrimError,
+  } = trim;
+  const gallery = useGalleryImport({
+    cuts, activeCutIndex, onSelectCut: setActiveCutIndex,
+    onBeforePick: () => stopCamera(), onOpenVideo: trim.open,
+    onSubmit: saveClipAtIndex, logVideoDebug,
+  });
+  const {
+    galleryFileInputRef, galleryError, isMediaPickerActive, handleGalleryFileChange,
+    reset: resetGallery, clearError: clearGalleryError, open: openGallery,
+  } = gallery;
+  const isGalleryProcessing = gallery.isGalleryProcessing || trim.isProcessing;
+  const isCaptureCameraPaused =
+    !sessionId || isSessionLoading || isTemplateGuideOpen || isMediaPickerActive ||
+    isGalleryProcessing || isTrimPreparing || isTrimOpen;
+  const camera = useCameraCapture({
+    cuts, activeCutIndex, sessionId, sessionClipMap,
+    previewActive: stage === 'capture' && Boolean(template) && !isCaptureCameraPaused,
+    switchDisabled: Boolean(cuts[activeCutIndex]?.isFixed) || isGalleryProcessing || isTrimPreparing || isTrimOpen || isMediaPickerActive,
+    shouldConfirmRetake: clipSources[activeCutIndex] === 'recording',
+    onRequestReplacement: (cutIndex) => setReplacementConfirm({ type: 'recording', cutIndex }),
+    onSubmit: saveClipAtIndex, onUploadError: reportUploadError, logVideoDebug,
+  });
+  const {
+    stream, cameraError, recordingStatus, recordingElapsedSeconds,
+    startRecording, stopRecording, stopCamera, handleSwitchCamera,
+    reset: resetCamera, clearError: clearCameraError,
+  } = camera;
+
+  async function saveClipAtIndex(index: number, clip: PreparedClip, source: ClipSource) {
+    const { session, clipId, nextCutIndex } = await saveClip(index, clip, source);
+    applyServerUpdate(session);
+    setCaptionsEnabled(session.captionsEnabled !== false);
+    setAutoCaptionAvailable(Boolean(session.autoCaptionAvailable));
+    setAutoCaptionRemainingAttempts(session.autoCaptionRemainingAttempts ?? 0);
+    setActiveAutoCaptionJobId(session.activeAutoCaptionJobId ?? null);
+    setLatestAutoCaptionJobId(session.latestAutoCaptionJobId ?? null);
+    setStaleAutoCaptionClipIds(session.staleAutoCaptionClipIds ?? []);
+    setAcceptedStaleAutoCaptionClipIds((current) => current.filter((id) => id !== clipId));
+    clearGalleryError();
+    clearCameraError();
+    if (nextCutIndex >= 0) {
+      setActiveCutIndex(nextCutIndex);
+      setTemplateGuideStep(nextCutIndex);
+      setIsTemplateGuideOpen(true);
+    }
+  }
+
   const activeCut = cuts[activeCutIndex] ?? null;
   const allDone = useMemo(() => {
     if (cuts.length === 0) return false;
@@ -571,8 +500,7 @@ function ReelsMakerInner() {
   const shouldShowActiveClipPreview =
     !isActiveCutFixed && Boolean(activeClip) && recordingStatus !== 'recording';
   const activeClipId = activeCut ? sessionClipMap[activeCut.order] ?? null : null;
-  const activeClipSource = clipSources[activeCutIndex] ?? null;
-  const shouldConfirmActiveRetake = activeClipSource === 'recording';
+
   const showCaptionStage =
     captionsEnabled &&
     !activeUploadError &&
@@ -691,14 +619,7 @@ function ReelsMakerInner() {
     Boolean(uploadingCuts[activeCutIndex]);
   const canRetakeActiveCut =
     !isActiveCutFixed && Boolean(activeClip) && recordingStatus !== 'recording';
-  const isCaptureCameraPaused =
-    !sessionId ||
-    isSessionLoading ||
-    isTemplateGuideOpen ||
-    isMediaPickerActive ||
-    isGalleryProcessing ||
-    isTrimPreparing ||
-    isTrimOpen;
+
   const guideImageEntries = useMemo(
     () => parseGuideImageEntries(activeCut?.guideImageUrl),
     [activeCut?.guideImageUrl]
@@ -759,17 +680,6 @@ function ReelsMakerInner() {
     recordingStatus === 'recording' &&
     activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
     isRecommendedTimingExceeded;
-  const trimDurationSeconds = Math.max(0, trimEndSeconds - trimStartSeconds);
-  const trimSliderMax = trimSourceMetadata?.duration ?? 0;
-  const trimTargetCut =
-    trimTargetCutIndex === null ? activeCut : (cuts[trimTargetCutIndex] ?? null);
-  const trimTargetDurationSeconds = Math.max(0, trimTargetCut?.durationSeconds ?? 0);
-  const recommendedTrimSeconds =
-    trimTargetDurationSeconds > 0 ? trimTargetDurationSeconds : trimDurationSeconds;
-  const minTrimDurationForSource = Math.min(
-    MIN_TRIM_DURATION_SECONDS,
-    trimSliderMax > 0 ? trimSliderMax : MIN_TRIM_DURATION_SECONDS
-  );
 
   const handleGuideImageToggle = useCallback(() => {
     if (!guideImageSrc) return;
@@ -831,263 +741,6 @@ function ReelsMakerInner() {
     setActiveCutIndex(cutIndex);
     setIsTemplateGuideOpen(false);
   }, [cuts, findNextCaptureCutIndex, templateGuideStep]);
-
-  const pauseTrimPlayback = useCallback(() => {
-    if (trimPlaybackRafRef.current !== null) {
-      cancelAnimationFrame(trimPlaybackRafRef.current);
-      trimPlaybackRafRef.current = null;
-    }
-    const previewVideo = trimPreviewVideoRef.current;
-    if (previewVideo && !previewVideo.paused) {
-      previewVideo.pause();
-    }
-    setIsTrimPlaying(false);
-  }, []);
-
-  const timelineXToSeconds = useCallback(
-    (clientX: number) => {
-      const timeline = trimTimelineRef.current;
-      if (!timeline || trimSliderMax <= 0) return 0;
-      const rect = timeline.getBoundingClientRect();
-      if (rect.width <= 0) return 0;
-      const progress = clampValue((clientX - rect.left) / rect.width, 0, 1);
-      return progress * trimSliderMax;
-    },
-    [trimSliderMax]
-  );
-
-  const secondsToTimelineX = useCallback(
-    (seconds: number) => {
-      if (trimSliderMax <= 0) return 0;
-      return clampValue((seconds / trimSliderMax) * 100, 0, 100);
-    },
-    [trimSliderMax]
-  );
-
-  const handleTrimPlayToggle = useCallback(async () => {
-    const previewVideo = trimPreviewVideoRef.current;
-    if (!previewVideo || !trimSourceMetadata) return;
-
-    if (isTrimPlaying) {
-      pauseTrimPlayback();
-      return;
-    }
-
-    const startAt = clampValue(trimScrubSeconds, trimStartSeconds, trimEndSeconds);
-    if (trimEndSeconds - startAt < 0.02) {
-      setTrimScrubSeconds(trimEndSeconds);
-      return;
-    }
-
-    try {
-      previewVideo.currentTime = startAt;
-      const playPromise = previewVideo.play();
-      if (playPromise) {
-        await playPromise;
-      }
-      setIsTrimPlaying(true);
-      setTrimError(null);
-    } catch {
-      setIsTrimPlaying(false);
-      setTrimError('미리보기를 재생하지 못했습니다.');
-    }
-  }, [
-    isTrimPlaying,
-    pauseTrimPlayback,
-    trimEndSeconds,
-    trimScrubSeconds,
-    trimSourceMetadata,
-    trimStartSeconds,
-  ]);
-
-  const handleTrimPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>, dragMode: Exclude<TrimDragMode, 'none'>) => {
-      if (trimSliderMax <= 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-      pauseTrimPlayback();
-      trimDragPointerIdRef.current = event.pointerId;
-      trimDragStartRef.current = {
-        pointerX: event.clientX,
-        startSeconds: trimStartSeconds,
-        endSeconds: trimEndSeconds,
-        scrubSeconds: trimScrubSeconds,
-      };
-      setActiveTrimDrag(dragMode);
-      setTrimError(null);
-    },
-    [pauseTrimPlayback, trimEndSeconds, trimScrubSeconds, trimSliderMax, trimStartSeconds]
-  );
-
-  const handleTrimScrubPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (trimSliderMax <= 0) return;
-      const rawSeconds = timelineXToSeconds(event.clientX);
-      const currentStart = trimBoundsRef.current.start;
-      const currentEnd = trimBoundsRef.current.end;
-      const safeScrub = clampValue(rawSeconds, currentStart, currentEnd);
-      setTrimScrubSeconds(safeScrub);
-      handleTrimPointerDown(event, 'scrub');
-    },
-    [handleTrimPointerDown, timelineXToSeconds, trimSliderMax]
-  );
-
-  const resetTrimState = useCallback(() => {
-    pauseTrimPlayback();
-    trimDragPointerIdRef.current = null;
-    trimDragStartRef.current = null;
-    setTrimSourceFile(null);
-    setTrimSourceMetadata(null);
-    setTrimStartSeconds(0);
-    setTrimEndSeconds(0);
-    setTrimScrubSeconds(0);
-    setActiveTrimDrag('none');
-    setTrimPreviewMaxHeight(null);
-    setTrimThumbnails([]);
-    setIsTrimPreparing(false);
-    setTrimError(null);
-    setTrimTargetCutIndex(null);
-    setTrimSourceUrl((current) => {
-      if (current) {
-        URL.revokeObjectURL(current);
-      }
-      return null;
-    });
-  }, [pauseTrimPlayback]);
-
-  const closeTrimModal = useCallback(() => {
-    setIsTrimOpen(false);
-    resetTrimState();
-  }, [resetTrimState]);
-
-  const loadVideoMetadataFromUrl = useCallback(async (url: string): Promise<VideoMetadata> => {
-    const video = document.createElement('video');
-    video.preload = 'metadata';
-    video.playsInline = true;
-    video.muted = true;
-    video.src = url;
-
-    try {
-      return await new Promise<VideoMetadata>((resolve, reject) => {
-        const onLoadedMetadata = () => {
-          cleanup();
-          const duration =
-            Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
-          const width = video.videoWidth;
-          const height = video.videoHeight;
-          logVideoDebug('gallery metadata loaded', {
-            duration,
-            videoWidth: video.videoWidth,
-            videoHeight: video.videoHeight,
-            metadataWidth: width,
-            metadataHeight: height,
-          });
-          if (!isValidMediaSize(width, height)) {
-            reject(new Error('영상 해상도 정보를 확인하지 못했습니다.'));
-            return;
-          }
-          resolve({ duration, width, height });
-        };
-        const onError = () => {
-          cleanup();
-          reject(new Error('영상 정보를 불러오지 못했습니다.'));
-        };
-        const cleanup = () => {
-          video.removeEventListener('loadedmetadata', onLoadedMetadata);
-          video.removeEventListener('error', onError);
-        };
-        video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true });
-        video.addEventListener('error', onError, { once: true });
-      });
-    } finally {
-      video.src = '';
-    }
-  }, [logVideoDebug]);
-
-  const seekVideoTo = useCallback(async (video: HTMLVideoElement, time: number) => {
-    if (Math.abs(video.currentTime - time) < 0.02) {
-      return;
-    }
-    await new Promise<void>((resolve, reject) => {
-      const onSeeked = () => {
-        cleanup();
-        resolve();
-      };
-      const onError = () => {
-        cleanup();
-        reject(new Error('영상 탐색 중 오류가 발생했습니다.'));
-      };
-      const cleanup = () => {
-        video.removeEventListener('seeked', onSeeked);
-        video.removeEventListener('error', onError);
-      };
-      video.addEventListener('seeked', onSeeked, { once: true });
-      video.addEventListener('error', onError, { once: true });
-      video.currentTime = time;
-    });
-  }, []);
-
-  const generateTimelineThumbnails = useCallback(
-    async (url: string, metadata: VideoMetadata): Promise<string[]> => {
-      const video = document.createElement('video');
-      video.src = url;
-      video.preload = 'auto';
-      video.playsInline = true;
-      video.muted = true;
-
-      await new Promise<void>((resolve, reject) => {
-        const onLoadedData = () => {
-          cleanup();
-          resolve();
-        };
-        const onError = () => {
-          cleanup();
-          reject(new Error('썸네일을 생성하지 못했습니다.'));
-        };
-        const cleanup = () => {
-          video.removeEventListener('loadeddata', onLoadedData);
-          video.removeEventListener('error', onError);
-        };
-        video.addEventListener('loadeddata', onLoadedData, { once: true });
-        video.addEventListener('error', onError, { once: true });
-      });
-
-      const sourceWidth = metadata.width || video.videoWidth || 720;
-      const sourceHeight = metadata.height || video.videoHeight || 1280;
-      const ratio = sourceWidth / Math.max(1, sourceHeight);
-      const thumbnailHeight = 72;
-      const thumbnailWidth = Math.max(48, Math.round(thumbnailHeight * ratio));
-      const canvas = document.createElement('canvas');
-      canvas.width = thumbnailWidth;
-      canvas.height = thumbnailHeight;
-      const context = canvas.getContext('2d');
-      if (!context) {
-        throw new Error('썸네일 캔버스를 준비하지 못했습니다.');
-      }
-
-      const maxFrameCount = Math.min(
-        TIMELINE_THUMBNAIL_COUNT,
-        Math.max(2, Math.ceil(metadata.duration || 2))
-      );
-      const thumbnails: string[] = [];
-      for (let i = 0; i < maxFrameCount; i += 1) {
-        const progress = maxFrameCount === 1 ? 0 : i / (maxFrameCount - 1);
-        const targetTime = Math.max(0, (metadata.duration || 0) * progress);
-        try {
-          await seekVideoTo(video, targetTime);
-        } catch {
-          // iOS 일부 환경에서 마지막 seek가 실패할 수 있어 가능한 프레임만 사용한다.
-        }
-        context.clearRect(0, 0, thumbnailWidth, thumbnailHeight);
-        context.drawImage(video, 0, 0, thumbnailWidth, thumbnailHeight);
-        thumbnails.push(canvas.toDataURL('image/jpeg', 0.78));
-      }
-
-      video.src = '';
-      return thumbnails;
-    },
-    [seekVideoTo]
-  );
 
   useEffect(() => {
     if (!templateId) {
@@ -1267,60 +920,13 @@ function ReelsMakerInner() {
         setIsTemplateGuideOpen(true);
       }
 
-      const restoredUploadedCuts: Record<number, boolean> = {};
-      const restoredClips: Array<ClipInfo | null> = Array(cuts.length).fill(null);
-      await Promise.all(
-        (session.clips ?? []).map(async (sessionClip) => {
-          const index = cuts.findIndex((cut) => cut.order === sessionClip.order);
-          if (index < 0) return;
-          const cut = cuts[index];
-          const isUploaded = sessionClip.status === 'UPLOADED';
-          restoredUploadedCuts[index] = cut.isFixed || isUploaded;
-          if (
-            !requestedSessionId ||
-            session.status !== 'CAPTURE' ||
-            cut.isFixed ||
-            !isUploaded ||
-            !sessionClip.downloadUrl
-          ) {
-            return;
-          }
-          try {
-            const clipResponse = await fetch(
-              `/api/reels-maker/download?url=${encodeURIComponent(sessionClip.downloadUrl)}`,
-              { method: 'GET', cache: 'no-store' }
-            );
-            if (!clipResponse.ok) return;
-            const blob = await clipResponse.blob();
-            const mimeType =
-              sessionClip.contentType || blob.type || 'video/webm';
-            restoredClips[index] = {
-              blob,
-              url: URL.createObjectURL(blob),
-              duration:
-                sessionClip.actualDurationSeconds ?? sessionClip.durationSeconds ?? 0,
-              mimeType,
-            };
-          } catch {
-            // 서버 업로드 상태는 유지하고 미리보기만 생략한다.
-          }
-        })
-      );
-      setUploadedCuts(restoredUploadedCuts);
-      setClipSources({});
+      const restored = await hydrateClips(session, Boolean(requestedSessionId));
+      if (!restored) return;
       const restoredIndex = cuts.findIndex(
         (cut) => cut.order === session.lastActiveClipOrder
       );
       const resolvedActiveIndex = restoredIndex >= 0 ? restoredIndex : 0;
       if (requestedSessionId) {
-        setClips((prev) => {
-          prev.forEach((clip, index) => {
-            if (clip?.url && !cuts[index]?.isFixed) {
-              URL.revokeObjectURL(clip.url);
-            }
-          });
-          return restoredClips;
-        });
         setActiveCutIndex(resolvedActiveIndex);
       }
       hydrateDraft({
@@ -1357,6 +963,7 @@ function ReelsMakerInner() {
     cuts,
     explicitCompletionReturnUrl,
     hydrateDraft,
+    hydrateClips,
     requestedSessionId,
     router,
     setUser,
@@ -1371,19 +978,16 @@ function ReelsMakerInner() {
   }, [createReelsSession]);
 
   useEffect(() => {
-    if (!template) return;
+    if (cuts.length === 0) return;
 
     setActiveCutIndex(0);
-    setRecordingStatus('idle');
-    setRecordingElapsedSeconds(null);
+    resetCamera();
     setSessionId(null);
     setSessionClipMap({});
     setSessionError(null);
     resetDraft();
     sessionHydratedRef.current = false;
-    setUploadedCuts({});
-    setUploadingCuts({});
-    setClipUploadErrors({});
+    resetClips(cuts);
     setCaptions([]);
     setCaptionsEnabled(true);
     setAutoCaptionAvailable(false);
@@ -1403,13 +1007,6 @@ function ReelsMakerInner() {
     setGuideImageIndexByCut({});
     setEditingCaptionId(null);
     resetCaptionGesture();
-    setClips((prev) => {
-      prev.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
-      return Array(cuts.length).fill(null);
-    });
-    setFixedClipErrors({});
-    setClipPosters({});
-    setClipSources({});
     setFinalVideoUrl((prev) => {
       revokeBlobUrl(prev);
       return null;
@@ -1417,16 +1014,12 @@ function ReelsMakerInner() {
     setFinalPosterUrl(null);
     setFinalVideoMimeType('video/mp4');
     setIsPreviewOpen(false);
-    setGalleryError(null);
-    setIsGalleryProcessing(false);
     setIsMediaSourceOpen(false);
-    setIsMediaPickerActive(false);
     setMediaPickerTargetCutIndex(null);
-    setTrimTargetCutIndex(null);
     setReplacementConfirm(null);
-    setIsTrimOpen(false);
     setIsTemplateGuideOpen(false);
     setTemplateGuideStep('overview');
+    resetGallery();
     resetTrimState();
   }, [
     template?.id,
@@ -1434,20 +1027,12 @@ function ReelsMakerInner() {
     resetCaptionGesture,
     resetDraft,
     resetTrimState,
+    resetGallery,
+    resetCamera,
+    resetClips,
     setEditingCaptionId,
     setSelectedCaptionId,
   ]);
-
-  useEffect(() => {
-    if (cuts.length === 0) return;
-    setUploadedCuts(() => {
-      const next: Record<number, boolean> = {};
-      cuts.forEach((cut, index) => {
-        next[index] = cut.isFixed;
-      });
-      return next;
-    });
-  }, [cuts]);
 
   useEffect(() => {
     if (cuts.length === 0) return;
@@ -1489,1082 +1074,6 @@ function ReelsMakerInner() {
     };
   }, [isCaptureMenuOpen]);
 
-  const stopCamera = useCallback(() => {
-    setStream((current) => {
-      if (current) {
-        current.getTracks().forEach((track) => track.stop());
-      }
-      return null;
-    });
-  }, []);
-
-  const buildFixedVideoProxyUrl = useCallback((rawUrl: string) => {
-    return rawUrl;
-  }, []);
-
-  const ensureVideoPlayable = useCallback(async (blob: Blob) => {
-    const url = URL.createObjectURL(blob);
-    const video = document.createElement('video');
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
-    return new Promise<void>((resolve, reject) => {
-      const cleanup = () => URL.revokeObjectURL(url);
-      video.onloadeddata = () => {
-        cleanup();
-        resolve();
-      };
-      video.onerror = () => {
-        cleanup();
-        reject(new Error('영상 코덱을 지원하지 않습니다.'));
-      };
-      video.src = url;
-      video.load();
-    });
-  }, []);
-
-  const downloadFixedClip = useCallback(
-    async (url: string, durationSeconds: number): Promise<ClipInfo> => {
-      const fixedUrl = buildFixedVideoProxyUrl(url);
-      let requestUrl = fixedUrl;
-      try {
-        const parsed = new URL(fixedUrl);
-        parsed.searchParams.set('v', Date.now().toString());
-        requestUrl = parsed.toString();
-      } catch {
-        requestUrl = fixedUrl;
-      }
-      const response = await fetch(requestUrl, { cache: 'no-store' });
-      if (!response.ok) {
-        const errorPayload = await response.json().catch(() => null);
-        throw new Error(errorPayload?.message || '고정 영상을 불러오지 못했습니다.');
-      }
-      const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-      if (contentType.includes('text/html')) {
-        throw new Error('고정 영상 링크가 올바르지 않습니다. 직접 다운로드 링크를 확인해주세요.');
-      }
-      const blob = await response.blob();
-      if (blob.type.toLowerCase().includes('text/html')) {
-        throw new Error('고정 영상 링크가 올바르지 않습니다. 직접 다운로드 링크를 확인해주세요.');
-      }
-      if (!blob.size) {
-        throw new Error('고정 영상 파일이 비어 있습니다.');
-      }
-      const mimeType = blob.type || 'video/mp4';
-      await ensureVideoPlayable(blob);
-      const objectUrl = URL.createObjectURL(blob);
-      return {
-        blob,
-        url: objectUrl,
-        duration: durationSeconds,
-        mimeType,
-      };
-    },
-    [buildFixedVideoProxyUrl, ensureVideoPlayable]
-  );
-
-  const retryFixedClip = useCallback(
-    (index: number) => {
-      const cut = cuts[index];
-      if (!cut?.isFixed) return;
-      setFixedClipErrors((prev) => {
-        const next = { ...prev };
-        delete next[index];
-        return next;
-      });
-      setClips((prev) => {
-        const next = [...prev];
-        if (next[index]?.url) {
-          URL.revokeObjectURL(next[index]!.url);
-        }
-        next[index] = null;
-        return next;
-      });
-      setClipPosters((prev) => {
-        const next = { ...prev };
-        delete next[index];
-        return next;
-      });
-    },
-    [cuts]
-  );
-
-  const setupCamera = useCallback(
-    async (overrideFacingMode?: CameraFacingMode): Promise<MediaStream | null> => {
-      const targetFacingMode = overrideFacingMode ?? cameraFacingMode;
-      if (cameraSetupInProgressRef.current) {
-        return null;
-      }
-
-      cameraSetupInProgressRef.current = true;
-      setCameraError(null);
-
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError('이 브라우저에서는 카메라 기능을 사용할 수 없습니다.');
-        cameraSetupInProgressRef.current = false;
-        return null;
-      }
-
-      try {
-        type CameraConstraintAttemptDebug = {
-          label: string;
-          success: boolean;
-          accepted?: boolean;
-          portrait?: boolean;
-          fallback: boolean;
-          settings?: MediaTrackSettings | null;
-          errorName?: string | null;
-          errorMessage?: string;
-        };
-
-        const requestBestCameraStream = async (deviceId?: string) => {
-          const cameraConstraintAttempts: CameraConstraintAttemptDebug[] = [];
-          const candidates = buildCameraMediaConstraintCandidates(
-            targetFacingMode,
-            deviceId
-          );
-
-          for (const candidate of candidates) {
-            try {
-              const candidateStream = await navigator.mediaDevices.getUserMedia(
-                candidate.constraints
-              );
-              const candidateVideoTrack = candidateStream.getVideoTracks()[0];
-              const candidateSettings = candidateVideoTrack?.getSettings() ?? null;
-              const portrait = isPortraitMediaTrackSettings(candidateSettings);
-              const accepted = portrait || candidate.acceptNonPortrait;
-
-              cameraConstraintAttempts.push({
-                label: candidate.label,
-                success: true,
-                accepted,
-                portrait,
-                fallback: candidate.fallback,
-                settings: candidateSettings,
-              });
-
-              if (accepted) {
-                return {
-                  mediaStream: candidateStream,
-                  usedFallbackConstraints: candidate.fallback,
-                  selectedCameraConstraintLabel: candidate.label,
-                  cameraConstraintAttempts,
-                };
-              }
-
-              candidateStream.getTracks().forEach((track) => track.stop());
-            } catch (error) {
-              cameraConstraintAttempts.push({
-                label: candidate.label,
-                success: false,
-                fallback: candidate.fallback,
-                errorName: error instanceof Error ? error.name : null,
-                errorMessage: error instanceof Error ? error.message : String(error),
-              });
-            }
-          }
-
-          throw new Error('카메라를 시작하지 못했습니다.');
-        };
-
-        const bootstrapStream = await navigator.mediaDevices.getUserMedia(
-          buildFallbackCameraMediaConstraints(targetFacingMode)
-        );
-        const bootstrapVideoTrack = bootstrapStream.getVideoTracks()[0];
-        const bootstrapVideoSettings = bootstrapVideoTrack?.getSettings() ?? null;
-
-        if (!bootstrapStream) {
-          setCameraError('카메라를 시작하지 못했습니다.');
-          return null;
-        }
-
-        let selectedPreferredRearCamera = false;
-        let preferredRearCameraLabel: string | null = null;
-        let availableVideoInputLabels: string[] = [];
-
-        let selectedCameraDeviceId = bootstrapVideoSettings?.deviceId;
-
-        if (targetFacingMode === 'environment' && navigator.mediaDevices.enumerateDevices) {
-          try {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            availableVideoInputLabels = devices
-              .filter((device) => device.kind === 'videoinput')
-              .map((device) => device.label)
-              .filter(Boolean);
-            const preferredRearCamera = selectPreferredRearCameraDevice(
-              devices,
-              bootstrapVideoSettings?.deviceId
-            );
-            preferredRearCameraLabel = preferredRearCamera?.label || null;
-            selectedCameraDeviceId =
-              preferredRearCamera?.deviceId || selectedCameraDeviceId;
-            selectedPreferredRearCamera = Boolean(
-              preferredRearCamera?.deviceId &&
-                preferredRearCamera.deviceId !== bootstrapVideoSettings?.deviceId
-            );
-          } catch (error) {
-            logVideoDebug('camera device enumeration failed', {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        }
-
-        bootstrapStream.getTracks().forEach((track) => track.stop());
-
-        const {
-          mediaStream,
-          usedFallbackConstraints,
-          selectedCameraConstraintLabel,
-          cameraConstraintAttempts,
-        } = await requestBestCameraStream(selectedCameraDeviceId);
-
-        if (!mediaStream) {
-          setCameraError('카메라를 시작하지 못했습니다.');
-          return null;
-        }
-
-        if (mediaStream.getAudioTracks().length === 0) {
-          setCameraError('마이크 접근이 필요합니다. 권한을 허용해주세요.');
-          mediaStream.getTracks().forEach((track) => track.stop());
-          return null;
-        }
-        const videoTrack = mediaStream.getVideoTracks()[0];
-        const logCameraTrackSnapshot = (tag: string) => {
-          logVideoDebug('camera track snapshot', {
-            tag,
-            settings: videoTrack?.getSettings() ?? null,
-          });
-        };
-        logCameraTrackSnapshot('acquired');
-        let videoCapabilities: MediaTrackCapabilities | null = null;
-        let enhancementConstraints: MediaTrackConstraints | null = null;
-        let appliedCameraEnhancements = false;
-        let cameraEnhancementError: string | null = null;
-        try {
-          videoCapabilities =
-            videoTrack && typeof videoTrack.getCapabilities === 'function'
-              ? videoTrack.getCapabilities()
-              : null;
-        } catch {
-          videoCapabilities = null;
-        }
-        if (videoTrack && typeof videoTrack.applyConstraints === 'function') {
-          enhancementConstraints = buildCameraEnhancementConstraints(videoCapabilities);
-          if (enhancementConstraints) {
-            try {
-              await videoTrack.applyConstraints(enhancementConstraints);
-              appliedCameraEnhancements = true;
-            } catch (error) {
-              cameraEnhancementError =
-                error instanceof Error ? error.message : String(error);
-            }
-          }
-        }
-        logCameraTrackSnapshot('after-enhancements');
-        if (videoTrack) {
-          const handleTrackResize = () => logCameraTrackSnapshot('track-resize');
-          videoTrack.addEventListener('resize', handleTrackResize);
-          window.setTimeout(() => {
-            logCameraTrackSnapshot('t+2000');
-          }, 2000);
-        }
-        logVideoDebug('camera stream ready', {
-          requestedFacingMode: targetFacingMode,
-          usedFallbackConstraints,
-          selectedPreferredRearCamera,
-          preferredRearCameraLabel,
-          selectedCameraConstraintLabel,
-          selectedCameraDeviceId,
-          availableVideoInputLabels,
-          bootstrapSettings: bootstrapVideoSettings,
-          cameraConstraintAttempts,
-          settings: videoTrack?.getSettings() ?? null,
-          constraints: videoTrack?.getConstraints() ?? null,
-          capabilities: videoCapabilities,
-          enhancementConstraints,
-          appliedCameraEnhancements,
-          cameraEnhancementError,
-          audioTrackCount: mediaStream.getAudioTracks().length,
-        });
-        setStream((current) => {
-          if (current && current !== mediaStream) {
-            current.getTracks().forEach((track) => track.stop());
-          }
-          return mediaStream;
-        });
-        return mediaStream;
-      } catch {
-        setCameraError('카메라/마이크 접근이 거부되었어요. 권한을 확인해주세요.');
-        return null;
-      } finally {
-        cameraSetupInProgressRef.current = false;
-      }
-    },
-    [cameraFacingMode, logVideoDebug]
-  );
-
-  const handleSwitchCamera = useCallback(async () => {
-    if (switchCameraInProgressRef.current || isSwitchCameraDisabled) {
-      return;
-    }
-
-    switchCameraInProgressRef.current = true;
-    try {
-      const nextMode: CameraFacingMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
-      setCameraFacingMode(nextMode);
-      stopCamera();
-      await setupCamera(nextMode);
-    } finally {
-      switchCameraInProgressRef.current = false;
-    }
-  }, [cameraFacingMode, isSwitchCameraDisabled, setupCamera, stopCamera]);
-
-  useEffect(() => {
-    if (stage === 'capture' && template && !isCaptureCameraPaused) {
-      if (!stream) {
-        void setupCamera();
-      }
-    } else {
-      stopCamera();
-    }
-  }, [isCaptureCameraPaused, stage, setupCamera, stopCamera, stream, template]);
-
-  useEffect(() => {
-    latestClipsRef.current = clips;
-  }, [clips]);
-
-  useEffect(() => {
-    uploadedCutsRef.current = uploadedCuts;
-  }, [uploadedCuts]);
-
-  useEffect(() => {
-    return () => {
-      latestClipsRef.current.forEach((clip) => clip?.url && URL.revokeObjectURL(clip.url));
-      if (mediaPickerFocusTimeoutRef.current) {
-        window.clearTimeout(mediaPickerFocusTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (trimSourceUrl) {
-        URL.revokeObjectURL(trimSourceUrl);
-      }
-    };
-  }, [trimSourceUrl]);
-
-  useEffect(() => {
-    return () => {
-      pauseTrimPlayback();
-    };
-  }, [pauseTrimPlayback]);
-
-  const createConfiguredRecorder = useCallback(
-    (recordingStream: MediaStream, debugLabel: string) => {
-      if (!window.MediaRecorder) return null;
-
-      const selectedMimeType = getSupportedRecorderMimeType();
-      const options = buildRecorderOptions(selectedMimeType, recordingStream);
-      const recorder = new MediaRecorder(recordingStream, options);
-
-      logVideoDebug(`${debugLabel} recorder created`, {
-        preferredMimeTypes: RECORDER_PREFERRED_MIME_TYPES,
-        selectedMimeType,
-        recorderMimeType: recorder.mimeType,
-        requestedVideoBitsPerSecond: options.videoBitsPerSecond,
-        requestedAudioBitsPerSecond: options.audioBitsPerSecond ?? null,
-        recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
-        recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
-        audioTrackCount: recordingStream.getAudioTracks().length,
-        videoTrackSettings: recordingStream
-          .getVideoTracks()
-          .map((track) => track.getSettings()),
-      });
-
-      return { recorder, selectedMimeType };
-    },
-    [logVideoDebug]
-  );
-
-  const createRecorder = useCallback(
-    (recordingStream: MediaStream) => {
-      const configured = createConfiguredRecorder(recordingStream, 'camera');
-      if (!configured) return null;
-
-      recordingMimeTypeRef.current =
-        configured.recorder.mimeType || configured.selectedMimeType || 'video/webm';
-      return configured.recorder;
-    },
-    [createConfiguredRecorder]
-  );
-
-  const captureVideoSegmentToBlob = useCallback(
-    async (
-      sourceUrl: string,
-      metadata: VideoMetadata,
-      startSeconds: number,
-      endSeconds: number
-    ): Promise<{ blob: Blob; mimeType: string; duration: number }> => {
-      const duration = Math.max(MIN_TRIM_DURATION_SECONDS, endSeconds - startSeconds);
-
-      const video = document.createElement('video');
-      video.src = sourceUrl;
-      video.crossOrigin = 'anonymous';
-      video.preload = 'auto';
-      video.playsInline = true;
-      video.muted = false;
-
-      await new Promise<void>((resolve, reject) => {
-        const onLoadedData = () => {
-          cleanup();
-          resolve();
-        };
-        const onError = () => {
-          cleanup();
-          reject(new Error('영상을 불러오지 못했습니다.'));
-        };
-        const cleanup = () => {
-          video.removeEventListener('loadeddata', onLoadedData);
-          video.removeEventListener('error', onError);
-        };
-        video.addEventListener('loadeddata', onLoadedData, { once: true });
-        video.addEventListener('error', onError, { once: true });
-      });
-
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      if (!context || !canvas.captureStream || !window.MediaRecorder) {
-        throw new Error('이 브라우저에서는 영상 구간 편집을 지원하지 않습니다.');
-      }
-
-      const width = isValidMediaDimension(metadata.width)
-        ? metadata.width
-        : video.videoWidth;
-      const height = isValidMediaDimension(metadata.height)
-        ? metadata.height
-        : video.videoHeight;
-      logVideoDebug('gallery trim dimensions', {
-        metadataWidth: metadata.width,
-        metadataHeight: metadata.height,
-        videoWidth: video.videoWidth,
-        videoHeight: video.videoHeight,
-        canvasWidth: width,
-        canvasHeight: height,
-        startSeconds,
-        endSeconds,
-      });
-      if (!isValidMediaSize(width, height)) {
-        throw new Error('영상 해상도 정보를 확인하지 못했습니다.');
-      }
-      canvas.width = width;
-      canvas.height = height;
-
-      const captureStream = canvas.captureStream(30);
-      const AudioContextClass =
-        window.AudioContext ||
-        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      const audioContext = AudioContextClass ? new AudioContextClass() : null;
-      let audioDestination: MediaStreamAudioDestinationNode | null = null;
-
-      if (audioContext) {
-        try {
-          await audioContext.resume();
-          const audioSource = audioContext.createMediaElementSource(video);
-          const gainNode = audioContext.createGain();
-          gainNode.gain.value = 0;
-          audioDestination = audioContext.createMediaStreamDestination();
-          audioSource.connect(audioDestination);
-          audioSource.connect(gainNode);
-          gainNode.connect(audioContext.destination);
-        } catch {
-          audioDestination = null;
-        }
-      }
-
-      const combinedStream = new MediaStream([
-        ...captureStream.getVideoTracks(),
-        ...(audioDestination?.stream.getAudioTracks() ?? []),
-      ]);
-
-      const configuredRecorder = createConfiguredRecorder(combinedStream, 'gallery trim');
-      if (!configuredRecorder) {
-        throw new Error('이 브라우저에서는 영상 구간 편집을 지원하지 않습니다.');
-      }
-      const { recorder, selectedMimeType } = configuredRecorder;
-      const chunks: BlobPart[] = [];
-
-      const outputBlob = await new Promise<Blob>(async (resolve, reject) => {
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            chunks.push(event.data);
-          }
-        };
-        recorder.onerror = () => reject(new Error('영상 구간 처리 중 오류가 발생했습니다.'));
-        recorder.onstop = () => {
-          const blob = new Blob(chunks, {
-            type: recorder.mimeType || selectedMimeType || 'video/webm',
-          });
-          logVideoDebug('gallery trim output blob', {
-            type: blob.type,
-            size: blob.size,
-            duration,
-            canvasWidth: canvas.width,
-            canvasHeight: canvas.height,
-            recorderMimeType: recorder.mimeType,
-            recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
-            recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
-          });
-          resolve(blob);
-        };
-
-        const videoWithFrameCallback = video as HTMLVideoElement & {
-          requestVideoFrameCallback?: (callback: () => void) => number;
-          cancelVideoFrameCallback?: (handle: number) => void;
-        };
-        let rafId = 0;
-        let frameCallbackId = 0;
-        const drawFrame = () => {
-          if (!video.paused && !video.ended && video.readyState >= 2) {
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-          }
-          if (!video.paused && !video.ended) {
-            if (videoWithFrameCallback.requestVideoFrameCallback) {
-              frameCallbackId = videoWithFrameCallback.requestVideoFrameCallback(drawFrame);
-            } else {
-              rafId = requestAnimationFrame(drawFrame);
-            }
-          }
-        };
-
-        try {
-          await seekVideoTo(video, Math.max(0, startSeconds));
-          recorder.start();
-          drawFrame();
-
-          video.currentTime = Math.max(0, startSeconds);
-          await new Promise<void>((resolvePlay, rejectPlay) => {
-            const onPlaying = () => {
-              cleanup();
-              resolvePlay();
-            };
-            const onError = () => {
-              cleanup();
-              rejectPlay(new Error('영상 재생에 실패했습니다.'));
-            };
-            const cleanup = () => {
-              video.removeEventListener('playing', onPlaying);
-              video.removeEventListener('error', onError);
-            };
-            video.addEventListener('playing', onPlaying, { once: true });
-            video.addEventListener('error', onError, { once: true });
-            const playPromise = video.play();
-            if (playPromise) {
-              playPromise.catch(onError);
-            }
-          });
-
-          await new Promise<void>((resolveEnd) => {
-            const checkTime = () => {
-              if (video.currentTime >= endSeconds || video.ended) {
-                resolveEnd();
-                return;
-              }
-              requestAnimationFrame(checkTime);
-            };
-            checkTime();
-          });
-          video.pause();
-          if (rafId) cancelAnimationFrame(rafId);
-          if (frameCallbackId && videoWithFrameCallback.cancelVideoFrameCallback) {
-            videoWithFrameCallback.cancelVideoFrameCallback(frameCallbackId);
-          }
-          recorder.stop();
-        } catch (error) {
-          if (recorder.state !== 'inactive') {
-            recorder.stop();
-          }
-          reject(error);
-        }
-      });
-
-      captureStream.getTracks().forEach((track) => track.stop());
-      audioDestination?.stream.getTracks().forEach((track) => track.stop());
-      if (audioContext) {
-        audioContext.close().catch(() => undefined);
-      }
-
-      return {
-        blob: outputBlob,
-        mimeType: outputBlob.type || selectedMimeType || 'video/webm',
-        duration,
-      };
-    },
-    [createConfiguredRecorder, logVideoDebug, seekVideoTo]
-  );
-
-  const imageToVideoBlob = useCallback(
-    async (
-      file: File,
-      durationSeconds: number
-    ): Promise<{ blob: Blob; mimeType: string; duration: number }> => {
-      if (!window.MediaRecorder) {
-        throw new Error('이 브라우저에서는 사진을 영상으로 변환할 수 없습니다.');
-      }
-
-      const objectUrl = URL.createObjectURL(file);
-      const image = document.createElement('img');
-      image.src = objectUrl;
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error('사진을 불러오지 못했습니다.'));
-      });
-
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      if (!context || !canvas.captureStream) {
-        URL.revokeObjectURL(objectUrl);
-        throw new Error('이 브라우저에서는 사진 변환을 지원하지 않습니다.');
-      }
-
-      const width = image.naturalWidth;
-      const height = image.naturalHeight;
-      logVideoDebug('image conversion dimensions', {
-        naturalWidth: image.naturalWidth,
-        naturalHeight: image.naturalHeight,
-        canvasWidth: width,
-        canvasHeight: height,
-      });
-      if (!isValidMediaSize(width, height)) {
-        URL.revokeObjectURL(objectUrl);
-        throw new Error('사진 해상도 정보를 확인하지 못했습니다.');
-      }
-      canvas.width = width;
-      canvas.height = height;
-      context.drawImage(image, 0, 0, width, height);
-
-      const streamFromCanvas = canvas.captureStream(30);
-      const configuredRecorder = createConfiguredRecorder(streamFromCanvas, 'image conversion');
-      if (!configuredRecorder) {
-        URL.revokeObjectURL(objectUrl);
-        throw new Error('이 브라우저에서는 사진을 영상으로 변환할 수 없습니다.');
-      }
-      const { recorder, selectedMimeType } = configuredRecorder;
-      const chunks: BlobPart[] = [];
-      const outputBlob = await new Promise<Blob>((resolve, reject) => {
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0) chunks.push(event.data);
-        };
-        recorder.onerror = () => reject(new Error('사진 변환 중 오류가 발생했습니다.'));
-        recorder.onstop = () => {
-          const blob = new Blob(chunks, {
-            type: recorder.mimeType || selectedMimeType || 'video/webm',
-          });
-          logVideoDebug('image conversion output blob', {
-            type: blob.type,
-            size: blob.size,
-            duration: Math.max(MIN_TRIM_DURATION_SECONDS, durationSeconds),
-            canvasWidth: canvas.width,
-            canvasHeight: canvas.height,
-            recorderMimeType: recorder.mimeType,
-            recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
-            recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
-          });
-          resolve(blob);
-        };
-        recorder.start();
-        window.setTimeout(() => {
-          recorder.stop();
-        }, Math.max(MIN_TRIM_DURATION_SECONDS, durationSeconds) * 1000);
-      });
-
-      streamFromCanvas.getTracks().forEach((track) => track.stop());
-      URL.revokeObjectURL(objectUrl);
-      return {
-        blob: outputBlob,
-        mimeType: outputBlob.type || selectedMimeType || 'video/webm',
-        duration: Math.max(MIN_TRIM_DURATION_SECONDS, durationSeconds),
-      };
-    },
-    [createConfiguredRecorder, logVideoDebug]
-  );
-
-  const createPosterFromClip = useCallback(async (clip: ClipInfo) => {
-    const video = document.createElement('video');
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
-
-    const url = URL.createObjectURL(clip.blob);
-
-    return new Promise<string>((resolve, reject) => {
-      const cleanup = () => {
-        URL.revokeObjectURL(url);
-      };
-
-      video.onloadeddata = () => {
-        const width = video.videoWidth || 720;
-        const height = video.videoHeight || 1280;
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        if (!context) {
-          cleanup();
-          reject(new Error('포스터 생성 실패'));
-          return;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        context.drawImage(video, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-        cleanup();
-        resolve(dataUrl);
-      };
-
-      video.onerror = () => {
-        cleanup();
-        reject(new Error('포스터 생성 실패'));
-      };
-
-      video.src = url;
-      video.load();
-    });
-  }, []);
-
-  const revokeBlobUrl = useCallback((url: string | null) => {
-    if (url && url.startsWith('blob:')) {
-      URL.revokeObjectURL(url);
-    }
-  }, []);
-
-  const uploadRecordedClip = useCallback(
-    async (index: number, blob: Blob, mimeType: string, duration: number) => {
-      if (!sessionId) {
-        throw new Error('릴스 제작 세션이 준비되지 않았습니다.');
-      }
-      const cut = cuts[index];
-      const order = cut?.order ?? index + 1;
-      const clipId = sessionClipMap[order];
-      if (!clipId) {
-        throw new Error('업로드할 클립 정보가 없습니다.');
-      }
-
-      setUploadingCuts((prev) => ({ ...prev, [index]: true }));
-      setUploadedCuts((prev) => ({ ...prev, [index]: false }));
-      setClipUploadErrors((prev) => {
-        const next = { ...prev };
-        delete next[index];
-        return next;
-      });
-
-      try {
-        const response = await fetch(`/api/reels-maker/sessions/${sessionId}/clips/presign`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clipId, contentType: mimeType }),
-        });
-
-        const payload: WebApiResponse<ReelsMakerClipPresignResponse> = await response.json();
-        if (!response.ok || !payload?.success || !payload?.data?.uploadUrl) {
-          throw new Error(payload?.message || '업로드 URL 발급에 실패했습니다.');
-        }
-
-        const uploadResponse = await fetch(payload.data.uploadUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': mimeType },
-          body: blob,
-        });
-
-        if (!uploadResponse.ok) {
-          throw new Error('클립 업로드에 실패했습니다.');
-        }
-
-        const completeResponse = await fetch(
-          `/api/reels-maker/sessions/${sessionId}/clips/${clipId}/upload-complete`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              objectKey: payload.data.objectKey,
-              actualDurationSeconds: duration,
-            }),
-          }
-        );
-        const completePayload: WebApiResponse<ReelsMakerSessionResponse> =
-          await completeResponse.json();
-        if (!completeResponse.ok || !completePayload?.success || !completePayload?.data) {
-          throw new Error(
-            completePayload?.message || '클립 업로드 완료 처리에 실패했습니다.'
-          );
-        }
-        applyServerUpdate(completePayload.data);
-        setCaptionsEnabled(completePayload.data.captionsEnabled !== false);
-        setAutoCaptionAvailable(
-          Boolean(completePayload.data.autoCaptionAvailable)
-        );
-        setAutoCaptionRemainingAttempts(
-          completePayload.data.autoCaptionRemainingAttempts ?? 0
-        );
-        setActiveAutoCaptionJobId(
-          completePayload.data.activeAutoCaptionJobId ?? null
-        );
-        setLatestAutoCaptionJobId(
-          completePayload.data.latestAutoCaptionJobId ?? null
-        );
-        setStaleAutoCaptionClipIds(
-          completePayload.data.staleAutoCaptionClipIds ?? []
-        );
-        setAcceptedStaleAutoCaptionClipIds((current) =>
-          current.filter((acceptedClipId) => acceptedClipId !== clipId)
-        );
-        setUploadedCuts((prev) => ({ ...prev, [index]: true }));
-      } finally {
-        setUploadingCuts((prev) => ({ ...prev, [index]: false }));
-      }
-    },
-    [applyServerUpdate, cuts, sessionClipMap, sessionId]
-  );
-
-  const saveClipAtIndex = useCallback(
-    async (
-      index: number,
-      clipPayload: { blob: Blob; mimeType: string; duration: number },
-      clipSource: ClipSource
-    ) => {
-      const { blob, mimeType, duration } = clipPayload;
-      const previousUploaded = uploadedCutsRef.current[index] ?? false;
-      let poster: string | null = null;
-
-      try {
-        poster = await createPosterFromClip({
-          blob,
-          url: '',
-          duration,
-          mimeType,
-        });
-      } catch {
-        // 포스터 생성 실패는 업로드를 막지 않는다.
-      }
-
-      try {
-        await uploadRecordedClip(index, blob, mimeType, duration);
-      } catch (error) {
-        if (previousUploaded) {
-          setUploadedCuts((prev) => ({ ...prev, [index]: true }));
-        }
-        throw error;
-      }
-
-      const url = URL.createObjectURL(blob);
-      setClips((prev) => {
-        const next = [...prev];
-        if (next[index]?.url) {
-          URL.revokeObjectURL(next[index]!.url);
-        }
-        next[index] = {
-          blob,
-          url,
-          duration,
-          mimeType,
-        };
-        return next;
-      });
-
-      if (poster) {
-        setClipPosters((prev) => ({
-          ...prev,
-          [index]: poster,
-        }));
-      } else {
-        setClipPosters((prev) => {
-          const next = { ...prev };
-          delete next[index];
-          return next;
-        });
-      }
-
-      setClipSources((prev) => ({
-        ...prev,
-        [index]: clipSource,
-      }));
-      setRecordingStatus('done');
-      setGalleryError(null);
-      setCameraError(null);
-
-      const nextGuideCutIndex = findNextIncompleteCaptureCutIndex({
-        cuts,
-        uploadedCuts: uploadedCutsRef.current,
-        fromIndex: index,
-        completedCutIndex: index,
-      });
-      if (nextGuideCutIndex >= 0) {
-        setActiveCutIndex(nextGuideCutIndex);
-        setTemplateGuideStep(nextGuideCutIndex);
-        setIsTemplateGuideOpen(true);
-      }
-    },
-    [createPosterFromClip, cuts, uploadRecordedClip]
-  );
-
-  const finishMediaPicker = useCallback(() => {
-    if (mediaPickerFocusTimeoutRef.current) {
-      window.clearTimeout(mediaPickerFocusTimeoutRef.current);
-      mediaPickerFocusTimeoutRef.current = null;
-    }
-    setIsMediaPickerActive(false);
-  }, []);
-
-  const handleSelectedMediaFile = useCallback(
-    async (file: File, targetIndex: number) => {
-      const targetCut = cuts[targetIndex];
-      if (!targetCut || targetCut.isFixed) return;
-
-      setActiveCutIndex(targetIndex);
-      const isVideo = file.type.startsWith('video/');
-      const isImage = file.type.startsWith('image/');
-      if (!isVideo && !isImage) {
-        setGalleryError('사진 또는 영상 파일만 선택할 수 있습니다.');
-        return;
-      }
-
-      setGalleryError(null);
-      setTrimError(null);
-
-      if (isImage) {
-        setIsGalleryProcessing(true);
-        try {
-          const targetCutDurationSeconds = Math.max(0, targetCut.durationSeconds ?? 0);
-          const targetDuration =
-            targetCutDurationSeconds > 0
-              ? targetCutDurationSeconds
-              : DEFAULT_GALLERY_CLIP_DURATION_SECONDS;
-          const converted = await imageToVideoBlob(file, targetDuration);
-          await saveClipAtIndex(targetIndex, converted, 'file');
-        } catch (error: unknown) {
-          const message = getErrorMessage(error, '사진을 영상으로 변환하지 못했습니다.');
-          setGalleryError(message);
-          alert(message);
-        } finally {
-          setIsGalleryProcessing(false);
-        }
-        return;
-      }
-
-      const objectUrl = URL.createObjectURL(file);
-      setIsTrimPreparing(true);
-      try {
-        const metadata = await loadVideoMetadataFromUrl(objectUrl);
-        if (!Number.isFinite(metadata.duration) || metadata.duration <= 0) {
-          throw new Error('선택한 영상 길이를 확인하지 못했습니다.');
-        }
-
-        const targetCutDurationSeconds = Math.max(0, targetCut.durationSeconds ?? 0);
-        const minTrimDurationForMetadata = Math.min(
-          MIN_TRIM_DURATION_SECONDS,
-          metadata.duration > 0 ? metadata.duration : MIN_TRIM_DURATION_SECONDS
-        );
-        const preferredDuration =
-          targetCutDurationSeconds > 0
-            ? Math.min(metadata.duration, targetCutDurationSeconds)
-            : metadata.duration;
-        const safeStart = 0;
-        const safeEnd = Math.max(
-          Math.min(metadata.duration, preferredDuration),
-          Math.min(metadata.duration, minTrimDurationForMetadata)
-        );
-        setTrimSourceFile(file);
-        setTrimSourceUrl((current) => {
-          if (current) {
-            URL.revokeObjectURL(current);
-          }
-          return objectUrl;
-        });
-        setTrimSourceMetadata(metadata);
-        setTrimStartSeconds(safeStart);
-        setTrimEndSeconds(safeEnd);
-        setTrimScrubSeconds(safeStart);
-        setActiveTrimDrag('none');
-        setIsTrimPlaying(false);
-        setIsTrimOpen(true);
-        setTrimTargetCutIndex(targetIndex);
-        setTrimError(null);
-
-        try {
-          const thumbnails = await generateTimelineThumbnails(objectUrl, metadata);
-          setTrimThumbnails(thumbnails);
-        } catch {
-          setTrimThumbnails([]);
-        }
-      } catch (error: unknown) {
-        URL.revokeObjectURL(objectUrl);
-        const message = getErrorMessage(error, '영상을 준비하지 못했습니다.');
-        setGalleryError(message);
-        setTrimError(message);
-      } finally {
-        setIsTrimPreparing(false);
-      }
-    },
-    [
-      cuts,
-      generateTimelineThumbnails,
-      imageToVideoBlob,
-      loadVideoMetadataFromUrl,
-      saveClipAtIndex,
-    ]
-  );
-
-  const handleMediaFileInputChange = useCallback(
-    async (event: ReactChangeEvent<HTMLInputElement>) => {
-      const input = event.target;
-      const file = input.files?.[0];
-      input.value = '';
-      if (!file) {
-        finishMediaPicker();
-        return;
-      }
-
-      const targetIndex = mediaPickerTargetIndexRef.current ?? activeCutIndex;
-      try {
-        await handleSelectedMediaFile(file, targetIndex);
-      } finally {
-        finishMediaPicker();
-      }
-    },
-    [activeCutIndex, finishMediaPicker, handleSelectedMediaFile]
-  );
-
-  const openFallbackFilePicker = useCallback(
-    (inputRef: RefObject<HTMLInputElement | null>, targetIndex: number) => {
-      mediaPickerTargetIndexRef.current = targetIndex;
-      setMediaPickerTargetCutIndex(targetIndex);
-      stopCamera();
-      setIsMediaPickerActive(true);
-
-      if (mediaPickerFocusTimeoutRef.current) {
-        window.clearTimeout(mediaPickerFocusTimeoutRef.current);
-      }
-      const handlePickerFocus = () => {
-        mediaPickerFocusTimeoutRef.current = window.setTimeout(() => {
-          finishMediaPicker();
-        }, 400);
-      };
-      window.addEventListener('focus', handlePickerFocus, { once: true });
-
-      try {
-        const input = inputRef.current;
-        if (!input) {
-          window.removeEventListener('focus', handlePickerFocus);
-          finishMediaPicker();
-          return;
-        }
-        input.click();
-      } catch {
-        window.removeEventListener('focus', handlePickerFocus);
-        finishMediaPicker();
-      }
-    },
-    [finishMediaPicker, stopCamera]
-  );
-
   const openGalleryPickerForIndex = useCallback(
     async (
       targetIndex: number,
@@ -2577,8 +1086,8 @@ function ReelsMakerInner() {
 
       setActiveCutIndex(targetIndex);
       setIsMediaSourceOpen(false);
-      setGalleryError(null);
-      setTrimError(null);
+      clearGalleryError();
+      clearTrimError();
 
       if (
         clipSources[targetIndex] === 'recording' &&
@@ -2588,48 +1097,10 @@ function ReelsMakerInner() {
         return;
       }
 
-      mediaPickerTargetIndexRef.current = targetIndex;
       setMediaPickerTargetCutIndex(targetIndex);
-      stopCamera();
-
-      const pickerWindow = window as WindowWithOpenFilePicker;
-      if (!pickerWindow.showOpenFilePicker) {
-        openFallbackFilePicker(galleryFileInputRef, targetIndex);
-        return;
-      }
-
-      setIsMediaPickerActive(true);
-      try {
-        const [fileHandle] = await pickerWindow.showOpenFilePicker({
-          multiple: false,
-          excludeAcceptAllOption: true,
-          types: GALLERY_FILE_PICKER_TYPES,
-        });
-        const file = await fileHandle?.getFile();
-        if (file) {
-          await handleSelectedMediaFile(file, targetIndex);
-        }
-      } catch (error: unknown) {
-        const isAbortError =
-          error instanceof DOMException && error.name === 'AbortError';
-        if (!isAbortError) {
-          const message = getErrorMessage(error, '파일을 선택하지 못했습니다.');
-          setGalleryError(message);
-        }
-      } finally {
-        finishMediaPicker();
-      }
+      await openGallery(targetIndex);
     },
-    [
-      clipSources,
-      cuts,
-      finishMediaPicker,
-      handleSelectedMediaFile,
-      isMediaImportBlocked,
-      openFallbackFilePicker,
-      stopCamera,
-      uploadingCuts,
-    ]
+    [clipSources, cuts, openGallery, isMediaImportBlocked, uploadingCuts, clearGalleryError, clearTrimError]
   );
 
   const selectVideoCaptureModeForIndex = useCallback(
@@ -2641,10 +1112,10 @@ function ReelsMakerInner() {
 
       setActiveCutIndex(targetIndex);
       setIsMediaSourceOpen(false);
-      setGalleryError(null);
-      setTrimError(null);
+      clearGalleryError();
+      clearTrimError();
     },
-    [cuts, uploadingCuts]
+    [cuts, uploadingCuts, clearGalleryError, clearTrimError]
   );
 
   const openCutMediaSource = useCallback(
@@ -2655,586 +1126,33 @@ function ReelsMakerInner() {
       }
 
       setActiveCutIndex(targetIndex);
-      mediaPickerTargetIndexRef.current = targetIndex;
       setMediaPickerTargetCutIndex(targetIndex);
-      setGalleryError(null);
-      setTrimError(null);
+      clearGalleryError();
+      clearTrimError();
       setIsMediaSourceOpen(true);
     },
-    [cuts, isMediaImportBlocked, uploadingCuts]
+    [cuts, isMediaImportBlocked, uploadingCuts, clearGalleryError, clearTrimError]
   );
 
   const closeCutMediaSource = useCallback(() => {
     setIsMediaSourceOpen(false);
     setMediaPickerTargetCutIndex(null);
-    mediaPickerTargetIndexRef.current = null;
   }, []);
-
-  const handleGalleryFileChange = handleMediaFileInputChange;
-
-  const handleTrimConfirm = useCallback(async () => {
-    if (!trimSourceUrl || !trimSourceMetadata) {
-      setTrimError('영상 정보가 없습니다.');
-      return;
-    }
-    const targetIndex = trimTargetCutIndex ?? activeCutIndex;
-    const targetCut = cuts[targetIndex];
-    if (!targetCut || targetCut.isFixed) {
-      setTrimError('현재 컷에는 갤러리 영상을 적용할 수 없습니다.');
-      return;
-    }
-    if (trimDurationSeconds < minTrimDurationForSource) {
-      setTrimError('선택 구간이 너무 짧습니다.');
-      return;
-    }
-
-    pauseTrimPlayback();
-    setIsGalleryProcessing(true);
-    setTrimError(null);
-    try {
-      const converted = await captureVideoSegmentToBlob(
-        trimSourceUrl,
-        trimSourceMetadata,
-        trimStartSeconds,
-        trimEndSeconds
-      );
-      await saveClipAtIndex(targetIndex, converted, 'file');
-      closeTrimModal();
-    } catch (error: unknown) {
-      const message = getErrorMessage(error, '영상 구간을 처리하지 못했습니다.');
-      setTrimError(message);
-      setGalleryError(message);
-    } finally {
-      setIsGalleryProcessing(false);
-    }
-  }, [
-    activeCutIndex,
-    captureVideoSegmentToBlob,
-    closeTrimModal,
-    cuts,
-    minTrimDurationForSource,
-    pauseTrimPlayback,
-    saveClipAtIndex,
-    trimDurationSeconds,
-    trimEndSeconds,
-    trimSourceMetadata,
-    trimSourceUrl,
-    trimStartSeconds,
-    trimTargetCutIndex,
-  ]);
-
-  useEffect(() => {
-    trimBoundsRef.current = {
-      start: trimStartSeconds,
-      end: trimEndSeconds,
-      scrub: trimScrubSeconds,
-    };
-  }, [trimEndSeconds, trimScrubSeconds, trimStartSeconds]);
-
-  useEffect(() => {
-    if (!isTrimOpen || !trimSourceMetadata) return;
-    const maxDuration = trimSourceMetadata.duration;
-    if (!Number.isFinite(maxDuration) || maxDuration <= 0) return;
-
-    const epsilon = 0.0001;
-    const safeStart = clampValue(
-      trimStartSeconds,
-      0,
-      Math.max(0, maxDuration - minTrimDurationForSource)
-    );
-    const safeEnd = clampValue(
-      trimEndSeconds,
-      safeStart + minTrimDurationForSource,
-      maxDuration
-    );
-    const safeScrub = clampValue(trimScrubSeconds, safeStart, safeEnd);
-
-    if (Math.abs(safeStart - trimStartSeconds) > epsilon) {
-      setTrimStartSeconds(safeStart);
-    }
-    if (Math.abs(safeEnd - trimEndSeconds) > epsilon) {
-      setTrimEndSeconds(safeEnd);
-    }
-    if (Math.abs(safeScrub - trimScrubSeconds) > epsilon) {
-      setTrimScrubSeconds(safeScrub);
-    }
-  }, [
-    isTrimOpen,
-    minTrimDurationForSource,
-    trimEndSeconds,
-    trimScrubSeconds,
-    trimSourceMetadata,
-    trimStartSeconds,
-  ]);
-
-  useEffect(() => {
-    if (!isTrimOpen || !trimSourceUrl || isTrimPlaying) return;
-    const previewVideo = trimPreviewVideoRef.current;
-    if (!previewVideo) return;
-    const targetSeconds = clampValue(trimScrubSeconds, trimStartSeconds, trimEndSeconds);
-
-    const seekPreview = () => {
-      if (!Number.isFinite(targetSeconds) || targetSeconds < 0) return;
-      try {
-        previewVideo.currentTime = targetSeconds;
-      } catch {
-        // iOS에서는 메타데이터 로드 직후 seek가 실패할 수 있다.
-      }
-    };
-
-    if (previewVideo.readyState >= 1) {
-      seekPreview();
-      return;
-    }
-
-    previewVideo.addEventListener('loadedmetadata', seekPreview, { once: true });
-    return () => {
-      previewVideo.removeEventListener('loadedmetadata', seekPreview);
-    };
-  }, [isTrimOpen, isTrimPlaying, trimEndSeconds, trimScrubSeconds, trimSourceUrl, trimStartSeconds]);
-
-  useEffect(() => {
-    if (!isTrimPlaying) return;
-    const previewVideo = trimPreviewVideoRef.current;
-    if (!previewVideo) {
-      setIsTrimPlaying(false);
-      return;
-    }
-
-    const tick = () => {
-      const currentSeconds = previewVideo.currentTime;
-      if (Number.isFinite(currentSeconds)) {
-        const safeCurrent = clampValue(currentSeconds, trimStartSeconds, trimEndSeconds);
-        setTrimScrubSeconds(safeCurrent);
-        if (currentSeconds >= trimEndSeconds - 0.02) {
-          previewVideo.pause();
-          setTrimScrubSeconds(trimEndSeconds);
-          setIsTrimPlaying(false);
-          trimPlaybackRafRef.current = null;
-          return;
-        }
-      }
-      trimPlaybackRafRef.current = requestAnimationFrame(tick);
-    };
-
-    trimPlaybackRafRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (trimPlaybackRafRef.current !== null) {
-        cancelAnimationFrame(trimPlaybackRafRef.current);
-        trimPlaybackRafRef.current = null;
-      }
-    };
-  }, [isTrimPlaying, trimEndSeconds, trimStartSeconds]);
-
-  useEffect(() => {
-    if (activeTrimDrag === 'none') return;
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (trimDragPointerIdRef.current !== event.pointerId || trimSliderMax <= 0) {
-        return;
-      }
-      const dragStart = trimDragStartRef.current;
-      const timeline = trimTimelineRef.current;
-      if (!dragStart || !timeline) return;
-      const rect = timeline.getBoundingClientRect();
-      if (rect.width <= 0) return;
-
-      const deltaSeconds =
-        ((event.clientX - dragStart.pointerX) / Math.max(1, rect.width)) * trimSliderMax;
-
-      if (activeTrimDrag === 'start') {
-        const maxStart = Math.max(0, dragStart.endSeconds - minTrimDurationForSource);
-        const nextStart = clampValue(dragStart.startSeconds + deltaSeconds, 0, maxStart);
-        setTrimStartSeconds(nextStart);
-        setTrimScrubSeconds((prev) => clampValue(prev, nextStart, dragStart.endSeconds));
-        return;
-      }
-
-      if (activeTrimDrag === 'end') {
-        const minEnd = dragStart.startSeconds + minTrimDurationForSource;
-        const nextEnd = clampValue(dragStart.endSeconds + deltaSeconds, minEnd, trimSliderMax);
-        setTrimEndSeconds(nextEnd);
-        setTrimScrubSeconds((prev) => clampValue(prev, dragStart.startSeconds, nextEnd));
-        return;
-      }
-
-      if (activeTrimDrag === 'window') {
-        const windowDuration = Math.max(
-          minTrimDurationForSource,
-          dragStart.endSeconds - dragStart.startSeconds
-        );
-        const maxStart = Math.max(0, trimSliderMax - windowDuration);
-        const nextStart = clampValue(dragStart.startSeconds + deltaSeconds, 0, maxStart);
-        const nextEnd = nextStart + windowDuration;
-        const scrubOffset = dragStart.scrubSeconds - dragStart.startSeconds;
-        const nextScrub = clampValue(nextStart + scrubOffset, nextStart, nextEnd);
-        setTrimStartSeconds(nextStart);
-        setTrimEndSeconds(nextEnd);
-        setTrimScrubSeconds(nextScrub);
-        return;
-      }
-
-      if (activeTrimDrag === 'scrub') {
-        const nextScrub = clampValue(
-          timelineXToSeconds(event.clientX),
-          trimBoundsRef.current.start,
-          trimBoundsRef.current.end
-        );
-        setTrimScrubSeconds(nextScrub);
-      }
-    };
-
-    const handlePointerUp = (event: PointerEvent) => {
-      if (trimDragPointerIdRef.current !== event.pointerId) return;
-      trimDragPointerIdRef.current = null;
-      trimDragStartRef.current = null;
-      setActiveTrimDrag('none');
-    };
-
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-    window.addEventListener('pointercancel', handlePointerUp);
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('pointercancel', handlePointerUp);
-    };
-  }, [
-    activeTrimDrag,
-    minTrimDurationForSource,
-    timelineXToSeconds,
-    trimSliderMax,
-  ]);
-
-  useEffect(() => {
-    if (!isTrimOpen) {
-      setTrimPreviewMaxHeight(null);
-      return;
-    }
-
-    let frameId: number | null = null;
-
-    const recalculateTrimPreviewHeight = () => {
-      frameId = null;
-      const viewport = trimViewportRef.current;
-      const measure = trimMeasureRef.current;
-      const previewContainer = trimPreviewContainerRef.current;
-      if (!viewport || !measure || !previewContainer) return;
-
-      let viewportHeight = viewport.clientHeight || window.innerHeight;
-      const visualViewportHeight = window.visualViewport?.height;
-      if (typeof visualViewportHeight === 'number' && Number.isFinite(visualViewportHeight)) {
-        viewportHeight = Math.min(viewportHeight, visualViewportHeight);
-      }
-
-      const previewAvailableWidth =
-        previewContainer.parentElement?.clientWidth || Math.max(0, measure.clientWidth - 32);
-      const naturalPreviewHeight = previewAvailableWidth * (16 / 9);
-      const previewHeight = previewContainer.getBoundingClientRect().height || naturalPreviewHeight;
-      const fixedContentHeight = Math.max(0, measure.scrollHeight - previewHeight);
-      const availablePreviewHeight = viewportHeight - 16 - fixedContentHeight;
-      const nextPreviewHeight = Math.floor(
-        clampValue(availablePreviewHeight, 140, naturalPreviewHeight)
-      );
-
-      setTrimPreviewMaxHeight((prev) =>
-        prev !== null && Math.abs(prev - nextPreviewHeight) < 1 ? prev : nextPreviewHeight
-      );
-    };
-
-    const scheduleRecalculate = () => {
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-      }
-      frameId = window.requestAnimationFrame(recalculateTrimPreviewHeight);
-    };
-
-    scheduleRecalculate();
-    const settleTimeoutId = window.setTimeout(scheduleRecalculate, 80);
-    const lateSettleTimeoutId = window.setTimeout(scheduleRecalculate, 240);
-    const resizeObserver =
-      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleRecalculate) : null;
-    const observedViewport = trimViewportRef.current;
-    const observedMeasure = trimMeasureRef.current;
-
-    if (resizeObserver && observedViewport && observedMeasure) {
-      resizeObserver.observe(observedViewport);
-      resizeObserver.observe(observedMeasure);
-    }
-
-    const visualViewport = window.visualViewport;
-    window.addEventListener('resize', scheduleRecalculate);
-    window.addEventListener('orientationchange', scheduleRecalculate);
-    visualViewport?.addEventListener('resize', scheduleRecalculate);
-
-    return () => {
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-      }
-      window.clearTimeout(settleTimeoutId);
-      window.clearTimeout(lateSettleTimeoutId);
-      window.removeEventListener('resize', scheduleRecalculate);
-      window.removeEventListener('orientationchange', scheduleRecalculate);
-      visualViewport?.removeEventListener('resize', scheduleRecalculate);
-      resizeObserver?.disconnect();
-    };
-  }, [
-    isGalleryProcessing,
-    isTrimOpen,
-    trimError,
-    trimSourceUrl,
-    trimThumbnails.length,
-  ]);
-
-  useEffect(() => {
-    if (cuts.length === 0) return;
-
-    let isCancelled = false;
-
-    const ensureFixedClips = async () => {
-      for (let index = 0; index < cuts.length; index += 1) {
-        const cut = cuts[index];
-        if (!cut.isFixed) continue;
-        if (!cut.fixedVideoUrl) {
-          setFixedClipErrors((prev) => ({
-            ...prev,
-            [index]: '고정 영상 URL이 없습니다.',
-          }));
-          continue;
-        }
-        if (clips[index]) continue;
-
-        try {
-          const fixedClip = await downloadFixedClip(
-            cut.fixedVideoUrl,
-            cut.durationSeconds ?? 0
-          );
-          if (isCancelled) return;
-
-          setClips((prev) => {
-            const next = [...prev];
-            next[index] = fixedClip;
-            return next;
-          });
-
-          try {
-            const poster = await createPosterFromClip(fixedClip);
-            if (!isCancelled) {
-              setClipPosters((prev) => ({
-                ...prev,
-                [index]: poster,
-              }));
-            }
-          } catch {
-            // ignore poster failures
-          }
-
-          setFixedClipErrors((prev) => {
-            const next = { ...prev };
-            delete next[index];
-            return next;
-          });
-        } catch (error: unknown) {
-          if (isCancelled) return;
-          setFixedClipErrors((prev) => ({
-            ...prev,
-            [index]: getErrorMessage(error, '고정 영상을 불러오지 못했습니다.'),
-          }));
-        }
-      }
-    };
-
-    ensureFixedClips();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [clips, cuts, createPosterFromClip, downloadFixedClip]);
-
-  const stopRecording = useCallback(() => {
-    if (recordTimeoutRef.current) {
-      window.clearTimeout(recordTimeoutRef.current);
-      recordTimeoutRef.current = null;
-    }
-    if (countdownTimerRef.current) {
-      window.clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-    setRecordingElapsedSeconds(null);
-
-    const recorder = recorderRef.current;
-    if (recorder && recorder.state !== 'inactive') {
-      recorder.stop();
-    }
-  }, []);
-
-  const startRecording = async (options: { replaceExisting?: boolean } = {}) => {
-    if (recordingStatus === 'recording') return;
-    if (!activeCut) {
-      setCameraError('템플릿 컷 정보를 불러오지 못했습니다.');
-      return;
-    }
-    if (activeCut.isFixed) {
-      return;
-    }
-    const activeOrder = activeCut.order ?? activeCutIndex + 1;
-    if (!sessionId || !sessionClipMap[activeOrder]) {
-      setCameraError('릴스 제작 세션을 준비 중입니다. 잠시 후 다시 시도해주세요.');
-      return;
-    }
-    if (shouldConfirmActiveRetake && !options.replaceExisting) {
-      setReplacementConfirm({ type: 'recording', cutIndex: activeCutIndex });
-      return;
-    }
-
-    let recordingStream =
-      stream && stream.getTracks().some((track) => track.readyState === 'live')
-        ? stream
-        : null;
-    if (!recordingStream) {
-      recordingStream = await setupCamera();
-    }
-    if (!recordingStream || recordingStream.getAudioTracks().length === 0) {
-      setCameraError('마이크 권한이 필요합니다. 설정에서 허용해주세요.');
-      return;
-    }
-
-    const recorder = createRecorder(recordingStream);
-    if (!recorder) {
-      setCameraError('이 브라우저에서는 녹화를 지원하지 않습니다.');
-      return;
-    }
-
-    recorderRef.current = recorder;
-    chunksRef.current = [];
-    recordingCutRef.current = activeCutIndex;
-
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunksRef.current.push(event.data);
-      }
-    };
-
-    recorder.onstop = () => {
-      const recordedIndex = recordingCutRef.current;
-      const mimeType = recorder.mimeType || recordingMimeTypeRef.current || 'video/webm';
-      const blob = new Blob(chunksRef.current, { type: mimeType });
-      const recordedCut = cuts[recordedIndex];
-      const outputVideoTrackSettings = recordingStream
-        .getVideoTracks()
-        .map((track) => track.getSettings());
-      logVideoDebug('camera track snapshot', {
-        tag: 'after-record',
-        settings: outputVideoTrackSettings[0] ?? null,
-      });
-      logVideoDebug('camera output blob', {
-        type: blob.type,
-        size: blob.size,
-        duration: recordedCut?.durationSeconds ?? activeCut.durationSeconds,
-        recorderMimeType: recorder.mimeType,
-        recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
-        recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
-        videoTrackSettings: outputVideoTrackSettings,
-      });
-      saveClipAtIndex(
-        recordedIndex,
-        {
-          blob,
-          duration: recordedCut?.durationSeconds ?? activeCut.durationSeconds,
-          mimeType,
-        },
-        'recording'
-      ).catch((error: unknown) => {
-        const message = getErrorMessage(error, '클립 업로드에 실패했습니다.');
-        setClipUploadErrors((prev) => ({
-          ...prev,
-          [recordedIndex]: message,
-        }));
-        setRecordingStatus('idle');
-        setRecordingElapsedSeconds(null);
-        alert(message || '클립 업로드에 실패했습니다. 다시 시도해주세요.');
-      });
-    };
-
-    recorder.start();
-    setRecordingStatus('recording');
-    setRecordingElapsedSeconds(0);
-
-    const isForcedDurationMode = activeCut.durationMode === DURATION_MODE_FORCED;
-    const autoStopSeconds = isForcedDurationMode
-      ? Math.max(0, activeCut.durationSeconds)
-      : RECOMMENDED_AUTO_STOP_SECONDS;
-
-    const startedAt = Date.now();
-    countdownTimerRef.current = window.setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
-      setRecordingElapsedSeconds(elapsed);
-    }, 500);
-
-    recordTimeoutRef.current = window.setTimeout(() => {
-      stopRecording();
-    }, autoStopSeconds * 1000);
-  };
 
   const handleResetCut = () => {
     if (activeCut?.isFixed) {
-      if (fixedClipErrors[activeCutIndex]) {
-        setFixedClipErrors((prev) => {
-          const next = { ...prev };
-          delete next[activeCutIndex];
-          return next;
-        });
-        setClips((prev) => {
-          const next = [...prev];
-          if (next[activeCutIndex]?.url) {
-            URL.revokeObjectURL(next[activeCutIndex]!.url);
-          }
-          next[activeCutIndex] = null;
-          return next;
-        });
-        setClipPosters((prev) => {
-          const next = { ...prev };
-          delete next[activeCutIndex];
-          return next;
-        });
-      }
-      setIsResetOpen(false);
-      return;
+      if (fixedClipErrors[activeCutIndex]) retryFixedClip(activeCutIndex);
+    } else {
+      resetCut(activeCutIndex);
+      clearGalleryError();
+      resetCamera();
     }
-    setClips((prev) => {
-      const next = [...prev];
-      if (next[activeCutIndex]?.url) {
-        URL.revokeObjectURL(next[activeCutIndex]!.url);
-      }
-      next[activeCutIndex] = null;
-      return next;
-    });
-    setClipPosters((prev) => {
-      const next = { ...prev };
-      delete next[activeCutIndex];
-      return next;
-    });
-    setClipSources((prev) => {
-      const next = { ...prev };
-      delete next[activeCutIndex];
-      return next;
-    });
-    setUploadedCuts((prev) => ({ ...prev, [activeCutIndex]: false }));
-    setUploadingCuts((prev) => ({ ...prev, [activeCutIndex]: false }));
-    setClipUploadErrors((prev) => {
-      const next = { ...prev };
-      delete next[activeCutIndex];
-      return next;
-    });
-    setGalleryError(null);
-    setRecordingStatus('idle');
     setIsResetOpen(false);
   };
 
   useEffect(() => {
     if (stage !== 'capture') {
       stopRecording();
-      setRecordingElapsedSeconds(null);
       setEditingCaptionId(null);
       resetCaptionGesture();
       setIsMediaSourceOpen(false);
@@ -3490,9 +1408,9 @@ function ReelsMakerInner() {
   useEffect(() => {
     setEditingCaptionId(null);
     resetCaptionGesture();
-    setGalleryError(null);
-    setTrimError(null);
-  }, [activeCutIndex, resetCaptionGesture, setEditingCaptionId]);
+    clearGalleryError();
+    clearTrimError();
+  }, [activeCutIndex, resetCaptionGesture, setEditingCaptionId, clearGalleryError, clearTrimError]);
 
   useEffect(() => {
     const handleDeleteKey = (event: KeyboardEvent) => {
@@ -3642,20 +1560,11 @@ function ReelsMakerInner() {
   const handleResetAll = () => {
     setStage('capture');
     setActiveCutIndex(0);
-    setRecordingStatus('idle');
-    setRecordingElapsedSeconds(null);
+    resetCamera();
     setSessionId(null);
     setSessionClipMap({});
     setSessionError(null);
-    setUploadedCuts(() => {
-      const next: Record<number, boolean> = {};
-      cuts.forEach((cut, index) => {
-        next[index] = cut.isFixed;
-      });
-      return next;
-    });
-    setUploadingCuts({});
-    setClipUploadErrors({});
+    resetClips(cuts, true);
     setCaptions([]);
     setSelectedCaptionId(null);
     setCutGuideVisibility(() => {
@@ -3668,38 +1577,6 @@ function ReelsMakerInner() {
     setGuideImageIndexByCut({});
     setEditingCaptionId(null);
     resetCaptionGesture();
-    setClips((prev) => {
-      const next = [...prev];
-      prev.forEach((clip, index) => {
-        const isFixed = cuts[index]?.isFixed;
-        if (clip?.url && !isFixed) {
-          URL.revokeObjectURL(clip.url);
-        }
-        if (!isFixed) {
-          next[index] = null;
-        }
-      });
-      return next;
-    });
-    setClipPosters((prev) => {
-      const next = { ...prev };
-      cuts.forEach((cut, index) => {
-        if (!cut.isFixed) {
-          delete next[index];
-        }
-      });
-      return next;
-    });
-    setClipSources((prev) => {
-      const next = { ...prev };
-      cuts.forEach((cut, index) => {
-        if (!cut.isFixed) {
-          delete next[index];
-        }
-      });
-      return next;
-    });
-    setFixedClipErrors({});
     if (finalVideoUrl) {
       revokeBlobUrl(finalVideoUrl);
       setFinalVideoUrl(null);
@@ -3714,14 +1591,10 @@ function ReelsMakerInner() {
     setExampleReelIndex(0);
     setIsResetOpen(false);
     setDownloadToastMessage(null);
-    setGalleryError(null);
-    setIsGalleryProcessing(false);
     setIsMediaSourceOpen(false);
-    setIsMediaPickerActive(false);
     setMediaPickerTargetCutIndex(null);
-    setTrimTargetCutIndex(null);
     setReplacementConfirm(null);
-    setIsTrimOpen(false);
+    resetGallery();
     resetTrimState();
     if (templateId && requestedSessionId) {
       router.replace(
