@@ -13,11 +13,33 @@ export type GuideImageEntry = {
   startSecond: number | null;
 };
 
-export type ClipInfo = {
+export type PreparedClip = {
   blob: Blob;
-  url: string;
-  duration: number;
   mimeType: string;
+  duration: number;
+};
+
+export type ClipSource = 'recording' | 'file';
+export type VideoDebugLogger = (event: string, details?: unknown) => void;
+export type SubmitClip = (index: number, clip: PreparedClip, source: ClipSource) => Promise<void>;
+
+export type ClipInfo = PreparedClip & { url: string };
+
+export type MakerCut = {
+  id: string;
+  order: number;
+  durationSeconds: number;
+  durationMode: CutDurationMode | null;
+  label: string;
+  guideText: string;
+  guideImageUrl: string | null;
+  exampleImageUrl: string | null;
+  exampleVideoUrl: string | null;
+  defaultCaption: string;
+  captureType: string;
+  fixedVideoUrl: string | null;
+  fixedPreviewImageUrl: string | null;
+  isFixed: boolean;
 };
 
 export type RecorderStatus = 'idle' | 'recording' | 'done';
