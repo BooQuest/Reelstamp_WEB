@@ -1,12 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import MediaEditModal from './MediaEditModal';
 import { generateTimelineThumbnails } from '../utils/media/previews';
 import type { EditingMedia } from './types';
 vi.mock('../utils/media/previews',()=>({generateTimelineThumbnails:vi.fn().mockResolvedValue([])}));
-const media=(kind:'video'|'image'='video'):EditingMedia=>({item:{key:'source',name:'source',kind,url:'blob:source'},clipId:1,cutIndex:0,width:1080,height:1920,sourceDuration:10,edit:{start:1,duration:3,crop:{x:0,y:0,width:1,height:1}},wasForced:true});
+const media=(kind:'video'|'image'='video'):EditingMedia=>({item:{key:'source',name:'source',kind,url:'blob:source'},clipId:1,cutIndex:0,width:1080,height:1920,sourceDuration:10,edit:{start:1,duration:3,crop:{x:0,y:0,width:1,height:1}},isRecommended:true});
 beforeEach(()=>{vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(()=>{});vi.mocked(generateTimelineThumbnails).mockResolvedValue([]);});
-afterEach(()=>{cleanup();vi.restoreAllMocks();});
+afterEach(()=>{cleanup();vi.useRealTimers();vi.restoreAllMocks();});
 it('links decimal length and selected interval, refusing invalid values',async()=>{
  const confirm=vi.fn(); render(<MediaEditModal media={media()} busy={false} error={null} onCancel={vi.fn()} onConfirm={confirm}/>);
  fireEvent.change(screen.getByLabelText('길이(초)'),{target:{value:'0.15'}});expect(screen.getByRole('button',{name:'확인'})).toBeDisabled();
@@ -34,4 +34,27 @@ it('keeps source positions beyond one hour while limiting only the selected leng
  render(<MediaEditModal media={source} busy={false} error={null} onCancel={vi.fn()} onConfirm={vi.fn()}/>);
  fireEvent.change(screen.getByLabelText('길이(초)'),{target:{value:'200'}});
  expect(screen.getByRole('slider',{name:'구간 시작'})).toHaveAttribute('aria-valuenow','7000');
+});
+it.each(['image', 'video'] as const)('shows the recommendation once for %s length changes and dismisses after three seconds', async (kind) => {
+  vi.useFakeTimers();
+  render(<MediaEditModal media={media(kind)} busy={false} error={null} onCancel={vi.fn()} onConfirm={vi.fn()} />);
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  if (kind === 'video') {
+    fireEvent.keyDown(screen.getByRole('slider', { name: '구간 종료' }), { key: 'ArrowLeft' });
+  } else {
+    fireEvent.change(screen.getByLabelText('길이(초)'), { target: { value: '4' } });
+  }
+  expect(screen.getByRole('status')).toHaveTextContent('이 템플릿은 권장 길이에 맞춰 제작하는 것을 추천해요.');
+  expect(screen.getByRole('button', { name: '확인' })).toBeEnabled();
+  await act(async () => { vi.advanceTimersByTime(2999); });
+  expect(screen.getByRole('status')).toBeInTheDocument();
+  await act(async () => { vi.advanceTimersByTime(1); });
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('길이(초)'), { target: { value: '5' } });
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+});
+it('does not show a recommended-length toast for other duration modes', () => {
+  render(<MediaEditModal media={{ ...media('image'), isRecommended: false }} busy={false} error={null} onCancel={vi.fn()} onConfirm={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('길이(초)'), { target: { value: '4' } });
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });

@@ -216,7 +216,7 @@ export default function useGalleryWorkspace(options: Options) {
       height,
       sourceDuration: duration,
       edit,
-      wasForced: cut.durationMode === 'FORCED',
+      isRecommended: cut.durationMode === 'RECOMMENDED',
     });
     return true;
   };
