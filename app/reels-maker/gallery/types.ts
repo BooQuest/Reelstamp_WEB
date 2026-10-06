@@ -40,5 +40,5 @@ export type EditingMedia = {
   height: number;
   sourceDuration: number;
   edit: MediaEdit;
-  wasForced: boolean;
+  isRecommended: boolean;
 };

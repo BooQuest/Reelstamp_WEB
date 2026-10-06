@@ -39,7 +39,7 @@ export default function MediaEditModal({
     setPlaying(false);
   };
   const notifyDuration = () => {
-    if (media.wasForced && !warned.current) {
+    if (media.isRecommended && !warned.current) {
       warned.current = true;
       setToast(true);
     }
