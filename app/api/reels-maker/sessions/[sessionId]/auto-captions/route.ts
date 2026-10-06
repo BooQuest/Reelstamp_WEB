@@ -12,8 +12,8 @@ export async function POST(
         { status: 400 }
       );
     }
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
     const response = await apiClient.post(
       `/api/reels-maker/sessions/${sessionId}/auto-captions`
     );

@@ -1,3 +1,5 @@
+import { validateOAuthExchange } from '@/app/lib/auth/oauth-state';
+import { authRouteError } from '@/app/lib/auth/route-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 
 const KAKAO_TOKEN_URL = 'https://kauth.kakao.com/oauth/token';
@@ -16,17 +18,17 @@ type KakaoTokenResponse = {
 type KakaoTokenRequestBody = {
   code?: string;
   redirectUri?: string;
+  state?: string;
 };
 
 const getKakaoRestApiKey = () =>
   process.env.KAKAO_REST_API_KEY || process.env.NEXT_PUBLIC_KAKAO_REST_API_KEY;
 
-const getErrorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : '서버 오류 발생';
-
 export async function POST(request: NextRequest) {
   try {
-    const { code, redirectUri } = (await request.json()) as KakaoTokenRequestBody;
+    const { code, redirectUri, state } = (await request.json()) as KakaoTokenRequestBody;
+
+    await validateOAuthExchange(request, 'KAKAO', state, redirectUri);
 
     if (!code || !redirectUri) {
       return NextResponse.json(
@@ -57,6 +59,7 @@ export async function POST(request: NextRequest) {
 
     const tokenResponse = await fetch(KAKAO_TOKEN_URL, {
       method: 'POST',
+      signal: AbortSignal.timeout(8000),
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
       },
@@ -78,16 +81,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token,
       expires_in: tokenData.expires_in,
       token_type: tokenData.token_type,
       scope: tokenData.scope,
-      id_token: tokenData.id_token,
-    });
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error: unknown) {
-    return NextResponse.json(
-      { success: false, message: getErrorMessage(error) },
-      { status: 500 }
-    );
+    return authRouteError(error);
   }
 }

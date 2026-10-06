@@ -1,107 +1,28 @@
-// 최종 영상 다운로드 프록시: Content-Disposition을 설정해 파일 다운로드로 유도
 import { NextRequest, NextResponse } from 'next/server';
+import { getMutableServerApiClient } from '@/app/lib/api/server-client';
+import { authRouteError } from '@/app/lib/auth/route-helpers';
 
-const isAllowedHost = (host: string) => {
-  if (!host) return false;
-  const lower = host.toLowerCase();
-  if (!lower.endsWith('.oraclecloud.com')) return false;
-  return lower.includes('objectstorage.');
-};
-
-const guessExtension = (url: URL, contentType: string | null) => {
-  const lowerType = (contentType || '').toLowerCase();
-  if (lowerType.includes('webm')) return 'webm';
-  if (lowerType.includes('mp4')) return 'mp4';
-  const pathname = url.pathname.toLowerCase();
-  if (pathname.endsWith('.webm')) return 'webm';
-  if (pathname.endsWith('.mp4')) return 'mp4';
-  return 'mp4';
-};
-
+// The Backend selects the owned result. Never fetch a caller-supplied storage URL.
 export async function GET(request: NextRequest) {
-  const rawUrl = request.nextUrl.searchParams.get('url');
-  if (!rawUrl) {
-    return NextResponse.json(
-      {
-        success: false,
-        status: 400,
-        message: 'url 파라미터가 필요합니다.',
-        errorCode: 'INVALID_REQUEST',
-        data: null,
-      },
-      { status: 400 }
-    );
-  }
-
-  let parsedUrl: URL;
   try {
-    parsedUrl = new URL(rawUrl);
-  } catch {
-    return NextResponse.json(
-      {
-        success: false,
-        status: 400,
-        message: '유효하지 않은 URL입니다.',
-        errorCode: 'INVALID_URL',
-        data: null,
-      },
-      { status: 400 }
-    );
-  }
-
-  if (!['http:', 'https:'].includes(parsedUrl.protocol) || !isAllowedHost(parsedUrl.hostname)) {
-    return NextResponse.json(
-      {
-        success: false,
-        status: 400,
-        message: '지원되지 않는 URL입니다.',
-        errorCode: 'INVALID_URL',
-        data: null,
-      },
-      { status: 400 }
-    );
-  }
-
-  try {
-    const upstream = await fetch(parsedUrl.toString(), { cache: 'no-store' });
-    if (!upstream.ok) {
-      return NextResponse.json(
-        {
-          success: false,
-          status: upstream.status,
-          message: '영상을 다운로드하지 못했습니다.',
-          errorCode: 'DOWNLOAD_FAILED',
-          data: null,
-        },
-        { status: upstream.status }
-      );
+    const sessionId = request.nextUrl.searchParams.get('sessionId');
+    if (!sessionId || !/^[1-9][0-9]*$/.test(sessionId)) return NextResponse.json({ message: '제작 세션이 필요합니다.' }, { status: 400 });
+    const api = await getMutableServerApiClient();
+    const owned = await api.get(`/api/reels-maker/sessions/${sessionId}/status`);
+    const raw = owned.data?.data?.finalVideoUrl;
+    if (!raw) return NextResponse.json({ message: '영상을 찾을 수 없습니다.' }, { status: 404 });
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port ||
+        !url.hostname.endsWith('.oraclecloud.com') || !url.hostname.includes('objectstorage.')) {
+      return NextResponse.json({ message: '지원되지 않는 영상 주소입니다.' }, { status: 502 });
     }
-
-    const contentType = upstream.headers.get('content-type') || 'video/mp4';
-    const extension = guessExtension(parsedUrl, contentType);
-    const filename = `reelstamp-reel.${extension}`;
-    const headers = new Headers();
-    headers.set('Content-Type', contentType);
-    headers.set('Content-Disposition', `attachment; filename="${filename}"`);
-    const length = upstream.headers.get('content-length');
-    if (length) {
-      headers.set('Content-Length', length);
-    }
-
-    return new NextResponse(upstream.body, {
-      status: 200,
-      headers,
-    });
-  } catch (error: any) {
-    return NextResponse.json(
-      {
-        success: false,
-        status: 500,
-        message: error?.message || '영상을 다운로드하는 중 오류가 발생했습니다.',
-        errorCode: 'DOWNLOAD_ERROR',
-        data: null,
-      },
-      { status: 500 }
-    );
-  }
+    const upstream = await fetch(url, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(30000) });
+    if (!upstream.ok) return NextResponse.json({ message: '영상을 다운로드하지 못했습니다.' }, { status: 502 });
+    const type = upstream.headers.get('content-type') || 'video/mp4';
+    const extension = type.includes('webm') || url.pathname.endsWith('.webm') ? 'webm' : 'mp4';
+    return new NextResponse(upstream.body, { headers: {
+      'Cache-Control': 'private, no-store', 'Content-Type': type,
+      'Content-Disposition': `attachment; filename="reelstamp-reel.${extension}"`,
+    } });
+  } catch (error) { return authRouteError(error); }
 }

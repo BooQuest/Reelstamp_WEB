@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { GET } from './route';
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
-vi.mock('@/app/lib/api/server-client', () => ({ getServerApiClient: async () => ({ get }) }));
+vi.mock('@/app/lib/api/server-client', () => ({ getMutableServerApiClient: async () => ({ get }) }));
 beforeEach(() => vi.clearAllMocks());
 
 it('returns the backend flags with no cache', async () => {

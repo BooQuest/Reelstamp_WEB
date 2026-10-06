@@ -19,7 +19,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   
   // 소셜 로그인 사용자는 로그인 페이지 접근을 차단하고, 게스트는 계정 전환을 위해 허용합니다.
   if (user && !user.guest && user.provider !== 'GUEST') {
-    console.log(`[LoginPage SSR] 이미 로그인된 사용자(${user.nickname}), 리다이렉트 수행`);
     const resolvedSearchParams = searchParams ? await searchParams : undefined;
     const returnUrl = getSafeLoginReturnUrl(resolvedSearchParams?.returnUrl);
     redirect(returnUrl ?? LOGIN_HOME_PATH);

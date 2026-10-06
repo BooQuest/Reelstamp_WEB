@@ -14,7 +14,7 @@ import axios from 'axios';
 export async function POST(request: NextRequest) {
   try {
     // 1. 유저 인증 확인
-    const user = await getCurrentUser();
+    const user = await getCurrentUser(true);
     if (!user) {
       return NextResponse.json(
         { success: false, message: '로그인이 필요합니다.' },
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error) {
-    console.error('[Payment Cancel API Error]', error);
+    console.error('[Payment Cancel API Error]');
     return NextResponse.json(
       { success: false, message: '서버 오류가 발생했습니다.' },
       { status: 500 }

@@ -20,8 +20,8 @@ export async function POST(
       );
     }
     const body = await request.json();
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
     const response = await apiClient.post(
       `/api/reels-maker/sessions/${sessionId}/clips/${clipId}/upload-complete`,
       body

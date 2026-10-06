@@ -1,6 +1,10 @@
 // 카카오 로그인 Route Handler: Spring API 호출 후 httpOnly 쿠키에 토큰 저장
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { saveTokenCookies } from '@/app/lib/auth/token-cookies';
+import { requireTokenInfo } from '@/app/lib/auth/refresh';
+import { requireSameOrigin } from '@/app/lib/auth/route-helpers';
+import { getGuestCredential } from '@/app/lib/auth/guest-credential';
 import { webApiClient } from '@/app/lib/api/client';
 import { WebApiResponse, LoginResponseData, normalizeUserInfo } from '@/app/lib/api/auth';
 
@@ -23,6 +27,7 @@ const toRouteError = (error: unknown): RouteError => {
 
 export async function POST(request: NextRequest) {
   try {
+    requireSameOrigin(request);
     const { kakaoAccessToken } = await request.json();
 
     if (!kakaoAccessToken) {
@@ -33,8 +38,7 @@ export async function POST(request: NextRequest) {
     }
 
     const cookieStore = await cookies();
-    const guestAccessToken =
-      cookieStore.get('accessToken')?.value ?? cookieStore.get('refreshToken')?.value;
+    const guestAccessToken = await getGuestCredential();
 
     const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
       '/api/auth/login',
@@ -42,27 +46,14 @@ export async function POST(request: NextRequest) {
         accessToken: kakaoAccessToken,
         provider: 'KAKAO',
         guestAccessToken,
-      }
+      },
+      { headers: { 'User-Agent': request.headers.get('user-agent') || 'Unknown' } }
     );
 
     const { tokenInfo, userInfo } = response.data.data;
     const normalizedUserInfo = normalizeUserInfo(userInfo, 'KAKAO');
 
-    cookieStore.set('accessToken', tokenInfo.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: tokenInfo.expiresIn,
-      path: '/',
-    });
-
-    cookieStore.set('refreshToken', tokenInfo.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    });
+    saveTokenCookies(cookieStore, requireTokenInfo(tokenInfo));
 
     return NextResponse.json({
       success: true,

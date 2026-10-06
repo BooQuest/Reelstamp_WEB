@@ -16,8 +16,8 @@ export async function POST(
     if (!sessionId) {
       return NextResponse.json({ success: false, message: 'sessionId가 필요합니다.' }, { status: 400 });
     }
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
     const response = await apiClient.post(`/api/reels-maker/sessions/${sessionId}/abandon`);
     return NextResponse.json(response.data, { status: response.status });
   } catch (error: unknown) {

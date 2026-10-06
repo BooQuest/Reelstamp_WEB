@@ -1,3 +1,5 @@
+
+import { authFetch } from '@/app/lib/auth/browser-session';
 // Settings 모달 컴포넌트: 계정 설정 팝업
 'use client';
 
@@ -90,7 +92,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
     setIsCancelling(true);
     try {
-      const response = await fetch('/api/payments/cancel', {
+      const response = await authFetch('/api/payments/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

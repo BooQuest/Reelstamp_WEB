@@ -1,4 +1,3 @@
-import { webApiClient } from '@/app/lib/api/client';
 
 export type SocialAuthProvider = 'KAKAO' | 'NAVER' | 'GOOGLE' | 'APPLE';
 export type AuthProvider = SocialAuthProvider | 'GUEST';
@@ -27,6 +26,9 @@ export interface TokenInfo {
   refreshToken: string;
   tokenType: string;
   expiresIn: number;
+  sessionId: string;
+  accessTokenExpiresAt: string;
+  refreshTokenExpiresAt: string;
 }
 
 export interface UserInfo {
@@ -139,9 +141,9 @@ export function normalizeUserInfo(raw: unknown, fallbackProvider?: AuthProvider)
 /**
  * 서버 사이드에서 현재 로그인한 유저 정보를 조회합니다.
  * httpOnly 쿠키의 accessToken을 사용하여 Spring API를 호출합니다.
- * access token 만료 시 getServerApiClient()에서 자동으로 refresh token으로 갱신합니다.
+ * 렌더링에서는 proxy가 갱신하며, API/Action은 mutable 문맥을 명시합니다.
  */
-export async function getCurrentUser(): Promise<UserInfo | null> {
+export async function getCurrentUser(mutable = false): Promise<UserInfo | null> {
   try {
     // 쿠키 확인
     const { cookies } = await import('next/headers');
@@ -154,8 +156,8 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
       return null;
     }
 
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getServerApiClient, getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await (mutable ? getMutableServerApiClient() : getServerApiClient());
     const response = await apiClient.get<WebApiResponse<UserInfo>>('/api/user/me');
     
     if (response.data && response.data.data) {
@@ -164,48 +166,10 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
 
     return null;
   } catch (error: unknown) {
-    const apiError = toApiErrorLike(error);
-    // 에러 로깅 (개발 환경에서 더 상세하게)
-    const statusCode = apiError.response?.status;
-    const errorMessage = apiError.message;
-    
-    // refresh token 갱신 실패로 인한 401 에러인 경우
-    if (statusCode === 401) {
-      console.warn('[getCurrentUser] 인증 실패 (토큰 만료 또는 refresh token 갱신 실패):', {
-        message: errorMessage,
-        status: statusCode,
-        // refresh token 갱신 실패 시 쿠키가 이미 삭제되었을 수 있음
-      });
-    } else {
-      // 다른 에러 (네트워크 오류 등)
-      console.error('[getCurrentUser] API 호출 실패:', {
-        message: errorMessage,
-        status: statusCode,
-        statusText: apiError.response?.statusText,
-        data: apiError.response?.data,
-      });
-    }
-    
-    // 토큰이 없거나 만료된 경우 null 반환
-    // getServerApiClient에서 refresh token 갱신을 시도했지만 실패한 경우도 포함
-    return null;
+    const { unstable_rethrow } = await import('next/navigation');
+    unstable_rethrow(error);
+    const status = toApiErrorLike(error).response?.status;
+    if (status === 401) return null;
+    throw new Error('로그인 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
   }
 }
-
-/**
- * [DEPRECATED] 카카오 액세스 토큰으로 Web API에 로그인을 요청합니다.
- * 
- * ⚠️ 보안 강화를 위해 이 함수 대신 Server Action을 사용하세요:
- * - 클라이언트: `loginWithKakaoAction` (app/actions/auth.ts)
- * - httpOnly 쿠키에 토큰이 자동으로 저장됩니다.
- * 
- * @deprecated Server Action 사용 권장
- * @param accessToken 카카오에서 발급받은 액세스 토큰
- */
-export const loginWithKakao = async (accessToken: string): Promise<WebApiResponse<LoginResponseData>> => {
-  const response = await webApiClient.post<WebApiResponse<LoginResponseData>>('/api/auth/login', {
-    accessToken,
-    provider: 'KAKAO',
-  });
-  return response.data;
-};

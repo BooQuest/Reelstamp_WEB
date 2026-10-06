@@ -1,7 +1,11 @@
 // 인증 관련 Server Actions: 서버 사이드에서 실행되는 인증 로직
 'use server';
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
+import { saveTokenCookies, clearTokenCookies } from '@/app/lib/auth/token-cookies';
+import { requireTokenInfo } from '@/app/lib/auth/refresh';
+import { errorStatus } from '@/app/lib/auth/server-errors';
+import { getGuestCredential } from '@/app/lib/auth/guest-credential';
 import { webApiClient } from '@/app/lib/api/client';
 import {
   WebApiResponse,
@@ -108,8 +112,7 @@ export async function loginWithSocialAction(
 ): Promise<AuthActionResult> {
   try {
     const cookieStore = await cookies();
-    const guestAccessToken =
-      cookieStore.get('accessToken')?.value ?? cookieStore.get('refreshToken')?.value;
+    const guestAccessToken = await getGuestCredential();
 
     const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
       '/api/auth/login',
@@ -117,7 +120,8 @@ export async function loginWithSocialAction(
         accessToken: accessToken,
         provider: provider,
         guestAccessToken,
-      }
+      },
+      { headers: { 'User-Agent': (await headers()).get('user-agent') || 'Unknown' } }
     );
 
     if (!response.data.success || !response.data.data) {
@@ -127,21 +131,7 @@ export async function loginWithSocialAction(
     const { tokenInfo, userInfo } = response.data.data;
     const normalizedUserInfo = normalizeUserInfo(userInfo, provider);
     
-    cookieStore.set('accessToken', tokenInfo.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: tokenInfo.expiresIn,
-      path: '/',
-    });
-
-    cookieStore.set('refreshToken', tokenInfo.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    });
+    saveTokenCookies(cookieStore, requireTokenInfo(tokenInfo));
 
     return {
       success: true,
@@ -165,7 +155,8 @@ export async function loginAsGuestAction(
   try {
     const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
       '/api/auth/guest',
-      { nickname }
+      { nickname },
+      { headers: { 'User-Agent': (await headers()).get('user-agent') || 'Unknown' } }
     );
 
     if (!response.data.success || !response.data.data) {
@@ -176,21 +167,7 @@ export async function loginAsGuestAction(
     const normalizedUserInfo = normalizeUserInfo(userInfo, 'GUEST');
     const cookieStore = await cookies();
 
-    cookieStore.set('accessToken', tokenInfo.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: tokenInfo.expiresIn,
-      path: '/',
-    });
-
-    cookieStore.set('refreshToken', tokenInfo.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    });
+    saveTokenCookies(cookieStore, requireTokenInfo(tokenInfo));
 
     return {
       success: true,
@@ -234,14 +211,21 @@ export async function logoutAction(): Promise<{ success: boolean; message: strin
             'X-Refresh-Token': refreshToken,
           },
         });
-      } catch {
-        // API 호출 실패해도 쿠키는 삭제
+      } catch (error) {
+        if (errorStatus(error) !== 401) throw error;
       }
     }
 
+    if (!refreshToken && cookieStore.get('accessToken')?.value) {
+      const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+      try {
+        const api = await getMutableServerApiClient();
+        const session = await api.get('/api/auth/session');
+        await api.delete(`/api/auth/sessions/${session.data.data.sessionId}`);
+      } catch (error) { if (errorStatus(error) !== 401) throw error; }
+    }
     // 쿠키에서 토큰 제거
-    cookieStore.delete('accessToken');
-    cookieStore.delete('refreshToken');
+    clearTokenCookies(cookieStore);
     
     return { success: true, message: '로그아웃 완료' };
   } catch {
@@ -257,16 +241,15 @@ export async function deleteAccountAction(): Promise<{
   message: string;
 }> {
   try {
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
     
     await apiClient.delete('/api/user/me');
     
     // 계정 삭제 성공 시 쿠키에서 토큰 제거
     const { cookies } = await import('next/headers');
     const cookieStore = await cookies();
-    cookieStore.delete('accessToken');
-    cookieStore.delete('refreshToken');
+    clearTokenCookies(cookieStore);
     
     return {
       success: true,
@@ -289,8 +272,8 @@ export async function getSubscriptionStatusAction(): Promise<{
   message?: string;
 }> {
   try {
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
     
     const response = await apiClient.get<WebApiResponse<SubscriptionStatusResponse>>('/api/subscription/status');
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerApiClient } from '@/app/lib/api/server-client';
+import { getMutableServerApiClient } from '@/app/lib/api/server-client';
 import { passApiError } from '@/app/lib/passes/payment-server';
 export async function GET(
   _request: NextRequest,
@@ -7,7 +7,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const api = await getServerApiClient();
+    const api = await getMutableServerApiClient();
     const { data } = await api.get(
       `/api/passes/orders/${encodeURIComponent(id)}`,
     );

@@ -1,3 +1,4 @@
+import { authFetch } from '@/app/lib/auth/browser-session';
 import { COUPON_AVAILABILITY_ERROR, isCouponAvailability } from './availability';
 import type { CouponAvailability, CouponRequest, CouponResult } from './types';
 
@@ -7,7 +8,7 @@ export class CouponApiError extends Error {
 
 export async function getCouponAvailability(): Promise<CouponAvailability> {
   try {
-    const response = await fetch('/api/coupons/availability', { cache: 'no-store' });
+    const response = await authFetch('/api/coupons/availability', { cache: 'no-store' });
     const body = await response.json();
     if (!response.ok || !body.success || !isCouponAvailability(body.data)) throw new Error();
     return body.data;
@@ -19,7 +20,7 @@ export async function getCouponAvailability(): Promise<CouponAvailability> {
 export async function redeemCoupon(request: CouponRequest): Promise<CouponResult> {
   let response: Response;
   try {
-    response = await fetch(request.couponType === 'WADIZ' ? '/api/coupons/wadiz/redeem' : '/api/coupons/redeem', {
+    response = await authFetch(request.couponType === 'WADIZ' ? '/api/coupons/wadiz/redeem' : '/api/coupons/redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

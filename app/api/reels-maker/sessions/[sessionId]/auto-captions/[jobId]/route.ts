@@ -12,8 +12,8 @@ export async function GET(
         { status: 400 }
       );
     }
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
     const response = await apiClient.get(
       `/api/reels-maker/sessions/${sessionId}/auto-captions/${encodeURIComponent(jobId)}`
     );

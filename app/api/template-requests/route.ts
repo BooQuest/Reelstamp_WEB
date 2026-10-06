@@ -17,8 +17,8 @@ const toApiClientError = (error: unknown): ApiClientError =>
 
 export async function POST(request: NextRequest) {
   try {
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
     const body = await request.json();
 
     const response = await apiClient.post('/api/template-requests', body);

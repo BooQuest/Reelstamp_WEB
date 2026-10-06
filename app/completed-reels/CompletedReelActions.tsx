@@ -1,5 +1,7 @@
 'use client';
 
+import { authFetch } from '@/app/lib/auth/browser-session';
+
 import { useMemo, useState } from 'react';
 import Image from 'next/image';
 import {
@@ -127,7 +129,7 @@ export default function CompletedReelActions({
     });
 
     try {
-      const response = await fetch('/api/reels-maker/sessions/delete-batch', {
+      const response = await authFetch('/api/reels-maker/sessions/delete-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionIds: uniqueIds }),

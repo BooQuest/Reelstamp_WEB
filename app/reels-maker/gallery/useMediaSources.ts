@@ -1,5 +1,7 @@
 'use client';
 
+import { authFetch } from '@/app/lib/auth/browser-session';
+
 import { useCallback, useEffect, useRef } from 'react';
 import type { MediaAsset, MediaSource } from './types';
 
@@ -43,7 +45,7 @@ export default function useMediaSources() {
       return create(file, key, assets.current.get(key));
     },
     fromAsset: async (asset: MediaAsset, signal: AbortSignal) => {
-      const response = await fetch(
+      const response = await authFetch(
         `/api/reels-maker/download?url=${encodeURIComponent(asset.downloadUrl)}`,
         { signal },
       );

@@ -1,3 +1,5 @@
+
+import { authFetch } from '@/app/lib/auth/browser-session';
 // 플랜 카드 래퍼: 결제 로직을 처리하는 클라이언트 컴포넌트
 'use client';
 
@@ -58,7 +60,7 @@ export default function PricingPlanCard({
     try {
       setIsPaymentProcessing(true);
       
-      const response = await fetch('/api/payments/create', {
+      const response = await authFetch('/api/payments/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

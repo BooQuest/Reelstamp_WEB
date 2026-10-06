@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. 유저 인증 확인
-    const user = await getCurrentUser();
+    const user = await getCurrentUser(true);
     if (!user) {
       return NextResponse.json(
         { success: false, message: '로그인이 필요합니다.' },
@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error) {
-    console.error('[Payment Create API Error]', error);
+    console.error('[Payment Create API Error]');
     return NextResponse.json(
       {
         success: false,

@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
             message: caught instanceof Error ? caught.message : String(caught),
             response: undefined, request: undefined, config: undefined,
           };
-    console.error('[Billing Start API Error]', error);
+    console.error('[Billing Start API Error]');
 
     // Axios 에러 처리
     if (error.response) {

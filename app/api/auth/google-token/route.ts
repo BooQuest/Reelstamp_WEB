@@ -1,8 +1,12 @@
+import { validateOAuthExchange } from '@/app/lib/auth/oauth-state';
+import { authRouteError } from '@/app/lib/auth/route-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { code, redirectUri } = await request.json();
+    const { code, redirectUri, state } = await request.json();
+
+    await validateOAuthExchange(request, 'GOOGLE', state, redirectUri);
 
     if (!code || !redirectUri) {
       return NextResponse.json(
@@ -23,6 +27,7 @@ export async function POST(request: NextRequest) {
 
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
+      signal: AbortSignal.timeout(8000),
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
@@ -47,16 +52,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       access_token: tokenData.access_token,
-      id_token: tokenData.id_token,
-      refresh_token: tokenData.refresh_token,
       expires_in: tokenData.expires_in,
       token_type: tokenData.token_type,
       scope: tokenData.scope,
-    });
-  } catch (error: any) {
-    return NextResponse.json(
-      { success: false, message: error.message || '서버 오류 발생' },
-      { status: 500 }
-    );
+    }, { headers: { 'Cache-Control': 'no-store' } });
+  } catch (error: unknown) {
+    return authRouteError(error);
   }
 }

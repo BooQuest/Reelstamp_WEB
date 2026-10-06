@@ -17,8 +17,8 @@ const toApiClientError = (error: unknown): ApiClientError =>
 
 export async function GET() {
   try {
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
 
     const response = await apiClient.get('/api/templates/today-trends');
 

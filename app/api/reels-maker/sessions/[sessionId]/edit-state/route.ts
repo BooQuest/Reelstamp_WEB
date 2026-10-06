@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerApiClient } from '@/app/lib/api/server-client';
+import { getMutableServerApiClient } from '@/app/lib/api/server-client';
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ sessionId: string; clipId?: string; id?: string }> }) {
   const values = await params;
   const { sessionId, clipId, id } = values;
   void clipId; void id;
   if (Object.values(values).some(v => !v || !/^[a-zA-Z0-9-]+$/.test(v))) return NextResponse.json({ success: false }, { status: 400 });
   try {
-    const client = await getServerApiClient();
+    const client = await getMutableServerApiClient();
     const text = await request.text();
     const response = await client.put(`/api/reels-maker/sessions/${sessionId}/edit-state`, text ? JSON.parse(text) : undefined);
     return NextResponse.json(response.data, { status: response.status });

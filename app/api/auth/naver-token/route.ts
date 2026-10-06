@@ -1,8 +1,12 @@
+import { validateOAuthExchange } from '@/app/lib/auth/oauth-state';
+import { authRouteError } from '@/app/lib/auth/route-helpers';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
     const { code, state } = await request.json();
+
+    await validateOAuthExchange(request, 'NAVER', state);
 
     if (!code || !state) {
       return NextResponse.json(
@@ -23,6 +27,7 @@ export async function POST(request: NextRequest) {
 
     const tokenResponse = await fetch('https://nid.naver.com/oauth2.0/token', {
       method: 'POST',
+      signal: AbortSignal.timeout(8000),
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
@@ -47,14 +52,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token,
       expires_in: tokenData.expires_in,
-    });
-  } catch (error: any) {
-    return NextResponse.json(
-      { success: false, message: error.message || '서버 오류 발생' },
-      { status: 500 }
-    );
+    }, { headers: { 'Cache-Control': 'no-store' } });
+  } catch (error: unknown) {
+    return authRouteError(error);
   }
 }
-

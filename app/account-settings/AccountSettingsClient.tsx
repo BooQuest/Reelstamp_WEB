@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { User, Mail, LogOut } from 'lucide-react';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import CouponRegistration from './components/CouponRegistration';
+import LoginSessions from './components/LoginSessions';
 import AccountPeriod from './components/AccountPeriod';
 import type { CouponAvailability, CouponResult, EntitlementSummary } from '@/app/lib/coupons/types';
 import { buildLoginReturnHref } from '@/app/lib/auth/loginRedirect';
@@ -34,10 +35,13 @@ export default function AccountSettingsClient({ initialUser, initialEntitlements
   const displayEmail = displayUser.email || (isGuestUser ? '가입 없이 이용 중' : '이메일 정보 없음');
 
   const handleLogout = async () => {
+    if (!window.confirm('현재 브라우저에서 로그아웃할까요?')) return;
     setIsLoggingOut(true);
     try {
       await logout();
       router.push('/login');
+    } catch {
+      window.alert('로그아웃을 완료하지 못했습니다. 다시 시도해 주세요.');
     } finally {
       setIsLoggingOut(false);
     }
@@ -69,6 +73,8 @@ export default function AccountSettingsClient({ initialUser, initialEntitlements
             <AccountPeriod summary={entitlements} onRetry={() => router.refresh()} />
           </div>
         </div>
+
+        <LoginSessions />
 
         {/* Actions */}
         <div className="space-y-3 mb-20">

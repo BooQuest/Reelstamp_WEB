@@ -1,5 +1,7 @@
 'use client';
 
+import { authFetch } from '@/app/lib/auth/browser-session';
+
 import {
   useCallback,
   useEffect,
@@ -147,7 +149,7 @@ export default function useDraftAutosave({
         setDraftSaveStatus('saving');
 
         try {
-          const response = await fetch(
+          const response = await authFetch(
             `/api/reels-maker/sessions/${sessionId}/draft`,
             {
               method: 'PUT',

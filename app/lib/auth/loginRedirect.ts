@@ -20,7 +20,10 @@ const OAUTH_STATE_PREFIX_TO_PROVIDER: Record<LoginOAuthStatePrefix, LoginOAuthPr
 export const getSafeLoginReturnUrl = (value: string | null | undefined) => {
   const trimmed = value?.trim();
   if (!trimmed) return null;
-  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return null;
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || /[\\\u0000-\u0020]/.test(trimmed)) return null;
+  try {
+    if (new URL(trimmed, 'https://reelstamp.invalid').origin !== 'https://reelstamp.invalid') return null;
+  } catch { return null; }
   if (trimmed.startsWith('/login')) return null;
   return trimmed;
 };

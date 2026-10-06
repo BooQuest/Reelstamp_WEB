@@ -4,6 +4,8 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { UserInfo, SubscriptionStatusResponse } from '@/app/lib/api/auth';
 import { logoutAction, getSubscriptionStatusAction } from '@/app/actions/auth';
+import SessionRecovery from './SessionRecovery';
+import { notifyAuthChanged, blockAuthenticatedRequests, bindAuthenticatedUser } from '@/app/lib/auth/browser-session';
 
 interface AuthContextType {
   user: UserInfo | null;
@@ -29,6 +31,8 @@ interface AuthProviderProps {
  */
 export function AuthProvider({ children, initialUser }: AuthProviderProps) {
   const [user, setUser] = useState<UserInfo | null>(initialUser);
+  bindAuthenticatedUser(user?.id ?? null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionStatusResponse | null>(null);
   const [isLoadingSubscription, setIsLoadingSubscription] = useState(false);
 
@@ -65,8 +69,12 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
   }, [user]);
 
   const logout = async () => {
-    await logoutAction();
+    const result = await logoutAction();
+    if (!result.success) throw new Error(result.message);
     setUser(null);
+    setSessionExpired(false);
+    blockAuthenticatedRequests(false);
+    notifyAuthChanged();
     setSubscription(null);
   };
 
@@ -74,15 +82,23 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     <AuthContext.Provider
       value={{
         user,
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && !sessionExpired,
         subscription,
         isLoadingSubscription,
-        setUser,
+        setUser: (next) => {
+          setUser(next);
+          if (next) { setSessionExpired(false); blockAuthenticatedRequests(false); }
+          notifyAuthChanged();
+        },
         logout,
         refreshSubscription,
       }}
     >
       {children}
+      <SessionRecovery user={user} onExpired={() => setSessionExpired(true)} onVerified={(verified) => {
+        setUser(verified);
+        setSessionExpired(false);
+      }} />
     </AuthContext.Provider>
   );
 }

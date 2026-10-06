@@ -17,8 +17,8 @@ export async function PUT(
       return NextResponse.json({ success: false, message: 'sessionId가 필요합니다.' }, { status: 400 });
     }
     const body = await request.json();
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
     const response = await apiClient.put(`/api/reels-maker/sessions/${sessionId}/draft`, body);
     return NextResponse.json(response.data, { status: response.status });
   } catch (error: unknown) {

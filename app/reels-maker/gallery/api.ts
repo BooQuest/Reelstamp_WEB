@@ -1,3 +1,4 @@
+import { authFetch } from '@/app/lib/auth/browser-session';
 import type { PreparedClip, ReelsMakerSessionResponse } from '../types';
 import type {
   ClipRevision,
@@ -14,14 +15,14 @@ export async function editorRequest<T>(
   method = 'POST',
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await fetch(path, {
+  const response = await authFetch(path, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
   });
   const payload = await response.json();
-  if (response.status === 409)
+  if (response.status === 409 && payload.errorCode !== 'AUTH_ACCOUNT_CHANGED')
     throw new EditorConflict(
       '다른 작업에서 프로젝트가 변경되었습니다. 새로고침한 뒤 다시 편집해 주세요.',
     );

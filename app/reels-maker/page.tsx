@@ -1,4 +1,6 @@
 'use client';
+
+import { authFetch } from '@/app/lib/auth/browser-session';
 import GalleryMaker, { type GalleryMakerHandle } from './gallery/GalleryMaker';
 
 import { useAuth } from '@/app/components/providers/AuthProvider';
@@ -473,7 +475,7 @@ function ReelsMakerInner() {
       setTemplate(null);
 
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `/api/templates/${encodeURIComponent(templateId)}`,
           {
             method: 'GET',
@@ -569,14 +571,14 @@ function ReelsMakerInner() {
     sessionHydratedRef.current = false;
     try {
       const response = requestedSessionId
-        ? await fetch(
+        ? await authFetch(
             `/api/reels-maker/sessions/${encodeURIComponent(requestedSessionId)}`,
             {
               method: 'GET',
               cache: 'no-store',
             },
           )
-        : await fetch('/api/reels-maker/sessions', {
+        : await authFetch('/api/reels-maker/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ templateId }),
@@ -599,9 +601,7 @@ function ReelsMakerInner() {
           fallbackMessage,
         });
 
-        if (nextSessionError.type === 'auth') {
-          setUser(null);
-        }
+        if (nextSessionError.type === 'auth' && sessionId) return;
         sessionInitKeyRef.current = null;
         setSessionError(nextSessionError);
         setSessionId(null);
@@ -845,7 +845,7 @@ function ReelsMakerInner() {
       const completionAcceptedStaleClipIds =
         options?.acceptedStaleAutoCaptionClipIds ??
         acceptedStaleAutoCaptionClipIds;
-      const response = await fetch(
+      const response = await authFetch(
         `/api/reels-maker/sessions/${sessionId}/complete`,
         {
           method: 'POST',
@@ -925,7 +925,7 @@ function ReelsMakerInner() {
 
     const fetchStatus = async () => {
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `/api/reels-maker/sessions/${sessionId}/status`,
           {
             method: 'GET',
@@ -1007,7 +1007,7 @@ function ReelsMakerInner() {
   const abandonGuestSession = useCallback(async () => {
     if (!sessionId || !isGuestUser) return true;
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `/api/reels-maker/sessions/${sessionId}/abandon`,
         {
           method: 'POST',
@@ -1078,7 +1078,7 @@ function ReelsMakerInner() {
   const handleDownload = () => {
     if (!finalVideoUrl) return;
     const anchor = document.createElement('a');
-    const downloadUrl = `/api/reels-maker/download?url=${encodeURIComponent(finalVideoUrl)}`;
+    const downloadUrl = `/api/reels-maker/download?sessionId=${sessionId}`;
     anchor.href = downloadUrl;
     const isMp4 = finalVideoMimeType.includes('mp4');
     anchor.download = `reelstamp-reel.${isMp4 ? 'mp4' : 'webm'}`;
@@ -1297,6 +1297,7 @@ function ReelsMakerInner() {
   if (stage === 'preview') {
     return (
       <FinalPreview
+        sessionId={sessionId}
         finalVideoUrl={finalVideoUrl}
         finalVideoMimeType={finalVideoMimeType}
         finalPosterUrl={finalPosterUrl}

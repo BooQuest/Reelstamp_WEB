@@ -1,3 +1,5 @@
+
+import { authFetch } from '@/app/lib/auth/browser-session';
 import type { WebApiResponse } from '@/app/lib/api/auth';
 import type {
   PreparedClip,
@@ -16,7 +18,7 @@ export async function uploadClip({
   clip: PreparedClip;
   signal?: AbortSignal;
 }): Promise<ReelsMakerSessionResponse> {
-  const response = await fetch(`/api/reels-maker/sessions/${sessionId}/clips/presign`, {
+  const response = await authFetch(`/api/reels-maker/sessions/${sessionId}/clips/presign`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ clipId, contentType: clip.mimeType }),
@@ -27,7 +29,7 @@ export async function uploadClip({
     throw new Error(payload?.message || '업로드 URL 발급에 실패했습니다.');
   }
 
-  const uploaded = await fetch(payload.data.uploadUrl, {
+  const uploaded = await authFetch(payload.data.uploadUrl, {
     method: 'PUT',
     headers: { 'Content-Type': clip.mimeType },
     body: clip.blob,
@@ -35,7 +37,7 @@ export async function uploadClip({
   });
   if (!uploaded.ok) throw new Error('클립 업로드에 실패했습니다.');
 
-  const completed = await fetch(
+  const completed = await authFetch(
     `/api/reels-maker/sessions/${sessionId}/clips/${clipId}/upload-complete`,
     {
       method: 'POST',

@@ -309,7 +309,7 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'text/plain' },
     });
   } catch (error) {
-    console.error('[PayApp Webhook Error]', error);
+    console.error('[PayApp Webhook Error]');
     // 에러 발생 시 페이앱이 나중에 다시 보낼 수 있도록 500 응답
     return new NextResponse('INTERNAL_ERROR', { status: 500 });
   }

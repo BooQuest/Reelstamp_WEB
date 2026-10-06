@@ -1,5 +1,7 @@
 'use client';
 
+import { authFetch } from '@/app/lib/auth/browser-session';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClipInfo, ClipSource, MakerCut, PreparedClip, ReelsMakerSessionResponse } from '../types';
 import { uploadClip } from '../services/clipUpload';
@@ -155,7 +157,7 @@ export default function useClipLibrary({ cuts, sessionId, sessionClipMap }: Opti
       const existing = clipsRef.current[index];
       if (existing?.objectKey && existing.objectKey === clip.objectKey) { restored[index] = existing; return; }
       try {
-        const response = await fetch(`/api/reels-maker/download?url=${encodeURIComponent(clip.downloadUrl)}`, { method: 'GET', cache: 'no-store', signal: controller.signal });
+        const response = await authFetch(`/api/reels-maker/download?url=${encodeURIComponent(clip.downloadUrl)}`, { method: 'GET', cache: 'no-store', signal: controller.signal });
         if (!response.ok) return;
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);

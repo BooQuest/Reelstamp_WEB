@@ -1,3 +1,4 @@
+import { OAUTH_STATE_COOKIE } from '@/app/lib/auth/oauth-state';
 import { NextRequest, NextResponse } from 'next/server';
 
 const KAKAO_AUTHORIZE_URL = 'https://kauth.kakao.com/oauth/authorize';
@@ -45,6 +46,9 @@ export async function GET(request: NextRequest) {
   }
 
   const state = request.nextUrl.searchParams.get('state');
+  if (!state || request.cookies.get(OAUTH_STATE_COOKIE)?.value !== `KAKAO:${state}`) {
+    return NextResponse.json({ success: false, message: '로그인을 다시 시작해 주세요.' }, { status: 403 });
+  }
   const authorizeUrl = new URL(KAKAO_AUTHORIZE_URL);
   authorizeUrl.searchParams.set('response_type', 'code');
   authorizeUrl.searchParams.set('client_id', clientId);

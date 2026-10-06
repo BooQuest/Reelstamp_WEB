@@ -3,6 +3,7 @@ import InstagramShareButton from '../InstagramShareButton';
 import { EXAMPLE_ASSETS } from '../constants';
 
 type Props = {
+  sessionId: number | null;
   finalVideoUrl: string | null;
   finalVideoMimeType: string;
   finalPosterUrl: string | null;
@@ -18,6 +19,7 @@ type Props = {
 };
 
 export default function FinalPreview({
+  sessionId,
   finalVideoUrl,
   finalVideoMimeType,
   finalPosterUrl,
@@ -87,6 +89,7 @@ export default function FinalPreview({
 
         <div className="space-y-3">
           <InstagramShareButton
+            sessionId={sessionId}
             finalVideoUrl={finalVideoUrl}
             finalVideoMimeType={finalVideoMimeType}
             templateTitle={templateTitle}
