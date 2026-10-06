@@ -798,10 +798,11 @@ function ReelsMakerInner() {
     };
   }, [isCaptureMenuOpen]);
 
-  const handleComplete = useCallback(() => {
-    if (!allDone) return;
-    setIsCaptionEditDecisionOpen(true);
-  }, [allDone]);
+  // 출시 후 음성인식 자막 편집 안내를 다시 연결할 때 복원합니다.
+  // const handleComplete = useCallback(() => {
+  //   if (!allDone) return;
+  //   setIsCaptionEditDecisionOpen(true);
+  // }, [allDone]);
 
   const handleEditCaptionsBeforeComplete = useCallback(() => {
     setIsCaptionEditDecisionOpen(false);
@@ -1342,7 +1343,8 @@ function ReelsMakerInner() {
             setTemplateGuideStep(activeCutIndex);
             setIsTemplateGuideOpen(true);
           }}
-          onNext={handleComplete}
+          // onNext={handleComplete}
+          onNext={handleSkipCaptionEditBeforeComplete}
           header={
             <div className="flex items-center gap-2">
               <button

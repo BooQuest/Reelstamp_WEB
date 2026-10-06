@@ -305,7 +305,7 @@ describe('gallery-only maker integration', () => {
       screen.queryByRole('button', { name: '현재 컷 촬영' }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '길이 다듬기' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '다음' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '완료' })).toBeDisabled();
   });
   it.each(['image/jpeg', 'video/mp4'])(
     'applies %s as an original and revision, then completes the existing production flow',
@@ -323,8 +323,10 @@ describe('gallery-only maker integration', () => {
         ),
       ).toHaveLength(1);
       expect(getUserMedia).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByRole('button', { name: '다음' }));
-      fireEvent.click(screen.getByRole('button', { name: '편집 없이 완료' }));
+      fireEvent.click(screen.getByRole('button', { name: '완료' }));
+      expect(
+        screen.queryByRole('dialog', { name: '자막을 편집할까요?' }),
+      ).not.toBeInTheDocument();
       await screen.findByText('릴스 제작 완료');
     },
   );
@@ -423,7 +425,7 @@ describe('gallery-only maker integration', () => {
     await importFile();
     fireEvent.click(screen.getByRole('button', { name: '취소' }));
     expect(session.clips[0].objectKey).toBe(key);
-    expect(screen.getByRole('button', { name: '다음' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '완료' })).toBeEnabled();
     expect(URL.revokeObjectURL).toHaveBeenCalled();
     expect(
       fetchMock.mock.calls.filter(([url]) =>
@@ -444,7 +446,7 @@ describe('gallery-only maker integration', () => {
     expect(session.clips[0].objectKey).toBe(key);
     fireEvent.click(screen.getAllByRole('button', { name: '취소' }).at(-1)!);
     expect(screen.getByLabelText('컷 영상 미리보기')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '다음' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '완료' })).toBeEnabled();
   });
   it('undoes and redoes media without uploading or converting again', async () => {
     await openMaker();

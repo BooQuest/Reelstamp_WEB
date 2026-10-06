@@ -208,7 +208,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           disabled={!props.allDone || disabled}
           className="rounded-full bg-rose-500 px-4 py-2 text-sm disabled:opacity-40"
         >
-          다음
+          완료
         </button>
       </div>
       <input
