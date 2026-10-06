@@ -74,3 +74,6 @@ button:disabled,
 .instagram-media > div > a:last-child {
   display: none !important;
 }
+
+@font-face { font-family: 'ReelstampCaptionPretendard'; src: url('/fonts/Pretendard-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'ReelstampCaptionNotoSerif'; src: url('/fonts/NotoSerifKR.woff2') format('woff2'); font-weight: 200 900; font-style: normal; font-display: swap; }

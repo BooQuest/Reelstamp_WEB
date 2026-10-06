@@ -30,6 +30,8 @@ import {
   CAPTION_WHITE_SPACE,
   CAPTION_WORD_BREAK,
 } from '../constants';
+import { Pencil } from 'lucide-react';
+import { captionTextStyle, captionBackground } from '../gallery/captionStyle';
 import type { CaptionItem } from '../types';
 
 const CAPTION_TAP_MOVE_TOLERANCE_PX = 6;
@@ -121,7 +123,10 @@ function CaptionTextEditor({
         onTextChange(event.target.value);
         resizeTextareaToContent(event.target);
       }}
-      onBlur={() => onEdit(null)}
+      onBlur={(event) => {
+        if ((event.relatedTarget as HTMLElement | null)?.closest('[data-caption-toolbar]')) return;
+        onEdit(null);
+      }}
       onKeyDown={(event) => {
         event.stopPropagation();
         if (event.key === 'Escape') {
@@ -132,12 +137,14 @@ function CaptionTextEditor({
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
       placeholder="자막을 입력하세요"
-      className="box-border block w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-center text-white placeholder:text-white/60 focus:outline-none"
+      className="box-border block w-full resize-none overflow-hidden border-0 bg-transparent p-0 placeholder:text-white/60 focus:outline-none"
       style={{
         minWidth: `${CAPTION_INPUT_MIN_WIDTH_PX}px`,
         maxWidth: `${maxWidthPx}px`,
-        fontFamily: CAPTION_FONT_FAMILY,
-        fontWeight: CAPTION_FONT_WEIGHT,
+        fontFamily: 'inherit',
+        fontWeight: 'inherit',
+        color: 'inherit',
+        textAlign: 'inherit',
         fontSize: 'inherit',
         lineHeight: 'inherit',
         whiteSpace: CAPTION_WHITE_SPACE,
@@ -163,9 +170,6 @@ export default function CaptionOverlayStage({
   onCaptionPointerDown,
   onCaptionPointerMove,
   onCaptionPointerEnd,
-  onResizePointerDown,
-  onResizePointerMove,
-  onResizePointerEnd,
 }: Props) {
   const pointerIntentRef = useRef<CaptionPointerIntent | null>(null);
   const suppressedClickCaptionIdRef = useRef<string | null>(null);
@@ -294,6 +298,8 @@ export default function CaptionOverlayStage({
                 isSelected && !readOnly
                   ? `${Math.max(2, 3 / previewScale)}px solid rgba(255,77,109,0.9)`
                   : 'none',
+              ...captionTextStyle(style),
+              ...(style.styleVersion === 'CAPTION_RENDER_V2' ? { backgroundColor: captionBackground(style) } : {}),
               outlineOffset: `${Math.max(2, 4 / previewScale)}px`,
             }}
           >
@@ -307,9 +313,8 @@ export default function CaptionOverlayStage({
               />
             ) : (
               <span
-                className={`block whitespace-pre-wrap text-center ${
-                  hasText ? 'text-white' : 'text-white/55'
-                }`}
+                className={`block whitespace-pre-wrap ${hasText ? '' : 'opacity-55'}`}
+                style={{ textAlign: style.styleVersion === 'CAPTION_RENDER_V2' ? style.textAlign || 'center' : 'center' }}
               >
                 {hasText ? caption.text : '자막을 입력하세요'}
               </span>
@@ -317,11 +322,8 @@ export default function CaptionOverlayStage({
             {isSelected && !isEditing && !readOnly && (
               <button
                 type="button"
-                onPointerDown={onResizePointerDown}
-                onPointerMove={onResizePointerMove}
-                onPointerUp={onResizePointerEnd}
-                onPointerCancel={onResizePointerEnd}
-                onClick={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => { event.stopPropagation(); onEdit(caption.id); }}
                 className="absolute flex items-center justify-center rounded-full border border-white/40 bg-[#FF4D6D] font-bold text-white shadow-lg"
                 style={{
                   right: `-${CAPTION_RESIZE_HANDLE_OFFSET_PX}px`,
@@ -330,9 +332,9 @@ export default function CaptionOverlayStage({
                   height: `${CAPTION_RESIZE_HANDLE_SIZE_PX}px`,
                   fontSize: `${CAPTION_RESIZE_HANDLE_FONT_SIZE_PX}px`,
                 }}
-                aria-label="텍스트 크기 조절"
+                aria-label="텍스트 편집"
               >
-                ↔
+                <Pencil className="h-full w-full p-1" />
               </button>
             )}
           </div>

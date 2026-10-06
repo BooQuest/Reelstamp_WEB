@@ -1,5 +1,7 @@
 # Reels maker media boundaries
 
+Historical record of the camera/gallery separation refactor. The subsequent gallery-only feature supersedes this page’s UI and file map; see [the current gallery architecture](reels-maker-gallery-only.md). Removed gallery/trim modules remain available in Git history.
+
 This refactor preserves the camera and gallery UI, browser encoding settings, and the existing upload/processing API. It changes only WEB. Backend, AI, and the database schema are unchanged.
 
 ## Ownership and dependency direction

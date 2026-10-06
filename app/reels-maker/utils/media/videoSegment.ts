@@ -1,3 +1,4 @@
+import type { CropRegion } from '../../types';
 import type { PreparedClip, VideoDebugLogger, VideoMetadata } from '../../types';
 import { waitForMediaEvent } from './events';
 import { MIN_TRIM_DURATION_SECONDS } from '../../constants';
@@ -10,9 +11,10 @@ export const captureVideoSegmentToBlob = async (
   startSeconds: number,
   endSeconds: number,
   logVideoDebug: VideoDebugLogger,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  crop?: CropRegion,
 ): Promise<PreparedClip> => {
-  const duration = Math.max(MIN_TRIM_DURATION_SECONDS, endSeconds - startSeconds);
+  const duration = Math.max(crop ? 0.1 : MIN_TRIM_DURATION_SECONDS, endSeconds - startSeconds);
 
   const video = document.createElement('video');
   video.src = sourceUrl;
@@ -58,8 +60,8 @@ export const captureVideoSegmentToBlob = async (
     if (!isValidMediaSize(width, height)) {
       throw new Error('영상 해상도 정보를 확인하지 못했습니다.');
     }
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = crop ? 1080 : width;
+    canvas.height = crop ? 1920 : height;
 
     captureStream = canvas.captureStream(30);
     const AudioContextClass =
@@ -120,6 +122,7 @@ export const captureVideoSegmentToBlob = async (
           recorderVideoBitsPerSecond: recorder.videoBitsPerSecond,
           recorderAudioBitsPerSecond: recorder.audioBitsPerSecond,
         });
+        if (!blob.size) { reject(new Error('영상 구간을 변환하지 못했습니다. 다시 시도해 주세요.')); return; }
         resolve(blob);
       };
 
@@ -129,10 +132,14 @@ export const captureVideoSegmentToBlob = async (
       };
       const drawFrame = () => {
         if (finished) return;
-        if (!video.paused && !video.ended && video.readyState >= 2) {
-          context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        if (video.readyState >= 2) {
+          if (crop) context.drawImage(video, crop.x * width, crop.y * height, crop.width * width, crop.height * height, 0, 0, canvas.width, canvas.height);
+          else context.drawImage(video, 0, 0, canvas.width, canvas.height);
         }
-        if (!video.paused && !video.ended) {
+        if (crop) {
+          // Keep publishing the final frame while a short source interval is paused.
+          rafId = requestAnimationFrame(drawFrame);
+        } else if (!video.ended) {
           if (videoWithFrameCallback.requestVideoFrameCallback) {
             frameCallbackId = videoWithFrameCallback.requestVideoFrameCallback(drawFrame);
           } else {
@@ -145,6 +152,19 @@ export const captureVideoSegmentToBlob = async (
         try {
           await seekVideoTo(video, Math.max(0, startSeconds), signal);
           if (finished || signal?.aborted) return;
+          // Seed the canvas before capture starts, including sub-second selections.
+          if (crop) context.drawImage(video, crop.x * width, crop.y * height, crop.width * width, crop.height * height, 0, 0, canvas.width, canvas.height);
+          else context.drawImage(video, 0, 0, canvas.width, canvas.height);
+          // Let the captured canvas publish its initial frame before starting the recorder.
+          // Otherwise very short selections may finish before the video track emits anything.
+          await new Promise<void>((resolveFrame) => {
+            rafId = requestAnimationFrame(() => {
+              rafId = requestAnimationFrame(() => resolveFrame());
+            });
+          });
+          if (finished || signal?.aborted) return;
+          let recordingStartedAt: number | null = null;
+          recorder.onstart = () => { recordingStartedAt = performance.now(); };
           recorder.start();
           drawFrame();
 
@@ -159,8 +179,11 @@ export const captureVideoSegmentToBlob = async (
             const checkTime = () => {
               if (finished || signal?.aborted) { resolveEnd(); return; }
               if (video.currentTime >= endSeconds || video.ended) {
-                resolveEnd();
-                return;
+                video.pause();
+                if (recordingStartedAt !== null && performance.now() - recordingStartedAt >= duration * 1000) {
+                  resolveEnd();
+                  return;
+                }
               }
               endRafId = requestAnimationFrame(checkTime);
             };
@@ -196,6 +219,7 @@ export const captureVideoSegmentToBlob = async (
     if (endRafId) cancelAnimationFrame(endRafId);
     if (frameCallbackId && video.cancelVideoFrameCallback) video.cancelVideoFrameCallback(frameCallbackId);
     if (activeRecorder) {
+      activeRecorder.onstart = null;
       activeRecorder.ondataavailable = null;
       activeRecorder.onstop = null;
       activeRecorder.onerror = null;

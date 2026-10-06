@@ -45,7 +45,7 @@ describe('TemplateGuideModal', () => {
     cleanup();
   });
 
-  it('shows the overview guide with a next action', () => {
+  it('shows the overview without a primary action', () => {
     renderModal();
 
     expect(screen.getByRole('heading', { name: '템플릿 가이드' })).toBeInTheDocument();
@@ -56,15 +56,15 @@ describe('TemplateGuideModal', () => {
     expect(screen.getByText('콘서트장 후기 템플릿')).toBeInTheDocument();
     expect(screen.queryByText('템플릿 개요')).not.toBeInTheDocument();
     expect(screen.getByText('전체 분위기를 빠르게 보여주는 템플릿입니다.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '다음' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '다음' })).not.toBeInTheDocument();
   });
 
-  it('calls the primary action from the overview', () => {
+  it('navigates from overview using the cut steps', () => {
     const props = renderModal();
 
-    fireEvent.click(screen.getByRole('button', { name: '다음' }));
+    fireEvent.click(screen.getByRole('button', { name: '컷1' }));
 
-    expect(props.onPrimaryAction).toHaveBeenCalledTimes(1);
+    expect(props.onSelectStep).toHaveBeenCalledWith(0);
   });
 
   it('shows a cut guide with the capture action', () => {
@@ -77,7 +77,7 @@ describe('TemplateGuideModal', () => {
     expect(screen.queryByText('첫 장면')).not.toBeInTheDocument();
     expect(screen.getByText('이 컷의 포인트')).toBeInTheDocument();
     expect(screen.getByText('입구가 잘 보이게 천천히 움직입니다.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '1컷 촬영하기' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '갤러리 불러오기' })).toBeInTheDocument();
   });
 
   it('selects guide steps from the navigation bar', () => {
