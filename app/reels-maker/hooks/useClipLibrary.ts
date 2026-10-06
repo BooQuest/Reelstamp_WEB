@@ -144,6 +144,7 @@ export default function useClipLibrary({ cuts, sessionId, sessionClipMap }: Opti
     hydrationRef.current = controller;
     const generation = generationRef.current;
     const restored: Array<ClipInfo | null> = Array(cuts.length).fill(null);
+    const createdUrls: string[] = [];
     const uploaded: Record<number, boolean> = {};
     await Promise.all((session.clips ?? []).map(async (clip) => {
       const index = cuts.findIndex((cut) => cut.order === clip.order);
@@ -151,20 +152,25 @@ export default function useClipLibrary({ cuts, sessionId, sessionClipMap }: Opti
       const cut = cuts[index];
       uploaded[index] = cut.isFixed || clip.status === 'UPLOADED';
       if (!restoreMedia || session.status !== 'CAPTURE' || cut.isFixed || clip.status !== 'UPLOADED' || !clip.downloadUrl) return;
+      const existing = clipsRef.current[index];
+      if (existing?.objectKey && existing.objectKey === clip.objectKey) { restored[index] = existing; return; }
       try {
         const response = await fetch(`/api/reels-maker/download?url=${encodeURIComponent(clip.downloadUrl)}`, { method: 'GET', cache: 'no-store', signal: controller.signal });
         if (!response.ok) return;
         const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        createdUrls.push(url);
         restored[index] = {
           blob,
-          url: URL.createObjectURL(blob),
+          objectKey: clip.objectKey,
+          url,
           mimeType: clip.contentType || blob.type || 'video/webm',
           duration: clip.actualDurationSeconds ?? clip.durationSeconds ?? 0,
         };
       } catch { /* Preserve the server upload status even if the preview cannot load. */ }
     }));
     if (controller.signal.aborted || generation !== generationRef.current) {
-      restored.forEach((clip) => revokeBlobUrl(clip?.url ?? null));
+      createdUrls.forEach(revokeBlobUrl);
       return false;
     }
     updateUploaded(uploaded);

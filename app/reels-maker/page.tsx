@@ -1,93 +1,10 @@
 'use client';
+import GalleryMaker, { type GalleryMakerHandle } from './gallery/GalleryMaker';
 
-import {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import {
-  AlertTriangle,
-  Camera,
-  ChevronLeft,
-  ChevronRight,
-  Check,
-  Loader2,
-  Menu,
-  Plus,
-} from 'lucide-react';
-import type { WebApiResponse } from '@/app/lib/api/auth';
 import { useAuth } from '@/app/components/providers/AuthProvider';
+import type { WebApiResponse } from '@/app/lib/api/auth';
 import { USER_ROLES } from '@/app/lib/constants/auth';
-import CaptureActionControls from '@/app/reels-maker/components/CaptureActionControls';
-import CaptureCaptionMenu from '@/app/reels-maker/components/CaptureCaptionMenu';
-import CaptureFlowAction from '@/app/reels-maker/components/CaptureFlowAction';
-import CaptureMenu from '@/app/reels-maker/components/CaptureMenu';
-import AutoCaptionEditor from '@/app/reels-maker/components/AutoCaptionEditor';
-import CaptionEditDecisionModal from '@/app/reels-maker/components/CaptionEditDecisionModal';
-import CameraPreviewVideo from '@/app/reels-maker/components/CameraPreviewVideo';
-import CaptionOverlayStage from '@/app/reels-maker/components/CaptionOverlayStage';
-import CapturedClipPreview from '@/app/reels-maker/components/CapturedClipPreview';
-import CutMediaSourceModal from '@/app/reels-maker/components/CutMediaSourceModal';
-import ExitConfirmModal from '@/app/reels-maker/components/ExitConfirmModal';
-import FinalPreview from '@/app/reels-maker/components/FinalPreview';
-import FixedClipVideo from '@/app/reels-maker/components/FixedClipVideo';
-import FullScreenState from '@/app/reels-maker/components/FullScreenState';
-import GuestDraftNotice from '@/app/reels-maker/components/GuestDraftNotice';
-import ProcessingView from '@/app/reels-maker/components/ProcessingView';
-import ResetCutModal from '@/app/reels-maker/components/ResetCutModal';
-import RetakeConfirmModal from '@/app/reels-maker/components/RetakeConfirmModal';
-import TemplateGuideModal, {
-  type TemplateGuideStep,
-} from '@/app/reels-maker/components/TemplateGuideModal';
-import TrimModal from '@/app/reels-maker/components/TrimModal';
-import useCameraCapture from './hooks/useCameraCapture';
-import useGalleryImport from './hooks/useGalleryImport';
-import useVideoTrim from './hooks/useVideoTrim';
-import useClipLibrary from './hooks/useClipLibrary';
-import { revokeBlobUrl } from './utils/media/previews';
-import useCaptionEditor from '@/app/reels-maker/hooks/useCaptionEditor';
-import useAutoCaption from '@/app/reels-maker/hooks/useAutoCaption';
-import useDraftAutosave from '@/app/reels-maker/hooks/useDraftAutosave';
-import {
-  formatDurationSeconds,
-  formatDurationSecondsLabel,
-} from '@/app/reels-maker/utils/duration';
-import {
-  AUTO_CAPTION_DEFAULT_STYLE,
-  COMPLETE_START_FAILED_USER_MESSAGE,
-  DEFAULT_CAPTION_STYLE,
-  DURATION_MODE_FORCED,
-  DURATION_MODE_RECOMMENDED,
-  MAX_CAPTIONS_PER_CLIP,
-  PROCESSING_FAILED_USER_MESSAGE,
-  PROCESSING_STATUS_TIMEOUT_MS,
-  PROCESSING_TIMEOUT_USER_MESSAGE,
-} from '@/app/reels-maker/constants';
-import type {
-  CaptionItem,
-  ClipSource,
-  PreparedClip,
-  ReelsMakerErrorResponse,
-  ReelsMakerSessionResponse,
-  ReelsMakerStatusResponse,
-  Stage,
-  TemplateDetailResponse,
-  TemplateExampleReel,
-} from '@/app/reels-maker/types';
-import {
-  parseGuideImageEntries,
-} from '@/app/reels-maker/utils/assets';
-import {
-  buildCaptionExportStyle,
-  normalizeCaptionText,
-  normalizeCaptionStyle,
-} from '@/app/reels-maker/utils/captions';
-import type { CameraPreviewMetrics } from '@/app/reels-maker/utils/camera';
-import { getErrorMessage } from '@/app/reels-maker/utils/errors';
+import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
 import {
   buildTemplateLoginHref,
   isComingSoonTemplate,
@@ -97,7 +14,55 @@ import {
   TEMPLATE_NOT_AVAILABLE_MESSAGE,
   TEMPLATE_PAYMENT_PATH,
 } from '@/app/lib/templates/access';
-import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
+import AutoCaptionEditor from '@/app/reels-maker/components/AutoCaptionEditor';
+import CaptionEditDecisionModal from '@/app/reels-maker/components/CaptionEditDecisionModal';
+import CaptureMenu from '@/app/reels-maker/components/CaptureMenu';
+import ExitConfirmModal from '@/app/reels-maker/components/ExitConfirmModal';
+import FinalPreview from '@/app/reels-maker/components/FinalPreview';
+import FullScreenState from '@/app/reels-maker/components/FullScreenState';
+import GuestDraftNotice from '@/app/reels-maker/components/GuestDraftNotice';
+import ProcessingView from '@/app/reels-maker/components/ProcessingView';
+import TemplateGuideModal, {
+  type TemplateGuideStep,
+} from '@/app/reels-maker/components/TemplateGuideModal';
+import {
+  COMPLETE_START_FAILED_USER_MESSAGE,
+  DURATION_MODE_FORCED,
+  DURATION_MODE_RECOMMENDED,
+  PROCESSING_FAILED_USER_MESSAGE,
+  PROCESSING_STATUS_TIMEOUT_MS,
+  PROCESSING_TIMEOUT_USER_MESSAGE,
+} from '@/app/reels-maker/constants';
+import useAutoCaption from '@/app/reels-maker/hooks/useAutoCaption';
+import useCaptionEditor from '@/app/reels-maker/hooks/useCaptionEditor';
+import useDraftAutosave from '@/app/reels-maker/hooks/useDraftAutosave';
+import type {
+  CaptionItem,
+  ReelsMakerErrorResponse,
+  ReelsMakerSessionResponse,
+  ReelsMakerStatusResponse,
+  Stage,
+  TemplateDetailResponse,
+  TemplateExampleReel,
+} from '@/app/reels-maker/types';
+import {
+  buildCaptionExportStyle,
+  normalizeSessionCaptions,
+  normalizeCaptionText,
+} from '@/app/reels-maker/utils/captions';
+import { getErrorMessage } from '@/app/reels-maker/utils/errors';
+import { ChevronLeft, Menu } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import useClipLibrary from './hooks/useClipLibrary';
+import { revokeBlobUrl } from './utils/media/previews';
 
 const DEFAULT_COMPLETION_RETURN_URL = '/templates';
 
@@ -135,13 +100,6 @@ const buildReelsMakerHref = ({
   return `/reels-maker?${params.toString()}`;
 };
 
-type ReplacementConfirmState =
-  | {
-      type: 'recording' | 'gallery';
-      cutIndex: number;
-    }
-  | null;
-
 type FinalCompleteOptions = {
   acceptedStaleAutoCaptionClipIds?: number[];
 };
@@ -170,7 +128,7 @@ const getSessionFallbackMessage = (requestedSessionId: string | null) =>
 
 const isSessionAuthError = (
   status?: number,
-  errorCode?: string | null
+  errorCode?: string | null,
 ): boolean => {
   if (status === 401) return true;
   if (!errorCode) return false;
@@ -218,28 +176,6 @@ const buildSessionErrorState = ({
   };
 };
 
-const normalizeSessionCaptions = (
-  rawCaptions: CaptionItem[] | undefined
-): CaptionItem[] => {
-  return (rawCaptions ?? []).map((caption) => {
-    const source = caption.source ?? 'USER';
-    const role = source === 'AUTO' ? 'SPEECH' : 'OVERLAY';
-    return {
-      ...caption,
-      text: normalizeCaptionText(caption.text, {
-        restoreEscapedNewlines: true,
-      }),
-      source,
-      role,
-      style: normalizeCaptionStyle(
-        source === 'AUTO'
-          ? { ...AUTO_CAPTION_DEFAULT_STYLE, ...(caption.style ?? {}) }
-          : { ...DEFAULT_CAPTION_STYLE, ...(caption.style ?? {}) }
-      ),
-    };
-  });
-};
-
 function ReelsMakerInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -247,17 +183,14 @@ function ReelsMakerInner() {
   const templateId = searchParams.get('templateId');
   const requestedSessionId = searchParams.get('sessionId');
   const returnUrlParam = searchParams.get('returnUrl');
-  const isVideoDebugEnabled = searchParams.get('videoDebug') === '1';
   const completionReturnUrl = useMemo(
     () => normalizeCompletionReturnUrl(returnUrlParam),
-    [returnUrlParam]
+    [returnUrlParam],
   );
-  const explicitCompletionReturnUrl = returnUrlParam ? completionReturnUrl : null;
+  const explicitCompletionReturnUrl = returnUrlParam
+    ? completionReturnUrl
+    : null;
   const cameraFrameRef = useRef<HTMLDivElement | null>(null);
-
-  const captureViewportRef = useRef<HTMLDivElement | null>(null);
-  const captureContentRef = useRef<HTMLDivElement | null>(null);
-  const captureMeasureRef = useRef<HTMLDivElement | null>(null);
 
   const sessionHydratedRef = useRef(false);
   const sessionInitKeyRef = useRef<string | null>(null);
@@ -267,10 +200,18 @@ function ReelsMakerInner() {
   const [template, setTemplate] = useState<TemplateDetailResponse | null>(null);
   const [isTemplateLoading, setIsTemplateLoading] = useState(true);
   const [templateError, setTemplateError] = useState<string | null>(null);
+  const [gallerySession, setGallerySession] =
+    useState<ReelsMakerSessionResponse | null>(null);
+  const [editorBusy, setEditorBusy] = useState(false);
+  const galleryMakerRef = useRef<GalleryMakerHandle>(null);
   const [sessionId, setSessionId] = useState<number | null>(null);
-  const [sessionClipMap, setSessionClipMap] = useState<Record<number, number>>({});
+  const [sessionClipMap, setSessionClipMap] = useState<Record<number, number>>(
+    {},
+  );
   const [isSessionLoading, setIsSessionLoading] = useState(false);
-  const [sessionError, setSessionError] = useState<SessionErrorState | null>(null);
+  const [sessionError, setSessionError] = useState<SessionErrorState | null>(
+    null,
+  );
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
   const [pendingExitHref, setPendingExitHref] = useState('/my-projects');
   const [isExitSaving, setIsExitSaving] = useState(false);
@@ -296,29 +237,18 @@ function ReelsMakerInner() {
     useState<number[]>([]);
   const [isCaptionEditDecisionOpen, setIsCaptionEditDecisionOpen] =
     useState(false);
-  const [cutGuideVisibility, setCutGuideVisibility] = useState<Record<number, boolean>>({});
-  const [guideImageIndexByCut, setGuideImageIndexByCut] = useState<Record<number, number>>({});
   const [isTemplateGuideOpen, setIsTemplateGuideOpen] = useState(false);
   const [templateGuideStep, setTemplateGuideStep] =
     useState<TemplateGuideStep>('overview');
   const [exampleReelIndex, setExampleReelIndex] = useState(0);
-  const [isResetOpen, setIsResetOpen] = useState(false);
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
-  const [finalVideoMimeType, setFinalVideoMimeType] = useState<string>('video/mp4');
+  const [finalVideoMimeType, setFinalVideoMimeType] =
+    useState<string>('video/mp4');
   const [finalPosterUrl, setFinalPosterUrl] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [downloadToastMessage, setDownloadToastMessage] = useState<string | null>(null);
-
-  const [isMediaSourceOpen, setIsMediaSourceOpen] = useState(false);
-
-  const [mediaPickerTargetCutIndex, setMediaPickerTargetCutIndex] = useState<number | null>(
-    null
-  );
-
-  const [replacementConfirm, setReplacementConfirm] =
-    useState<ReplacementConfirmState>(null);
-
-  const [captureScale, setCaptureScale] = useState(1);
+  const [downloadToastMessage, setDownloadToastMessage] = useState<
+    string | null
+  >(null);
   const [isCaptureMenuOpen, setIsCaptureMenuOpen] = useState(false);
 
   const isAdmin = user?.role?.toUpperCase() === USER_ROLES.ADMIN;
@@ -333,22 +263,8 @@ function ReelsMakerInner() {
     : '/reels-maker';
   const buildLoginHref = useCallback(
     (href: string) => `/login?returnUrl=${encodeURIComponent(href)}`,
-    []
+    [],
   );
-  const logVideoDebug = useCallback(
-    (event: string, details?: unknown) => {
-      if (!isVideoDebugEnabled) return;
-      console.info(`[ReelsMaker videoDebug] ${event}`, details);
-    },
-    [isVideoDebugEnabled]
-  );
-  const handleCameraPreviewMetrics = useCallback(
-    (metrics: CameraPreviewMetrics) => {
-      logVideoDebug('camera preview metrics', metrics);
-    },
-    [logVideoDebug]
-  );
-
   const cuts = useMemo(() => {
     if (!template) return [];
     const sortedCuts = (template.cuts ?? [])
@@ -372,15 +288,12 @@ function ReelsMakerInner() {
         (cut.durationMode ?? '').trim().toUpperCase() === DURATION_MODE_FORCED
           ? DURATION_MODE_FORCED
           : DURATION_MODE_RECOMMENDED;
-      const durationLabel = formatDurationSecondsLabel(duration);
       return {
         id: `${template.id}-cut-${order}`,
         order,
         durationSeconds: duration,
         durationMode: isFixed ? null : durationMode,
-        label: isFixed
-          ? durationLabel
-          : `${durationLabel} [${durationMode === DURATION_MODE_FORCED ? '강제' : '권장'}]`,
+        label: `${Number(duration.toFixed(1))}s`,
         guideText: cut.guideText ?? cut['guide_text'] ?? '',
         guideImageUrl: cut.guideImageUrl ?? cut['guide_image_url'] ?? null,
         exampleImageUrl: cut.exampleImageUrl ?? null,
@@ -397,6 +310,8 @@ function ReelsMakerInner() {
   }, [template]);
 
   const {
+    serializeEdit,
+    isDraftDirty,
     projectName,
     setProjectName,
     draftSaveStatus,
@@ -422,65 +337,16 @@ function ReelsMakerInner() {
   });
 
   const {
-    clips, clipSources, clipPosters, uploadedCuts, uploadingCuts, clipUploadErrors, fixedClipErrors,
-    save: saveClip, hydrate: hydrateClips, reset: resetClips, resetCut, retryFixedClip, reportUploadError,
+    clips,
+    clipPosters,
+    uploadedCuts,
+    uploadingCuts,
+    clipUploadErrors,
+    fixedClipErrors,
+    hydrate: hydrateClips,
+    reset: resetClips,
+    retryFixedClip,
   } = useClipLibrary({ cuts, sessionId, sessionClipMap });
-  const trim = useVideoTrim({ cuts, activeCutIndex, onSubmit: saveClipAtIndex, logVideoDebug });
-  const {
-    isTrimOpen, isTrimPreparing, trimSourceFile, trimSourceUrl, trimSourceMetadata,
-    trimStartSeconds, trimEndSeconds, trimScrubSeconds, isTrimPlaying, activeTrimDrag,
-    trimPreviewMaxHeight, trimThumbnails, trimError, trimDurationSeconds, trimSliderMax,
-    recommendedTrimSeconds, trimViewportRef, trimMeasureRef, trimPreviewContainerRef,
-    trimPreviewVideoRef, trimTimelineRef, closeTrimModal, handleTrimPlayToggle,
-    handleTrimScrubPointerDown, handleTrimPointerDown, secondsToTimelineX, handleTrimConfirm,
-    reset: resetTrimState, clearError: clearTrimError,
-  } = trim;
-  const gallery = useGalleryImport({
-    cuts, activeCutIndex, onSelectCut: setActiveCutIndex,
-    onBeforePick: () => stopCamera(), onOpenVideo: trim.open,
-    onSubmit: saveClipAtIndex, logVideoDebug,
-  });
-  const {
-    galleryFileInputRef, galleryError, isMediaPickerActive, handleGalleryFileChange,
-    reset: resetGallery, clearError: clearGalleryError, open: openGallery,
-  } = gallery;
-  const isGalleryProcessing = gallery.isGalleryProcessing || trim.isProcessing;
-  const isCaptureCameraPaused =
-    !sessionId || isSessionLoading || isTemplateGuideOpen || isMediaPickerActive ||
-    isGalleryProcessing || isTrimPreparing || isTrimOpen;
-  const camera = useCameraCapture({
-    cuts, activeCutIndex, sessionId, sessionClipMap,
-    previewActive: stage === 'capture' && Boolean(template) && !isCaptureCameraPaused,
-    switchDisabled: Boolean(cuts[activeCutIndex]?.isFixed) || isGalleryProcessing || isTrimPreparing || isTrimOpen || isMediaPickerActive,
-    shouldConfirmRetake: clipSources[activeCutIndex] === 'recording',
-    onRequestReplacement: (cutIndex) => setReplacementConfirm({ type: 'recording', cutIndex }),
-    onSubmit: saveClipAtIndex, onUploadError: reportUploadError, logVideoDebug,
-  });
-  const {
-    stream, cameraError, recordingStatus, recordingElapsedSeconds,
-    startRecording, stopRecording, stopCamera, handleSwitchCamera,
-    reset: resetCamera, clearError: clearCameraError,
-  } = camera;
-
-  async function saveClipAtIndex(index: number, clip: PreparedClip, source: ClipSource) {
-    const { session, clipId, nextCutIndex } = await saveClip(index, clip, source);
-    applyServerUpdate(session);
-    setCaptionsEnabled(session.captionsEnabled !== false);
-    setAutoCaptionAvailable(Boolean(session.autoCaptionAvailable));
-    setAutoCaptionRemainingAttempts(session.autoCaptionRemainingAttempts ?? 0);
-    setActiveAutoCaptionJobId(session.activeAutoCaptionJobId ?? null);
-    setLatestAutoCaptionJobId(session.latestAutoCaptionJobId ?? null);
-    setStaleAutoCaptionClipIds(session.staleAutoCaptionClipIds ?? []);
-    setAcceptedStaleAutoCaptionClipIds((current) => current.filter((id) => id !== clipId));
-    clearGalleryError();
-    clearCameraError();
-    if (nextCutIndex >= 0) {
-      setActiveCutIndex(nextCutIndex);
-      setTemplateGuideStep(nextCutIndex);
-      setIsTemplateGuideOpen(true);
-    }
-  }
-
   const activeCut = cuts[activeCutIndex] ?? null;
   const allDone = useMemo(() => {
     if (cuts.length === 0) return false;
@@ -495,18 +361,25 @@ function ReelsMakerInner() {
   const isActiveCutFixed = activeCut?.isFixed ?? false;
   const activeFixedError = fixedClipErrors[activeCutIndex];
   const activeUploadError = clipUploadErrors[activeCutIndex];
-  const isUploadingActiveCut = uploadingCuts[activeCutIndex];
   const activeClip = clips[activeCutIndex] ?? null;
-  const shouldShowActiveClipPreview =
-    !isActiveCutFixed && Boolean(activeClip) && recordingStatus !== 'recording';
-  const activeClipId = activeCut ? sessionClipMap[activeCut.order] ?? null : null;
+  const activeClipId = activeCut
+    ? (sessionClipMap[activeCut.order] ?? null)
+    : null;
 
   const showCaptionStage =
     captionsEnabled &&
     !activeUploadError &&
     !activeFixedError &&
-    (!cameraError || Boolean(activeClip)) &&
     (!isActiveCutFixed || Boolean(activeClip));
+  const captionEditor = useCaptionEditor({
+    activeClipId,
+    showCaptionStage,
+    stage,
+    captions,
+    setCaptions,
+    captionsRef,
+    cameraFrameRef,
+  });
   const {
     captionStageRef,
     captionOverlayRef,
@@ -515,13 +388,9 @@ function ReelsMakerInner() {
     setSelectedCaptionId,
     editingCaptionId,
     setEditingCaptionId,
-    activeCaptions,
     resolvedSelectedCaptionId,
-    activeCaptionStyle,
-    showCaptionOverlay,
     resetCaptionGesture,
     handleCameraFrameRef,
-    addCaptionToActiveClip,
     deleteSelectedCaption,
     handleCaptionPointerMove,
     handleCaptionPointerEnd,
@@ -531,40 +400,37 @@ function ReelsMakerInner() {
     handleResizeHandlePointerDown,
     handleCaptionTextChange,
     handleCaptionToggleBox,
-    handleCaptionScaleChange,
-  } = useCaptionEditor({
-    activeClipId,
-    showCaptionStage,
-    stage,
-    captions,
-    setCaptions,
-    captionsRef,
-    cameraFrameRef,
-  });
-  const activeOverlayCaptionCount = activeCaptions.filter(
-    (caption) => caption.source !== 'AUTO'
-  ).length;
+  } = captionEditor;
   const applyCaptionSessionSnapshot = useCallback(
     (session: ReelsMakerSessionResponse) => {
+      setGallerySession(session);
       const nextCaptions = normalizeSessionCaptions(session.captionItems);
       setCaptions(nextCaptions);
       setCaptionsEnabled(session.captionsEnabled !== false);
       setAutoCaptionAvailable(Boolean(session.autoCaptionAvailable));
       setAutoCaptionRemainingAttempts(
-        session.autoCaptionRemainingAttempts ?? 0
+        session.autoCaptionRemainingAttempts ?? 0,
       );
       setActiveAutoCaptionJobId(session.activeAutoCaptionJobId ?? null);
       setLatestAutoCaptionJobId(session.latestAutoCaptionJobId ?? null);
       setStaleAutoCaptionClipIds(session.staleAutoCaptionClipIds ?? []);
       setAcceptedStaleAutoCaptionClipIds((current) =>
         current.filter((clipId) =>
-          (session.staleAutoCaptionClipIds ?? []).includes(clipId)
-        )
+          (session.staleAutoCaptionClipIds ?? []).includes(clipId),
+        ),
       );
       applyServerUpdate(session);
     },
-    [applyServerUpdate]
+    [applyServerUpdate],
   );
+  const applyGallerySession = useCallback(
+    async (session: ReelsMakerSessionResponse) => {
+      applyCaptionSessionSnapshot(session);
+      await hydrateClips(session, true);
+    },
+    [applyCaptionSessionSnapshot, hydrateClips],
+  );
+
   const {
     job: autoCaptionJob,
     error: autoCaptionError,
@@ -577,86 +443,6 @@ function ReelsMakerInner() {
   });
   const currentStaleAutoCaptionClipIds =
     autoCaptionJob?.staleClipIds ?? staleAutoCaptionClipIds;
-  const isMediaImportBlocked =
-    isSessionLoading ||
-    !sessionId ||
-    recordingStatus === 'recording' ||
-    isGalleryProcessing ||
-    isTrimPreparing ||
-    isTrimOpen ||
-    isMediaPickerActive;
-  const isRecordDisabled =
-    isActiveCutFixed ||
-    isUploadingActiveCut ||
-    isSessionLoading ||
-    !sessionId ||
-    isGalleryProcessing ||
-    isTrimPreparing ||
-    isTrimOpen ||
-    isMediaPickerActive;
-  const isSwitchCameraDisabled =
-    recordingStatus === 'recording' ||
-    isActiveCutFixed ||
-    isGalleryProcessing ||
-    isTrimPreparing ||
-    isTrimOpen ||
-    isMediaPickerActive;
-  const hasUploadingCut = Object.values(uploadingCuts).some(Boolean);
-  const captureFlowAction: 'complete' | null = allDone ? 'complete' : null;
-  const isCaptureFlowActionDisabled =
-    recordingStatus === 'recording' ||
-    isSessionLoading ||
-    !sessionId ||
-    hasUploadingCut ||
-    isGalleryProcessing ||
-    isTrimPreparing ||
-    isTrimOpen ||
-    isMediaPickerActive;
-  const isGalleryButtonDisabled =
-    !activeCut ||
-    isActiveCutFixed ||
-    isMediaImportBlocked ||
-    Boolean(uploadingCuts[activeCutIndex]);
-  const canRetakeActiveCut =
-    !isActiveCutFixed && Boolean(activeClip) && recordingStatus !== 'recording';
-
-  const guideImageEntries = useMemo(
-    () => parseGuideImageEntries(activeCut?.guideImageUrl),
-    [activeCut?.guideImageUrl]
-  );
-  const guideImageCount = guideImageEntries.length;
-  const hasTimedGuideImages = guideImageEntries.some((entry) => entry.startSecond !== null);
-  const manualGuideImageIndex = Math.min(
-    guideImageIndexByCut[activeCutIndex] ?? 0,
-    Math.max(0, guideImageCount - 1)
-  );
-  const activeGuideImageIndex = useMemo(() => {
-    if (guideImageCount === 0) return -1;
-    if (recordingElapsedSeconds !== null && hasTimedGuideImages) {
-      const currentElapsedSeconds = Math.max(0, recordingElapsedSeconds);
-      let timedIndex = 0;
-      guideImageEntries.forEach((entry, index) => {
-        if (entry.startSecond !== null && currentElapsedSeconds >= entry.startSecond) {
-          timedIndex = index;
-        }
-      });
-      return timedIndex;
-    }
-    return manualGuideImageIndex;
-  }, [
-    guideImageCount,
-    guideImageEntries,
-    hasTimedGuideImages,
-    manualGuideImageIndex,
-    recordingElapsedSeconds,
-  ]);
-  const guideImageSrc =
-    activeGuideImageIndex >= 0 ? guideImageEntries[activeGuideImageIndex]?.url ?? null : null;
-  const hasMultipleGuideImages = guideImageCount > 1;
-  const isGuideImageNavigationDisabled = recordingStatus === 'recording' && hasTimedGuideImages;
-  const shouldShowGuideImageToggle = Boolean(guideImageSrc);
-  const isGuideImageVisible =
-    Boolean(guideImageSrc) && (cutGuideVisibility[activeCutIndex] ?? true);
   const exampleReels: TemplateExampleReel[] =
     template?.exampleReels && template.exampleReels.length > 0
       ? template.exampleReels
@@ -665,82 +451,13 @@ function ReelsMakerInner() {
           instagramOnly: false,
         }));
   const exampleReelUrls = exampleReels.map((reel) => reel.url);
-  const canOpenActiveCutGuide = Boolean(template && cuts.length > 0 && activeCut);
-  const activeCutDurationMode = activeCut?.isFixed
-    ? null
-    : (activeCut?.durationMode ?? DURATION_MODE_RECOMMENDED);
-  const activeCutDurationSeconds = Math.max(0, activeCut?.durationSeconds ?? 0);
-  const elapsedSeconds = Math.max(0, recordingElapsedSeconds ?? 0);
-  const forcedRemainingSeconds = Math.max(0, activeCutDurationSeconds - elapsedSeconds);
-  const isRecommendedTimingExceeded =
-    activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
-    activeCutDurationSeconds > 0 &&
-    elapsedSeconds >= activeCutDurationSeconds;
-  const showRecommendedTimingToast =
-    recordingStatus === 'recording' &&
-    activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
-    isRecommendedTimingExceeded;
-
-  const handleGuideImageToggle = useCallback(() => {
-    if (!guideImageSrc) return;
-    setCutGuideVisibility((prev) => ({
-      ...prev,
-      [activeCutIndex]: !(prev[activeCutIndex] ?? true),
-    }));
-  }, [activeCutIndex, guideImageSrc]);
-
-  const handlePrevGuideImage = useCallback(() => {
-    if (guideImageCount <= 1 || isGuideImageNavigationDisabled) return;
-    setGuideImageIndexByCut((prev) => {
-      const current = Math.min(prev[activeCutIndex] ?? activeGuideImageIndex, guideImageCount - 1);
-      return {
-        ...prev,
-        [activeCutIndex]: Math.max(0, current - 1),
-      };
-    });
-  }, [activeCutIndex, activeGuideImageIndex, guideImageCount, isGuideImageNavigationDisabled]);
-
-  const handleNextGuideImage = useCallback(() => {
-    if (guideImageCount <= 1 || isGuideImageNavigationDisabled) return;
-    setGuideImageIndexByCut((prev) => {
-      const current = Math.min(prev[activeCutIndex] ?? activeGuideImageIndex, guideImageCount - 1);
-      return {
-        ...prev,
-        [activeCutIndex]: Math.min(guideImageCount - 1, current + 1),
-      };
-    });
-  }, [activeCutIndex, activeGuideImageIndex, guideImageCount, isGuideImageNavigationDisabled]);
-
-  const findNextCaptureCutIndex = useCallback(
-    (fromIndex: number) =>
-      cuts.findIndex((cut, cutIndex) => cutIndex > fromIndex && !cut.isFixed),
-    [cuts]
-  );
-
-  const handleTemplateGuidePrimaryAction = useCallback(() => {
-    if (templateGuideStep === 'overview') {
-      setTemplateGuideStep(0);
-      return;
-    }
-
-    const cutIndex = templateGuideStep;
-    const guideCut = cuts[cutIndex];
-    if (!guideCut) {
-      setIsTemplateGuideOpen(false);
-      return;
-    }
-
-    if (guideCut.isFixed) {
-      const nextCaptureIndex = findNextCaptureCutIndex(cutIndex);
-      if (nextCaptureIndex >= 0) {
-        setTemplateGuideStep(nextCaptureIndex);
-        return;
-      }
-    }
-
-    setActiveCutIndex(cutIndex);
+  const handleTemplateGuidePrimaryAction = () => {
+    if (typeof templateGuideStep !== 'number') return;
+    const index = templateGuideStep;
+    setActiveCutIndex(index);
+    if (!cuts[index]?.isFixed) galleryMakerRef.current?.openPicker(index);
     setIsTemplateGuideOpen(false);
-  }, [cuts, findNextCaptureCutIndex, templateGuideStep]);
+  };
 
   useEffect(() => {
     if (!templateId) {
@@ -756,25 +473,35 @@ function ReelsMakerInner() {
       setTemplate(null);
 
       try {
-        const response = await fetch(`/api/templates/${encodeURIComponent(templateId)}`, {
-          method: 'GET',
-          cache: 'no-store',
-        });
+        const response = await fetch(
+          `/api/templates/${encodeURIComponent(templateId)}`,
+          {
+            method: 'GET',
+            cache: 'no-store',
+          },
+        );
 
-        const payload: WebApiResponse<TemplateDetailResponse> = await response.json();
+        const payload: WebApiResponse<TemplateDetailResponse> =
+          await response.json();
 
         if (!response.ok || !payload?.success) {
-          throw new Error(payload?.message || '템플릿 정보를 불러오지 못했습니다.');
+          throw new Error(
+            payload?.message || '템플릿 정보를 불러오지 못했습니다.',
+          );
         }
 
         const data = payload.data;
         if (!data) {
-          throw new Error(payload?.message || '템플릿 정보를 불러오지 못했습니다.');
+          throw new Error(
+            payload?.message || '템플릿 정보를 불러오지 못했습니다.',
+          );
         }
         if (isComingSoonTemplate(data)) {
           throw new Error(TEMPLATE_NOT_AVAILABLE_MESSAGE);
         }
-        const normalizedExampleReels: TemplateExampleReel[] = Array.isArray(data?.exampleReels)
+        const normalizedExampleReels: TemplateExampleReel[] = Array.isArray(
+          data?.exampleReels,
+        )
           ? data.exampleReels
               .filter((reel): reel is TemplateExampleReel => {
                 if (!reel || typeof reel.url !== 'string') return false;
@@ -812,7 +539,9 @@ function ReelsMakerInner() {
         }
       } catch (error: unknown) {
         if (isMounted) {
-          setTemplateError(getErrorMessage(error, '템플릿 정보를 불러오지 못했습니다.'));
+          setTemplateError(
+            getErrorMessage(error, '템플릿 정보를 불러오지 못했습니다.'),
+          );
         }
       } finally {
         if (isMounted) {
@@ -840,10 +569,13 @@ function ReelsMakerInner() {
     sessionHydratedRef.current = false;
     try {
       const response = requestedSessionId
-        ? await fetch(`/api/reels-maker/sessions/${encodeURIComponent(requestedSessionId)}`, {
-            method: 'GET',
-            cache: 'no-store',
-          })
+        ? await fetch(
+            `/api/reels-maker/sessions/${encodeURIComponent(requestedSessionId)}`,
+            {
+              method: 'GET',
+              cache: 'no-store',
+            },
+          )
         : await fetch('/api/reels-maker/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -855,7 +587,9 @@ function ReelsMakerInner() {
         | ReelsMakerErrorResponse;
       if (!response.ok || !payload?.success || !payload?.data) {
         const status =
-          typeof payload?.status === 'number' ? payload.status : response.status;
+          typeof payload?.status === 'number'
+            ? payload.status
+            : response.status;
         const errorCode =
           typeof payload?.errorCode === 'string' ? payload.errorCode : null;
         const nextSessionError = buildSessionErrorState({
@@ -871,6 +605,7 @@ function ReelsMakerInner() {
         sessionInitKeyRef.current = null;
         setSessionError(nextSessionError);
         setSessionId(null);
+        setGallerySession(null);
         setSessionClipMap({});
         return;
       }
@@ -887,12 +622,13 @@ function ReelsMakerInner() {
       });
       setSessionId(session.sessionId);
       setSessionClipMap(mapping);
+      setGallerySession(session);
       const restoredCaptions = normalizeSessionCaptions(session.captionItems);
       setCaptions(restoredCaptions);
       setCaptionsEnabled(session.captionsEnabled !== false);
       setAutoCaptionAvailable(Boolean(session.autoCaptionAvailable));
       setAutoCaptionRemainingAttempts(
-        session.autoCaptionRemainingAttempts ?? 0
+        session.autoCaptionRemainingAttempts ?? 0,
       );
       setActiveAutoCaptionJobId(session.activeAutoCaptionJobId ?? null);
       setLatestAutoCaptionJobId(session.latestAutoCaptionJobId ?? null);
@@ -923,7 +659,7 @@ function ReelsMakerInner() {
       const restored = await hydrateClips(session, Boolean(requestedSessionId));
       if (!restored) return;
       const restoredIndex = cuts.findIndex(
-        (cut) => cut.order === session.lastActiveClipOrder
+        (cut) => cut.order === session.lastActiveClipOrder,
       );
       const resolvedActiveIndex = restoredIndex >= 0 ? restoredIndex : 0;
       if (requestedSessionId) {
@@ -945,7 +681,7 @@ function ReelsMakerInner() {
             templateId,
             sessionId: session.sessionId,
             returnUrl: explicitCompletionReturnUrl,
-          })
+          }),
         );
       }
     } catch (error: unknown) {
@@ -955,6 +691,7 @@ function ReelsMakerInner() {
         message: getErrorMessage(error, fallbackMessage),
       });
       setSessionId(null);
+      setGallerySession(null);
       setSessionClipMap({});
     } finally {
       setIsSessionLoading(false);
@@ -981,8 +718,8 @@ function ReelsMakerInner() {
     if (cuts.length === 0) return;
 
     setActiveCutIndex(0);
-    resetCamera();
     setSessionId(null);
+    setGallerySession(null);
     setSessionClipMap({});
     setSessionError(null);
     resetDraft();
@@ -997,14 +734,6 @@ function ReelsMakerInner() {
     setStaleAutoCaptionClipIds([]);
     setAcceptedStaleAutoCaptionClipIds([]);
     setSelectedCaptionId(null);
-    setCutGuideVisibility(() => {
-      const next: Record<number, boolean> = {};
-      cuts.forEach((cut, index) => {
-        next[index] = parseGuideImageEntries(cut.guideImageUrl).length > 0;
-      });
-      return next;
-    });
-    setGuideImageIndexByCut({});
     setEditingCaptionId(null);
     resetCaptionGesture();
     setFinalVideoUrl((prev) => {
@@ -1014,21 +743,13 @@ function ReelsMakerInner() {
     setFinalPosterUrl(null);
     setFinalVideoMimeType('video/mp4');
     setIsPreviewOpen(false);
-    setIsMediaSourceOpen(false);
-    setMediaPickerTargetCutIndex(null);
-    setReplacementConfirm(null);
     setIsTemplateGuideOpen(false);
     setTemplateGuideStep('overview');
-    resetGallery();
-    resetTrimState();
   }, [
     template?.id,
     cuts,
     resetCaptionGesture,
     resetDraft,
-    resetTrimState,
-    resetGallery,
-    resetCamera,
     resetClips,
     setEditingCaptionId,
     setSelectedCaptionId,
@@ -1042,7 +763,10 @@ function ReelsMakerInner() {
   }, [cuts.length, activeCutIndex]);
 
   useEffect(() => {
-    if (typeof templateGuideStep === 'number' && templateGuideStep >= cuts.length) {
+    if (
+      typeof templateGuideStep === 'number' &&
+      templateGuideStep >= cuts.length
+    ) {
       setTemplateGuideStep('overview');
     }
   }, [cuts.length, templateGuideStep]);
@@ -1074,104 +798,6 @@ function ReelsMakerInner() {
     };
   }, [isCaptureMenuOpen]);
 
-  const openGalleryPickerForIndex = useCallback(
-    async (
-      targetIndex: number,
-      options: { skipReplacementConfirm?: boolean } = {}
-    ) => {
-      const targetCut = cuts[targetIndex];
-      if (!targetCut || targetCut.isFixed || uploadingCuts[targetIndex] || isMediaImportBlocked) {
-        return;
-      }
-
-      setActiveCutIndex(targetIndex);
-      setIsMediaSourceOpen(false);
-      clearGalleryError();
-      clearTrimError();
-
-      if (
-        clipSources[targetIndex] === 'recording' &&
-        !options.skipReplacementConfirm
-      ) {
-        setReplacementConfirm({ type: 'gallery', cutIndex: targetIndex });
-        return;
-      }
-
-      setMediaPickerTargetCutIndex(targetIndex);
-      await openGallery(targetIndex);
-    },
-    [clipSources, cuts, openGallery, isMediaImportBlocked, uploadingCuts, clearGalleryError, clearTrimError]
-  );
-
-  const selectVideoCaptureModeForIndex = useCallback(
-    (targetIndex: number) => {
-      const targetCut = cuts[targetIndex];
-      if (!targetCut || targetCut.isFixed || uploadingCuts[targetIndex]) {
-        return;
-      }
-
-      setActiveCutIndex(targetIndex);
-      setIsMediaSourceOpen(false);
-      clearGalleryError();
-      clearTrimError();
-    },
-    [cuts, uploadingCuts, clearGalleryError, clearTrimError]
-  );
-
-  const openCutMediaSource = useCallback(
-    (targetIndex: number) => {
-      const targetCut = cuts[targetIndex];
-      if (!targetCut || targetCut.isFixed || uploadingCuts[targetIndex] || isMediaImportBlocked) {
-        return;
-      }
-
-      setActiveCutIndex(targetIndex);
-      setMediaPickerTargetCutIndex(targetIndex);
-      clearGalleryError();
-      clearTrimError();
-      setIsMediaSourceOpen(true);
-    },
-    [cuts, isMediaImportBlocked, uploadingCuts, clearGalleryError, clearTrimError]
-  );
-
-  const closeCutMediaSource = useCallback(() => {
-    setIsMediaSourceOpen(false);
-    setMediaPickerTargetCutIndex(null);
-  }, []);
-
-  const handleResetCut = () => {
-    if (activeCut?.isFixed) {
-      if (fixedClipErrors[activeCutIndex]) retryFixedClip(activeCutIndex);
-    } else {
-      resetCut(activeCutIndex);
-      clearGalleryError();
-      resetCamera();
-    }
-    setIsResetOpen(false);
-  };
-
-  useEffect(() => {
-    if (stage !== 'capture') {
-      stopRecording();
-      setEditingCaptionId(null);
-      resetCaptionGesture();
-      setIsMediaSourceOpen(false);
-      setIsTemplateGuideOpen(false);
-      setIsCaptionEditDecisionOpen(false);
-      setReplacementConfirm(null);
-      if (isTrimOpen) {
-        closeTrimModal();
-      }
-    }
-  }, [
-    closeTrimModal,
-    isTrimOpen,
-    resetCaptionGesture,
-    setEditingCaptionId,
-    stage,
-    stopRecording,
-  ]);
-
   const handleComplete = useCallback(() => {
     if (!allDone) return;
     setIsCaptionEditDecisionOpen(true);
@@ -1189,7 +815,9 @@ function ReelsMakerInner() {
       cancelScheduledSave();
       const saved = await saveDraftNow();
       if (!saved) {
-        alert('최신 작업 내용을 저장하지 못했습니다. 저장을 다시 시도해 주세요.');
+        alert(
+          '최신 작업 내용을 저장하지 못했습니다. 저장을 다시 시도해 주세요.',
+        );
         return;
       }
     }
@@ -1216,27 +844,35 @@ function ReelsMakerInner() {
       const completionAcceptedStaleClipIds =
         options?.acceptedStaleAutoCaptionClipIds ??
         acceptedStaleAutoCaptionClipIds;
-      const response = await fetch(`/api/reels-maker/sessions/${sessionId}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          captionItems,
-          captionsEnabled,
-          acceptedStaleAutoCaptionClipIds: completionAcceptedStaleClipIds,
-        }),
-      });
+      const response = await fetch(
+        `/api/reels-maker/sessions/${sessionId}/complete`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            captionItems,
+            captionsEnabled,
+            acceptedStaleAutoCaptionClipIds: completionAcceptedStaleClipIds,
+          }),
+        },
+      );
       const payload = (await response.json()) as
         | WebApiResponse<ReelsMakerStatusResponse>
         | ReelsMakerErrorResponse;
       if (!response.ok || !payload?.success) {
         const statusCode =
-          typeof payload?.status === 'number' ? payload.status : response.status;
+          typeof payload?.status === 'number'
+            ? payload.status
+            : response.status;
         const errorCode =
-          payload && 'errorCode' in payload && typeof payload.errorCode === 'string'
+          payload &&
+          'errorCode' in payload &&
+          typeof payload.errorCode === 'string'
             ? payload.errorCode
             : 'UNKNOWN';
         const backendMessage =
-          typeof payload?.message === 'string' && payload.message.trim().length > 0
+          typeof payload?.message === 'string' &&
+          payload.message.trim().length > 0
             ? payload.message
             : '릴스 합성이 시작되지 않았습니다.';
         console.error('[ReelsMakerCompleteStartFailed]', {
@@ -1271,7 +907,7 @@ function ReelsMakerInner() {
       new Set([
         ...acceptedStaleAutoCaptionClipIds,
         ...currentStaleAutoCaptionClipIds,
-      ])
+      ]),
     );
     setIsCaptionEditDecisionOpen(false);
     setAcceptedStaleAutoCaptionClipIds(nextAcceptedStaleClipIds);
@@ -1288,11 +924,15 @@ function ReelsMakerInner() {
 
     const fetchStatus = async () => {
       try {
-        const response = await fetch(`/api/reels-maker/sessions/${sessionId}/status`, {
-          method: 'GET',
-          cache: 'no-store',
-        });
-        const payload: WebApiResponse<ReelsMakerStatusResponse> = await response.json();
+        const response = await fetch(
+          `/api/reels-maker/sessions/${sessionId}/status`,
+          {
+            method: 'GET',
+            cache: 'no-store',
+          },
+        );
+        const payload: WebApiResponse<ReelsMakerStatusResponse> =
+          await response.json();
         if (!response.ok || !payload?.success || !payload?.data) {
           return;
         }
@@ -1348,8 +988,8 @@ function ReelsMakerInner() {
 
   const requestExit = useCallback(
     (href: string) => {
-      if (recordingStatus === 'recording') {
-        alert('녹화를 먼저 종료한 뒤 나가주세요.');
+      if (editorBusy) {
+        alert('편집 저장이 완료된 뒤 나가주세요.');
         return;
       }
       if (Object.values(uploadingCuts).some(Boolean)) {
@@ -1360,15 +1000,18 @@ function ReelsMakerInner() {
       setPendingExitHref(href);
       setIsExitConfirmOpen(true);
     },
-    [recordingStatus, resumeAutosave, uploadingCuts]
+    [editorBusy, resumeAutosave, uploadingCuts],
   );
 
   const abandonGuestSession = useCallback(async () => {
     if (!sessionId || !isGuestUser) return true;
     try {
-      const response = await fetch(`/api/reels-maker/sessions/${sessionId}/abandon`, {
-        method: 'POST',
-      });
+      const response = await fetch(
+        `/api/reels-maker/sessions/${sessionId}/abandon`,
+        {
+          method: 'POST',
+        },
+      );
       return response.ok;
     } catch {
       return false;
@@ -1408,11 +1051,10 @@ function ReelsMakerInner() {
   useEffect(() => {
     setEditingCaptionId(null);
     resetCaptionGesture();
-    clearGalleryError();
-    clearTrimError();
-  }, [activeCutIndex, resetCaptionGesture, setEditingCaptionId, clearGalleryError, clearTrimError]);
+  }, [activeCutIndex, resetCaptionGesture, setEditingCaptionId]);
 
   useEffect(() => {
+    if (stage === 'capture') return;
     const handleDeleteKey = (event: KeyboardEvent) => {
       if (event.key !== 'Delete' && event.key !== 'Backspace') return;
       const target = event.target as HTMLElement | null;
@@ -1430,114 +1072,7 @@ function ReelsMakerInner() {
 
     window.addEventListener('keydown', handleDeleteKey);
     return () => window.removeEventListener('keydown', handleDeleteKey);
-  }, [deleteSelectedCaption, resolvedSelectedCaptionId]);
-
-  useEffect(() => {
-    if (stage !== 'capture') {
-      setCaptureScale(1);
-      return;
-    }
-
-    let frameId: number | null = null;
-
-    const recalculateScale = () => {
-      frameId = null;
-      const viewport = captureViewportRef.current;
-      const content = captureContentRef.current;
-      const measure = captureMeasureRef.current;
-      if (!viewport || !content || !measure) return;
-
-      const viewportWidth = viewport.clientWidth;
-      let viewportHeight = viewport.clientHeight;
-      const visualViewportHeight = window.visualViewport?.height;
-      if (typeof visualViewportHeight === 'number' && Number.isFinite(visualViewportHeight)) {
-        const visualViewportCaptureHeight = Math.max(0, visualViewportHeight);
-        if (visualViewportCaptureHeight > 0) {
-          viewportHeight = Math.min(viewportHeight, visualViewportCaptureHeight);
-        }
-      }
-      const contentWidth = Math.max(measure.scrollWidth, measure.offsetWidth);
-      const contentHeight = Math.max(measure.scrollHeight, measure.offsetHeight);
-
-      if (
-        viewportWidth <= 0 ||
-        viewportHeight <= 0 ||
-        contentWidth <= 0 ||
-        contentHeight <= 0
-      ) {
-        return;
-      }
-
-      const isDesktop = window.matchMedia('(min-width: 1024px)').matches;
-      if (!isDesktop) {
-        setCaptureScale((prev) => (Math.abs(prev - 1) < 0.001 ? prev : 1));
-        return;
-      }
-
-      const fitScale = Math.min(
-        1,
-        viewportWidth / contentWidth,
-        viewportHeight / contentHeight
-      );
-      const targetScale = isDesktop ? Math.min(0.85, fitScale) : fitScale;
-      const safeScale = Math.max(0.35, Math.min(1, targetScale));
-
-      setCaptureScale((prev) =>
-        Math.abs(prev - safeScale) < 0.001 ? prev : safeScale
-      );
-    };
-
-    const scheduleRecalculate = () => {
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-      }
-      frameId = window.requestAnimationFrame(recalculateScale);
-    };
-
-    scheduleRecalculate();
-    const settleTimeoutId = window.setTimeout(scheduleRecalculate, 80);
-    const lateSettleTimeoutId = window.setTimeout(scheduleRecalculate, 240);
-    let isDisposed = false;
-    if (document.fonts?.ready) {
-      document.fonts.ready
-        .then(() => {
-          if (!isDisposed) {
-            scheduleRecalculate();
-          }
-        })
-        .catch(() => undefined);
-    }
-
-    const viewport = captureViewportRef.current;
-    const measure = captureMeasureRef.current;
-    const resizeObserver =
-      typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(scheduleRecalculate)
-        : null;
-
-    if (resizeObserver && viewport && measure) {
-      resizeObserver.observe(viewport);
-      resizeObserver.observe(measure);
-    }
-
-    const visualViewport = window.visualViewport;
-    window.addEventListener('resize', scheduleRecalculate);
-    window.addEventListener('orientationchange', scheduleRecalculate);
-    visualViewport?.addEventListener('resize', scheduleRecalculate);
-
-    return () => {
-      isDisposed = true;
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-      }
-      window.clearTimeout(settleTimeoutId);
-      window.clearTimeout(lateSettleTimeoutId);
-      window.removeEventListener('resize', scheduleRecalculate);
-      window.removeEventListener('orientationchange', scheduleRecalculate);
-      visualViewport?.removeEventListener('resize', scheduleRecalculate);
-      resizeObserver?.disconnect();
-    };
-  }, [stage, template?.id, cuts.length, activeCutIndex, allDone, isSessionLoading]);
+  }, [deleteSelectedCaption, resolvedSelectedCaptionId, stage]);
 
   const handleDownload = () => {
     if (!finalVideoUrl) return;
@@ -1549,7 +1084,11 @@ function ReelsMakerInner() {
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-    setDownloadToastMessage(isMp4 ? '다운로드 완료!' : 'MP4 미지원 브라우저로 WEBM으로 다운로드됩니다.');
+    setDownloadToastMessage(
+      isMp4
+        ? '다운로드 완료!'
+        : 'MP4 미지원 브라우저로 WEBM으로 다운로드됩니다.',
+    );
   };
 
   const handleFinalDone = () => {
@@ -1560,21 +1099,13 @@ function ReelsMakerInner() {
   const handleResetAll = () => {
     setStage('capture');
     setActiveCutIndex(0);
-    resetCamera();
     setSessionId(null);
+    setGallerySession(null);
     setSessionClipMap({});
     setSessionError(null);
     resetClips(cuts, true);
     setCaptions([]);
     setSelectedCaptionId(null);
-    setCutGuideVisibility(() => {
-      const next: Record<number, boolean> = {};
-      cuts.forEach((cut, index) => {
-        next[index] = parseGuideImageEntries(cut.guideImageUrl).length > 0;
-      });
-      return next;
-    });
-    setGuideImageIndexByCut({});
     setEditingCaptionId(null);
     resetCaptionGesture();
     if (finalVideoUrl) {
@@ -1589,19 +1120,13 @@ function ReelsMakerInner() {
     setIsTemplateGuideOpen(false);
     setTemplateGuideStep('overview');
     setExampleReelIndex(0);
-    setIsResetOpen(false);
     setDownloadToastMessage(null);
-    setIsMediaSourceOpen(false);
-    setMediaPickerTargetCutIndex(null);
-    setReplacementConfirm(null);
-    resetGallery();
-    resetTrimState();
     if (templateId && requestedSessionId) {
       router.replace(
         buildReelsMakerHref({
           templateId,
           returnUrl: explicitCompletionReturnUrl,
-        })
+        }),
       );
     } else {
       sessionInitKeyRef.current = null;
@@ -1662,18 +1187,23 @@ function ReelsMakerInner() {
     return (
       <FullScreenState>
         <div className="max-w-sm text-center space-y-4">
-          <p className="text-sm leading-6 text-white/70">{sessionError.message}</p>
+          <p className="text-sm leading-6 text-white/70">
+            {sessionError.message}
+          </p>
           <div className="space-y-3">
-            {sessionError.type === 'auth' || sessionError.type === 'template-login' ? (
+            {sessionError.type === 'auth' ||
+            sessionError.type === 'template-login' ? (
               <button
                 type="button"
                 onClick={() =>
                   router.push(
                     sessionError.type === 'template-login'
                       ? buildTemplateLoginHref(
-                          isReelstampBetaEnabled() ? currentReelsMakerHref : undefined
+                          isReelstampBetaEnabled()
+                            ? currentReelsMakerHref
+                            : undefined,
                         )
-                      : buildLoginHref(currentReelsMakerHref)
+                      : buildLoginHref(currentReelsMakerHref),
                   )
                 }
                 className="w-full rounded-full bg-[#FF4D6D] px-4 py-3 text-sm font-semibold text-white shadow-lg"
@@ -1783,35 +1313,99 @@ function ReelsMakerInner() {
   }
 
   return (
-    <div
-      className="overflow-hidden bg-[#1E2A3B] text-white lg:flex lg:flex-col lg:bg-black"
-      style={{
-        height: '100dvh',
-        minHeight: '100vh',
-      }}
-    >
-      {showRecommendedTimingToast && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="fixed left-1/2 z-[60] w-full max-w-md -translate-x-1/2 px-4"
-          style={{ top: 'calc(12px + env(safe-area-inset-top, 0px))' }}
-        >
-          <div className="rounded-xl border border-rose-300/70 bg-rose-600 px-4 py-3 text-sm font-bold text-white shadow-2xl motion-safe:animate-pulse">
+    <div className="h-[100dvh] overflow-hidden bg-[#1E2A3B] text-white">
+      {gallerySession && (
+        <GalleryMaker
+          key={gallerySession.sessionId}
+          session={gallerySession}
+          cuts={cuts}
+          clips={clips}
+          captions={captions}
+          captionsEnabled={captionsEnabled}
+          activeCutIndex={activeCutIndex}
+          onSelectCut={setActiveCutIndex}
+          onSession={applyGallerySession}
+          serialize={serializeEdit}
+          onBusy={setEditorBusy}
+          allDone={
+            allDone &&
+            !isDraftDirty &&
+            draftSaveStatus !== 'saving' &&
+            draftSaveStatus !== 'error'
+          }
+          captionEditor={captionEditor}
+          fixedErrors={fixedClipErrors}
+          onRetryFixed={retryFixedClip}
+          ref={galleryMakerRef}
+          paused={isTemplateGuideOpen || isExitConfirmOpen || isCaptureMenuOpen}
+          onGuide={() => {
+            setTemplateGuideStep(activeCutIndex);
+            setIsTemplateGuideOpen(true);
+          }}
+          onNext={handleComplete}
+          header={
             <div className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 shrink-0" />
-              <p>이 포맷은 이 시간 내에 마무리하는 것을 추천합니다.</p>
+              <button
+                type="button"
+                aria-label="뒤로가기"
+                disabled={editorBusy}
+                onClick={() => requestExit('/templates')}
+                className="p-1"
+              >
+                <ChevronLeft />
+              </button>
+              <div className="min-w-0 flex-1">
+                {isRegisteredUser ? (
+                  <input
+                    aria-label="프로젝트 이름"
+                    value={projectName}
+                    onChange={(e) =>
+                      setProjectName(e.target.value.slice(0, 50))
+                    }
+                    onBlur={() => {
+                      if (!projectName.trim())
+                        setProjectName(`${template.title || '릴스'} 프로젝트`);
+                    }}
+                    className="w-full bg-transparent text-sm font-semibold outline-none"
+                  />
+                ) : (
+                  <span className="text-sm">릴스 제작</span>
+                )}
+                {isRegisteredUser ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (draftSaveStatus === 'error') void saveDraftNow();
+                    }}
+                    className="block text-[10px] text-white/60"
+                  >
+                    {draftSaveStatus === 'saving'
+                      ? '저장 중…'
+                      : draftSaveStatus === 'error'
+                        ? '저장 실패 · 다시 시도'
+                        : lastSavedAt
+                          ? '자동 저장됨'
+                          : '자동 저장 준비 중'}
+                  </button>
+                ) : (
+                  <p className="text-[10px] text-amber-200">
+                    게스트 작업은 중간 저장되지 않습니다.
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                aria-label="메뉴"
+                disabled={editorBusy}
+                onClick={() => setIsCaptureMenuOpen(true)}
+                className="p-1"
+              >
+                <Menu size={20} />
+              </button>
             </div>
-          </div>
-        </div>
+          }
+        />
       )}
-      <input
-        ref={galleryFileInputRef}
-        type="file"
-        accept="image/*,video/*"
-        className="hidden"
-        onChange={handleGalleryFileChange}
-      />
       {showGuestDraftNotice && isGuestUser && (
         <GuestDraftNotice
           loginHref={buildLoginHref(currentReelsMakerHref)}
@@ -1839,477 +1433,7 @@ function ReelsMakerInner() {
           onRequestExit={requestExit}
         />
       )}
-      {isMediaSourceOpen && mediaPickerTargetCutIndex !== null && (
-        <CutMediaSourceModal
-          isBusy={isMediaPickerActive || isGalleryProcessing || isTrimPreparing}
-          onClose={closeCutMediaSource}
-          onSelectVideoCapture={() => selectVideoCaptureModeForIndex(mediaPickerTargetCutIndex)}
-          onSelectGallery={() => void openGalleryPickerForIndex(mediaPickerTargetCutIndex)}
-        />
-      )}
-      {replacementConfirm && (
-        <RetakeConfirmModal
-          title={
-            replacementConfirm.type === 'gallery'
-              ? '파일로 교체할까요?'
-              : '다시 촬영할까요?'
-          }
-          description={
-            replacementConfirm.type === 'gallery'
-              ? '촬영된 영상은 새 파일이 저장되면 교체됩니다.'
-              : '현재 컷의 기존 영상은 새 촬영이 저장되면 교체됩니다.'
-          }
-          confirmLabel={
-            replacementConfirm.type === 'gallery' ? '파일 선택' : '다시 촬영'
-          }
-          onCancel={() => setReplacementConfirm(null)}
-          onConfirm={() => {
-            const { cutIndex, type } = replacementConfirm;
-            setReplacementConfirm(null);
-            setActiveCutIndex(cutIndex);
-            if (type === 'gallery') {
-              void openGalleryPickerForIndex(cutIndex, {
-                skipReplacementConfirm: true,
-              });
-              return;
-            }
-            void startRecording({ replaceExisting: true });
-          }}
-        />
-      )}
-      <header className="hidden h-[72px] shrink-0 grid-cols-[96px_minmax(0,1fr)_96px] items-center border-b border-[#263244] bg-[#111827] px-12 text-[#F8FAFC] lg:grid">
-        <button
-          type="button"
-          onClick={() => requestExit(completionReturnUrl)}
-          className="flex h-10 w-10 items-center justify-center rounded-full text-[#CBD5E1] transition hover:bg-white/10 hover:text-white"
-          aria-label="뒤로가기"
-        >
-          <ChevronLeft className="h-6 w-6" />
-        </button>
-        <h1 className="text-center text-xl font-bold">릴스 제작</h1>
-        <button
-          type="button"
-          onClick={() => setIsCaptureMenuOpen(true)}
-          className="justify-self-end flex h-10 w-10 items-center justify-center rounded-full text-[#CBD5E1] transition hover:bg-white/10 hover:text-white"
-          aria-label="메뉴"
-        >
-          <Menu className="h-6 w-6" />
-        </button>
-      </header>
-      <div
-        ref={captureViewportRef}
-        className="h-full w-full overflow-hidden lg:mx-auto lg:h-auto lg:min-h-0 lg:max-w-[440px] lg:flex-1"
-        style={{
-          boxSizing: 'border-box',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        }}
-      >
-        <div className="flex h-full w-full items-stretch justify-stretch overflow-hidden lg:items-center lg:justify-center">
-          <div
-            ref={captureContentRef}
-            className="h-full w-full shrink-0 origin-center self-stretch lg:h-auto lg:self-center"
-            style={{
-              transform: `scale(${captureScale})`,
-              transformOrigin: 'center center',
-            }}
-          >
-            <div ref={captureMeasureRef} className="mx-auto flex h-full w-full flex-col p-0 lg:block lg:h-auto lg:px-4 lg:pt-6 lg:pb-10">
-              <div className="mb-3 hidden lg:block rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-                모바일 웹앱에서 촬영하면 더 안정적으로 카메라를 사용할 수 있어요.
-              </div>
-
-              <div className="relative flex h-full w-full flex-col overflow-hidden rounded-none bg-[#1E2A3B] p-0 shadow-none lg:h-auto lg:rounded-[28px] lg:p-4 lg:shadow-2xl">
-                <div className="mb-0 flex h-16 shrink-0 items-center gap-2 px-3 lg:mb-3 lg:h-auto lg:px-1">
-                  <button
-                    type="button"
-                    onClick={() => requestExit('/templates')}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10 lg:hidden"
-                    aria-label="뒤로가기"
-                  >
-                    <ChevronLeft className="h-6 w-6" />
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-2">
-                      {isRegisteredUser ? (
-                        <input
-                          value={projectName}
-                          onChange={(event) => setProjectName(event.target.value.slice(0, 50))}
-                          onBlur={() => {
-                            if (!projectName.trim()) {
-                              setProjectName(`${template.title || '릴스'} 프로젝트`);
-                            }
-                          }}
-                          aria-label="프로젝트 이름"
-                          className="min-w-0 flex-1 truncate border-0 bg-transparent text-sm font-semibold text-white/90 outline-none placeholder:text-white/45"
-                          placeholder="프로젝트 이름"
-                        />
-                      ) : (
-                        <span className="truncate text-sm font-semibold text-white/80">릴스 제작</span>
-                      )}
-                      {recordingStatus === 'recording' && (
-                        <span className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#FF4D6D] px-2.5 text-[11px] font-semibold">
-                          <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                          REC
-                        </span>
-                      )}
-                    </div>
-                    {isRegisteredUser && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (draftSaveStatus === 'error') void saveDraftNow();
-                        }}
-                        className={`mt-0.5 block text-[10px] ${
-                          draftSaveStatus === 'error'
-                            ? 'text-rose-300 underline'
-                            : 'text-white/50'
-                        }`}
-                      >
-                        {draftSaveStatus === 'saving'
-                          ? '저장 중...'
-                          : draftSaveStatus === 'error'
-                            ? '저장 실패 · 다시 시도'
-                            : lastSavedAt
-                              ? `자동 저장됨 · ${new Date(lastSavedAt).toLocaleTimeString('ko-KR', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}`
-                              : '자동 저장 준비 중'}
-                      </button>
-                    )}
-                    {isGuestUser && (
-                      <p className="mt-0.5 text-[10px] text-amber-200/90">
-                        게스트 작업은 중간 저장되지 않습니다.
-                      </p>
-                    )}
-                  </div>
-                  {canOpenActiveCutGuide && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTemplateGuideStep(activeCutIndex);
-                        setIsTemplateGuideOpen(true);
-                      }}
-                      className="h-10 shrink-0 rounded-full bg-[#FF4D6D] px-4 text-xs font-semibold shadow-lg"
-                    >
-                      가이드
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setIsCaptureMenuOpen(true)}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/90 transition hover:bg-white/10 lg:hidden"
-                    aria-label="메뉴"
-                  >
-                    <Menu className="h-6 w-6" />
-                  </button>
-                </div>
-
-                <div
-                  ref={handleCameraFrameRef}
-                  className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-none bg-[#243246] lg:aspect-[9/16] lg:flex-none lg:rounded-[24px]"
-                  onPointerDownCapture={(event) => {
-                    if (!editingCaptionId) return;
-                    const targetNode = event.target as Node;
-                    if (captionOverlayRef.current?.contains(targetNode)) return;
-                    setEditingCaptionId(null);
-                  }}
-                >
-                  {isActiveCutFixed ? (
-                    activeFixedError ? (
-                      <div className="space-y-3 px-6 text-center text-sm text-white/70">
-                        <p>{activeFixedError}</p>
-                        <button
-                          type="button"
-                          onClick={() => retryFixedClip(activeCutIndex)}
-                          className="h-10 rounded-full bg-white/10 px-4 text-xs text-white/80"
-                        >
-                          다시 불러오기
-                        </button>
-                      </div>
-                    ) : activeClip ? (
-                      <FixedClipVideo
-                        key={activeClip.url}
-                        clipUrl={activeClip.url}
-                        posterUrl={clipPosters[activeCutIndex] || undefined}
-                        className="absolute inset-0 h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="px-6 text-center text-sm text-white/70">
-                        고정 영상을 불러오는 중입니다...
-                      </div>
-                    )
-                  ) : activeUploadError ? (
-                    <div className="space-y-3 px-6 text-center text-sm text-white/70">
-                      <p>{activeUploadError}</p>
-                      <button
-                        type="button"
-                        onClick={handleResetCut}
-                        className="h-10 rounded-full bg-white/10 px-4 text-xs text-white/80"
-                      >
-                        다시 촬영하기
-                      </button>
-                    </div>
-                  ) : shouldShowActiveClipPreview && activeClip ? (
-                    <CapturedClipPreview
-                      key={activeClip.url}
-                      clipUrl={activeClip.url}
-                      posterUrl={clipPosters[activeCutIndex] || undefined}
-                    />
-                  ) : cameraError ? (
-                    <div className="px-6 text-center text-sm text-white/70">{cameraError}</div>
-                  ) : (
-                    <>
-                      <CameraPreviewVideo
-                        stream={stream}
-                        className="absolute inset-0 h-full w-full"
-                        onPreviewMetrics={handleCameraPreviewMetrics}
-                      />
-                      {guideImageSrc && isGuideImageVisible && (
-                        <>
-                          <img
-                            key={guideImageSrc}
-                            src={guideImageSrc}
-                            alt="가이드 이미지"
-                            className="pointer-events-none absolute inset-0 h-full w-full object-contain opacity-70"
-                          />
-                          {hasMultipleGuideImages && (
-                            <div className="absolute inset-x-0 bottom-4 z-30 flex items-center justify-center gap-3">
-                              <button
-                                type="button"
-                                onClick={handlePrevGuideImage}
-                                disabled={isGuideImageNavigationDisabled || activeGuideImageIndex <= 0}
-                                className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-35"
-                                aria-label="이전 가이드 이미지"
-                              >
-                                <ChevronLeft className="h-5 w-5" />
-                              </button>
-                              <span className="min-w-[52px] rounded-full bg-black/55 px-3 py-2 text-center text-xs font-semibold text-white shadow-lg">
-                                {activeGuideImageIndex + 1} / {guideImageCount}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={handleNextGuideImage}
-                                disabled={
-                                  isGuideImageNavigationDisabled ||
-                                  activeGuideImageIndex >= guideImageCount - 1
-                                }
-                                className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-35"
-                                aria-label="다음 가이드 이미지"
-                              >
-                                <ChevronRight className="h-5 w-5" />
-                              </button>
-                            </div>
-                          )}
-                        </>
-                      )}
-                      {!stream && (
-                        <div className="relative text-center text-white/40">
-                          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-white/20">
-                            <Camera className="h-6 w-6 text-white/60" />
-                          </div>
-                          카메라 뷰
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {showCaptionStage && (
-                    <CaptionOverlayStage
-                      captions={activeCaptions}
-                      selectedCaptionId={resolvedSelectedCaptionId}
-                      editingCaptionId={editingCaptionId}
-                      previewScale={captionPreviewScale}
-                      stageRef={captionStageRef}
-                      overlayRef={captionOverlayRef}
-                      inputRef={captionInputRef}
-                      onSelect={setSelectedCaptionId}
-                      onEdit={setEditingCaptionId}
-                      onTextChange={handleCaptionTextChange}
-                      onCaptionPointerDown={handleCaptionPointerDown}
-                      onCaptionPointerMove={handleCaptionPointerMove}
-                      onCaptionPointerEnd={handleCaptionPointerEnd}
-                      onResizePointerDown={handleResizeHandlePointerDown}
-                      onResizePointerMove={handleResizeHandlePointerMove}
-                      onResizePointerEnd={handleResizeHandlePointerEnd}
-                    />
-                  )}
-
-                  <div className="pointer-events-none absolute inset-x-0 top-0 z-30 space-y-2 bg-gradient-to-b from-black/35 via-black/10 to-transparent px-3 pb-6 pt-3">
-                    <div className="pointer-events-auto">
-                      <div className="flex items-start gap-2">
-                        {shouldShowGuideImageToggle && (
-                          <button
-                            type="button"
-                            onClick={handleGuideImageToggle}
-                            className="h-10 min-w-0 rounded-full border border-white/35 bg-white/15 px-3 text-[11px] leading-none font-semibold text-white whitespace-nowrap"
-                          >
-                            가이드 이미지 {isGuideImageVisible ? 'ON' : 'OFF'}
-                          </button>
-                        )}
-                        <CaptureCaptionMenu
-                          activeCutIndex={activeCutIndex}
-                          overlayCaptionCount={activeOverlayCaptionCount}
-                          maxCaptions={MAX_CAPTIONS_PER_CLIP}
-                          isBoxed={activeCaptionStyle.boxed}
-                          isAddDisabled={
-                            !showCaptionStage ||
-                            activeClipId == null ||
-                            activeOverlayCaptionCount >= MAX_CAPTIONS_PER_CLIP
-                          }
-                          isToggleBoxDisabled={!showCaptionOverlay}
-                          isDeleteDisabled={!resolvedSelectedCaptionId}
-                          captionScale={activeCaptionStyle.scale}
-                          isSizeDisabled={!showCaptionOverlay}
-                          onAddCaption={addCaptionToActiveClip}
-                          onToggleBox={handleCaptionToggleBox}
-                          onDeleteCaption={deleteSelectedCaption}
-                          onCaptionScaleChange={handleCaptionScaleChange}
-                        />
-                      </div>
-                    </div>
-
-                    {isActiveCutFixed && (
-                      <p className="rounded-lg bg-black/35 px-3 py-1.5 text-center text-[11px] text-white/80">
-                        고정 영상 컷입니다. 촬영 없이 자동으로 완료됩니다.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/35 via-black/10 to-transparent px-3 pb-4 pt-20">
-                    <div className="pointer-events-auto space-y-3">
-                      <CaptureFlowAction
-                        variant={captureFlowAction}
-                        disabled={isCaptureFlowActionDisabled}
-                        onComplete={handleComplete}
-                      />
-
-                      <div className="flex items-end justify-center gap-2">
-                        {cuts.map((cut, index) => {
-                          const clip = clips[index];
-                          const isActive = index === activeCutIndex;
-                          const isUploadingCut = uploadingCuts[index];
-                          const shouldShowMediaPlus =
-                            !cut.isFixed && !fixedClipErrors[index] && (!clip || isActive);
-                          const isMediaPlusDisabled = Boolean(
-                            isUploadingCut || isMediaImportBlocked
-                          );
-                          return (
-                            <div
-                              key={cut.id}
-                              className={`relative h-[92px] w-[52px] overflow-hidden rounded-xl border-2 transition-all ${
-                                isActive ? 'border-[#FF4D6D] bg-white/10' : 'border-white/15 bg-black/30'
-                              }`}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (fixedClipErrors[index]) {
-                                    retryFixedClip(index);
-                                    return;
-                                  }
-                                  if (recordingStatus === 'recording') return;
-                                  setActiveCutIndex(index);
-                                }}
-                                className="absolute inset-0 z-0"
-                                aria-label={`${index + 1}번 컷 선택`}
-                              >
-                                {clip ? (
-                                  <video
-                                    src={clip.url}
-                                    muted
-                                    playsInline
-                                    preload="metadata"
-                                    poster={clipPosters[index] || undefined}
-                                    className="absolute inset-0 h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <span className="absolute inset-0 bg-transparent" />
-                                )}
-                                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-white/85">
-                                  {cut.label}
-                                </span>
-                                {clip && (
-                                  <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white">
-                                    <Check className="h-3 w-3" />
-                                  </span>
-                                )}
-                                {cut.isFixed && !clip && !fixedClipErrors[index] && (
-                                  <span className="absolute left-1.5 top-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] text-white/75">
-                                    고정
-                                  </span>
-                                )}
-                                {fixedClipErrors[index] && (
-                                  <span className="absolute left-1.5 top-1.5 rounded-full bg-rose-500/80 px-1.5 py-0.5 text-[10px] text-white">
-                                    오류
-                                  </span>
-                                )}
-                              </button>
-                              {shouldShowMediaPlus && (
-                                <button
-                                  type="button"
-                                  onClick={() => openCutMediaSource(index)}
-                                  disabled={isMediaPlusDisabled}
-                                  className="absolute left-1/2 top-1/2 z-10 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur transition-all hover:scale-105 hover:border-white/40 hover:bg-black/65 hover:shadow-[0_0_0_2px_rgba(255,255,255,0.12),0_6px_14px_rgba(0,0,0,0.38)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:scale-100 disabled:hover:border-white/20 disabled:hover:bg-black/45 disabled:hover:shadow-lg"
-                                  aria-label={`${index + 1}번 컷 미디어 추가`}
-                                >
-                                  {isUploadingCut ? (
-                                    <Loader2 className="h-5 w-5 animate-spin text-white/70" />
-                                  ) : (
-                                    <Plus className="h-5 w-5 text-white/75" />
-                                  )}
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="space-y-2">
-                        <CaptureActionControls
-                          recordingStatus={recordingStatus}
-                          galleryPreviewUrl={clipPosters[activeCutIndex] ?? null}
-                          canRetake={canRetakeActiveCut}
-                          isGalleryDisabled={isGalleryButtonDisabled}
-                          isRecordDisabled={isRecordDisabled}
-                          isSwitchCameraDisabled={isSwitchCameraDisabled}
-                          onOpenGallery={() => void openGalleryPickerForIndex(activeCutIndex)}
-                          onStartRecording={() => void startRecording()}
-                          onStopRecording={stopRecording}
-                          onRequestRetake={() => setIsResetOpen(true)}
-                          onSwitchCamera={handleSwitchCamera}
-                        />
-                        {(galleryError || trimError) && (
-                          <p className="text-center text-xs text-rose-300">{galleryError || trimError}</p>
-                        )}
-                      </div>
-
-                      {recordingElapsedSeconds !== null && (
-                        <div className="text-center">
-                          <p
-                            className={`text-sm ${
-                              activeCutDurationMode === DURATION_MODE_RECOMMENDED &&
-                              isRecommendedTimingExceeded
-                                ? 'font-semibold text-rose-400'
-                                : 'text-white/75'
-                            }`}
-                          >
-                            {activeCutDurationMode === DURATION_MODE_FORCED
-                              ? `${formatDurationSecondsLabel(forcedRemainingSeconds)} 남음`
-                              : `${formatDurationSeconds(elapsedSeconds)}초 경과`}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {isTemplateGuideOpen && template && (
+      {isTemplateGuideOpen && (
         <TemplateGuideModal
           templateTitle={template.title}
           templateOverview={template.subtitle}
@@ -2323,50 +1447,11 @@ function ReelsMakerInner() {
           onSelectReel={setExampleReelIndex}
         />
       )}
-
       {isCaptionEditDecisionOpen && (
         <CaptionEditDecisionModal
           onSkip={handleSkipCaptionEditBeforeComplete}
           onEdit={handleEditCaptionsBeforeComplete}
           onCancel={() => setIsCaptionEditDecisionOpen(false)}
-        />
-      )}
-
-      {isTrimOpen && (
-        <TrimModal
-          viewportRef={trimViewportRef}
-          measureRef={trimMeasureRef}
-          previewContainerRef={trimPreviewContainerRef}
-          previewVideoRef={trimPreviewVideoRef}
-          timelineRef={trimTimelineRef}
-          sourceUrl={trimSourceUrl}
-          sourceFile={trimSourceFile}
-          sourceMetadata={trimSourceMetadata}
-          previewMaxHeight={trimPreviewMaxHeight}
-          isPlaying={isTrimPlaying}
-          thumbnails={trimThumbnails}
-          sliderMax={trimSliderMax}
-          startSeconds={trimStartSeconds}
-          endSeconds={trimEndSeconds}
-          scrubSeconds={trimScrubSeconds}
-          durationSeconds={trimDurationSeconds}
-          recommendedSeconds={recommendedTrimSeconds}
-          activeDrag={activeTrimDrag}
-          error={trimError}
-          isProcessing={isGalleryProcessing}
-          onClose={closeTrimModal}
-          onPlayToggle={() => void handleTrimPlayToggle()}
-          onScrubPointerDown={handleTrimScrubPointerDown}
-          onPointerDown={handleTrimPointerDown}
-          secondsToTimelineX={secondsToTimelineX}
-          onConfirm={() => void handleTrimConfirm()}
-        />
-      )}
-
-      {isResetOpen && (
-        <ResetCutModal
-          onCancel={() => setIsResetOpen(false)}
-          onConfirm={handleResetCut}
         />
       )}
     </div>

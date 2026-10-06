@@ -1,4 +1,6 @@
 import {
+  AUTO_CAPTION_DEFAULT_STYLE,
+  DEFAULT_CAPTION_STYLE,
   CAPTION_BASE_FONT_SIZE_PX,
   CAPTION_BOX_BACKGROUND_COLOR,
   CAPTION_BOX_BACKGROUND_OPACITY,
@@ -59,7 +61,7 @@ export const normalizeCaptionStyle = (
   yRatio: clampValue(style.yRatio, 0, 1),
   scale: clampValue(style.scale, MIN_CAPTION_SCALE, MAX_CAPTION_SCALE),
   boxed: style.boxed !== false,
-  styleVersion: CAPTION_STYLE_VERSION_RENDER_V1,
+  styleVersion: style.styleVersion === 'CAPTION_RENDER_V2' ? 'CAPTION_RENDER_V2' : CAPTION_STYLE_VERSION_RENDER_V1,
   maxWidthRatio: clampValue(
     typeof style.maxWidthRatio === 'number'
       ? style.maxWidthRatio
@@ -83,14 +85,14 @@ export const buildCaptionExportStyle = (
     ...normalized,
     renderWidth: CAPTION_RENDER_WIDTH,
     renderHeight: CAPTION_RENDER_HEIGHT,
-    fontFamily: CAPTION_FONT_FAMILY,
-    fontWeight: CAPTION_FONT_WEIGHT,
+    fontFamily: style.styleVersion === 'CAPTION_RENDER_V2' ? style.fontFamily || CAPTION_FONT_FAMILY : CAPTION_FONT_FAMILY,
+    fontWeight: style.styleVersion === 'CAPTION_RENDER_V2' && style.textPreset === 'bold' ? 700 : CAPTION_FONT_WEIGHT,
     fontSizePx: CAPTION_BASE_FONT_SIZE_PX,
     lineHeightPx: CAPTION_LINE_HEIGHT_PX,
-    textColor: CAPTION_TEXT_COLOR,
+    textColor: style.styleVersion === 'CAPTION_RENDER_V2' ? style.textColor ?? CAPTION_TEXT_COLOR : CAPTION_TEXT_COLOR,
     maxWidthPx: CAPTION_MAX_WIDTH_PX,
-    boxBackgroundColor: CAPTION_BOX_BACKGROUND_COLOR,
-    boxBackgroundOpacity: CAPTION_BOX_BACKGROUND_OPACITY,
+    boxBackgroundColor: style.styleVersion === 'CAPTION_RENDER_V2' ? style.boxBackgroundColor ?? CAPTION_BOX_BACKGROUND_COLOR : CAPTION_BOX_BACKGROUND_COLOR,
+    boxBackgroundOpacity: style.styleVersion === 'CAPTION_RENDER_V2' ? style.boxBackgroundOpacity ?? CAPTION_BOX_BACKGROUND_OPACITY : CAPTION_BOX_BACKGROUND_OPACITY,
     boxPaddingXPx: CAPTION_BOX_PADDING_X_PX,
     boxPaddingYPx: CAPTION_BOX_PADDING_Y_PX,
     boxBorderRadiusPx: CAPTION_BOX_BORDER_RADIUS_PX,
@@ -134,3 +136,25 @@ export const buildDraftSignature = (
         style: buildCaptionExportStyle(caption.style),
       })),
   });
+
+export const normalizeSessionCaptions = (
+  rawCaptions: CaptionItem[] | undefined
+): CaptionItem[] => {
+  return (rawCaptions ?? []).map((caption) => {
+    const source = caption.source ?? 'USER';
+    const role = source === 'AUTO' ? 'SPEECH' : 'OVERLAY';
+    return {
+      ...caption,
+      text: normalizeCaptionText(caption.text, {
+        restoreEscapedNewlines: true,
+      }),
+      source,
+      role,
+      style: normalizeCaptionStyle(
+        source === 'AUTO'
+          ? { ...AUTO_CAPTION_DEFAULT_STYLE, ...(caption.style ?? {}) }
+          : { ...DEFAULT_CAPTION_STYLE, ...(caption.style ?? {}) }
+      ),
+    };
+  });
+};

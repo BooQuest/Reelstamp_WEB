@@ -1,3 +1,4 @@
+import type { ClipRevision, MediaAsset } from './gallery/types';
 export type ExampleMedia = {
   type: 'image' | 'video';
   src: string;
@@ -23,7 +24,7 @@ export type ClipSource = 'recording' | 'file';
 export type VideoDebugLogger = (event: string, details?: unknown) => void;
 export type SubmitClip = (index: number, clip: PreparedClip, source: ClipSource) => Promise<void>;
 
-export type ClipInfo = PreparedClip & { url: string };
+export type ClipInfo = PreparedClip & { url: string; objectKey?: string | null };
 
 export type MakerCut = {
   id: string;
@@ -80,6 +81,7 @@ export type TemplateDetailResponse = {
 };
 
 export type ReelsMakerSessionClip = {
+  revision?: ClipRevision | null;
   clipId: number;
   order: number;
   durationSeconds: number;
@@ -93,6 +95,7 @@ export type ReelsMakerSessionClip = {
 };
 
 export type ReelsMakerSessionResponse = {
+  mediaAssets?: MediaAsset[];
   sessionId: number;
   templateId: string;
   status: string;
@@ -142,9 +145,11 @@ export type ReelsMakerErrorResponse = {
   data?: unknown;
 };
 
-export type CaptionStyleVersion = 'WEB_BOX_V2' | 'CAPTION_RENDER_V1';
+export type CaptionStyleVersion = 'WEB_BOX_V2' | 'CAPTION_RENDER_V1' | 'CAPTION_RENDER_V2';
 
 export type CaptionStyle = {
+  textAlign?: 'left' | 'center' | 'right';
+  textPreset?: 'basic' | 'bold' | 'shadow';
   xRatio: number;
   yRatio: number;
   scale: number;
@@ -258,11 +263,5 @@ export type VideoMetadata = {
   height: number;
 };
 
-export type TrimDragMode = 'none' | 'start' | 'end' | 'window' | 'scrub';
 
-export type TrimDragStartState = {
-  pointerX: number;
-  startSeconds: number;
-  endSeconds: number;
-  scrubSeconds: number;
-};
+export type CropRegion = { x: number; y: number; width: number; height: number };

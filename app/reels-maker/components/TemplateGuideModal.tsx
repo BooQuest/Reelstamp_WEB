@@ -32,8 +32,8 @@ type Props = {
   onSelectReel: (index: number) => void;
 };
 
-const FALLBACK_OVERVIEW = '템플릿의 전체 흐름을 확인한 뒤 컷별 가이드를 따라 촬영해보세요.';
-const FALLBACK_CUT_GUIDE = '등록된 컷별 촬영 가이드가 없습니다.';
+const FALLBACK_OVERVIEW = '템플릿의 전체 흐름을 확인한 뒤 컷별 가이드를 확인하고 사진·영상을 불러오세요.';
+const FALLBACK_CUT_GUIDE = '등록된 컷별 가이드가 없습니다.';
 const GUIDE_NAV_AVAILABLE_WIDTH = 320;
 const GUIDE_NAV_MAX_STEP_SIZE = 36;
 const GUIDE_NAV_MIN_STEP_SIZE = 16;
@@ -138,18 +138,7 @@ export default function TemplateGuideModal({
       ? getTrimmedText(templateOverview) || FALLBACK_OVERVIEW
       : getTrimmedText(activeCut?.guideText) || FALLBACK_CUT_GUIDE;
 
-  const nextCaptureCutIndex =
-    activeCutIndex === null
-      ? -1
-      : cuts.findIndex((cut, index) => index > activeCutIndex && !cut.isFixed);
-  const primaryLabel =
-    step === 'overview'
-      ? '다음'
-      : activeCut?.isFixed && nextCaptureCutIndex >= 0
-        ? `${nextCaptureCutIndex + 1}컷 가이드 보기`
-        : activeCut?.isFixed
-          ? '촬영 완료 확인하기'
-          : `${(activeCutIndex ?? 0) + 1}컷 촬영하기`;
+  const primaryLabel = activeCut?.isFixed ? '컷 확인하기' : '갤러리 불러오기';
 
   const handlePreviousGuideStep = () => {
     if (!canShowPreviousGuideStep) return;
@@ -254,7 +243,13 @@ export default function TemplateGuideModal({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-3">
+        <div className={`min-h-0 flex-1 overflow-y-auto px-4 pt-3 ${step === 'overview' ? 'pb-8' : 'pb-4'}`}>
+          <div className="mb-4">
+            <h3 className="text-base font-bold text-white">{title}</h3>
+            <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-white/65">
+              {body}
+            </p>
+          </div>
           <div className="relative -mx-4">
             <div className="relative mx-auto aspect-[9/16] w-full max-w-[148px] overflow-hidden rounded-[16px] bg-black sm:max-w-[154px]">
               {cutMedia ? (
@@ -322,15 +317,10 @@ export default function TemplateGuideModal({
             </div>
           )}
 
-          <div className="mt-4">
-            <h3 className="text-base font-bold text-white">{title}</h3>
-            <p className="mt-2 whitespace-pre-line text-xs leading-relaxed text-white/65">
-              {body}
-            </p>
-          </div>
+
         </div>
 
-        <div className="shrink-0 px-4 pb-4">
+        {step !== 'overview' && <div className="shrink-0 px-4 pb-4">
           <button
             type="button"
             onClick={onPrimaryAction}
@@ -338,7 +328,7 @@ export default function TemplateGuideModal({
           >
             {primaryLabel}
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );
