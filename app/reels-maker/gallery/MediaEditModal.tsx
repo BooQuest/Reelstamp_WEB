@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Play, Pause, X, Check, Info } from 'lucide-react';
 import type { EditingMedia, MediaEdit } from './types';
-import { floorTenth, setEditDuration } from './geometry';
+import { floorTenth, MAX_CLIP_SECONDS, setEditDuration } from './geometry';
 import SegmentTimeline from './SegmentTimeline';
 import useCropGesture from './useCropGesture';
 import { generateTimelineThumbnails } from '../utils/media/previews';
@@ -33,7 +33,9 @@ export default function MediaEditModal({
   const warned = useRef(false);
   const video = useRef<HTMLVideoElement>(null);
   const image = media.item.kind === 'image';
-  const max = image ? 3600 : Math.min(3600, floorTenth(media.sourceDuration));
+  const max = image
+    ? MAX_CLIP_SECONDS
+    : Math.min(MAX_CLIP_SECONDS, floorTenth(media.sourceDuration));
   const pause = () => {
     video.current?.pause();
     setPlaying(false);
@@ -77,7 +79,7 @@ export default function MediaEditModal({
       const next = setEditDuration(
         edit,
         Number(raw),
-        image ? 3600 : floorTenth(media.sourceDuration),
+        image ? MAX_CLIP_SECONDS : floorTenth(media.sourceDuration),
       );
       setEdit(next);
       setValidation(null);

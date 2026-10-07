@@ -23,17 +23,38 @@ it('keyboard trim handles update length, and cancel does not apply',async()=>{
  expect(screen.getByLabelText('길이(초)')).toHaveValue('2.9');
  fireEvent.click(screen.getByRole('button',{name:'취소'}));expect(cancel).toHaveBeenCalledOnce();expect(confirm).not.toHaveBeenCalled();
 });
-it('photos have no video timeline and enforce the 3600 second limit',()=>{
- render(<MediaEditModal media={media('image')} busy={false} error={null} onCancel={vi.fn()} onConfirm={vi.fn()}/>);
- expect(screen.queryByRole('slider')).not.toBeInTheDocument();
- fireEvent.change(screen.getByLabelText('길이(초)'),{target:{value:'3600.1'}});expect(screen.getByRole('button',{name:'확인'})).toBeDisabled();
- fireEvent.change(screen.getByLabelText('길이(초)'),{target:{value:'0.1'}});expect(screen.getByRole('button',{name:'확인'})).toBeEnabled();
+it.each(['image', 'video'] as const)('%s enforces and displays the 60 second limit', (kind) => {
+ const confirm = vi.fn();
+ render(<MediaEditModal media={{ ...media(kind), sourceDuration: 120 }} busy={false} error={null} onCancel={vi.fn()} onConfirm={confirm}/>);
+ expect(screen.getByText('최대 60.0초 · 0.1초 단위')).toBeInTheDocument();
+ if (kind === 'image') expect(screen.queryByRole('slider')).not.toBeInTheDocument();
+ for (const value of ['60.1', '3600', '0', '-1', '0.15', 'abc']) {
+  fireEvent.change(screen.getByLabelText('길이(초)'), { target: { value } });
+  expect(screen.getByRole('button', { name: '확인' })).toBeDisabled();
+ }
+ for (const value of ['0.1', '59.9', '60.0']) {
+  fireEvent.change(screen.getByLabelText('길이(초)'), { target: { value } });
+  expect(screen.getByRole('button', { name: '확인' })).toBeEnabled();
+ }
+ fireEvent.click(screen.getByRole('button', { name: '확인' }));
+ expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ duration: 60 }));
+});
+it('displays and enforces a short video duration rounded down to a tenth', () => {
+ render(<MediaEditModal media={{ ...media(), sourceDuration: 9.99 }} busy={false} error={null} onCancel={vi.fn()} onConfirm={vi.fn()}/>);
+ expect(screen.getByText('최대 9.9초 · 0.1초 단위')).toBeInTheDocument();
+ fireEvent.change(screen.getByLabelText('길이(초)'), { target: { value: '10' } });
+ expect(screen.getByRole('button', { name: '확인' })).toBeDisabled();
+ expect(screen.getByRole('alert')).toHaveTextContent('9.9초');
+ fireEvent.change(screen.getByLabelText('길이(초)'), { target: { value: '9.9' } });
+ expect(screen.getByRole('button', { name: '확인' })).toBeEnabled();
 });
 it('keeps source positions beyond one hour while limiting only the selected length',()=>{
- const source={...media(),sourceDuration:7200,edit:{...media().edit,start:7000,duration:100}};
+ const source={...media(),sourceDuration:7200,edit:{...media().edit,start:7000,duration:30}};
  render(<MediaEditModal media={source} busy={false} error={null} onCancel={vi.fn()} onConfirm={vi.fn()}/>);
- fireEvent.change(screen.getByLabelText('길이(초)'),{target:{value:'200'}});
+ fireEvent.change(screen.getByLabelText('길이(초)'),{target:{value:'60'}});
  expect(screen.getByRole('slider',{name:'구간 시작'})).toHaveAttribute('aria-valuenow','7000');
+ expect(screen.getByRole('slider',{name:'구간 종료'})).toHaveAttribute('aria-valuenow','7060');
+ expect(screen.getByRole('button',{name:'확인'})).toBeEnabled();
 });
 it.each(['image', 'video'] as const)('shows the recommendation once for %s length changes and dismisses after three seconds', async (kind) => {
   vi.useFakeTimers();
