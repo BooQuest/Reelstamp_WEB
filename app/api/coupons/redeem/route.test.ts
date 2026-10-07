@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { POST as generalPost } from './route';
 import { POST } from '../wadiz/redeem/route';
 const { post } = vi.hoisted(() => ({ post: vi.fn() }));
-vi.mock('@/app/lib/api/server-client', () => ({ getServerApiClient: async () => ({ post }) }));
+vi.mock('@/app/lib/api/server-client', () => ({ getMutableServerApiClient: async () => ({ post }) }));
 function request(body: unknown, origin = 'https://test.local') {
   return new NextRequest('https://test.local/api/coupons/redeem', {
     method: 'POST', headers: { origin, 'Content-Type': 'application/json' }, body: JSON.stringify(body),

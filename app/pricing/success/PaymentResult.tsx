@@ -1,4 +1,6 @@
 'use client';
+
+import { authFetch } from '@/app/lib/auth/browser-session';
 import { useEffect, useEffectEvent, useState } from 'react';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import Link from 'next/link';
@@ -19,7 +21,7 @@ export default function PaymentResult({ orderId }: { orderId: string }) {
     let count = 0;
     async function poll() {
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `/api/passes/orders/${encodeURIComponent(orderId)}`,
           { cache: 'no-store', signal: controller.signal },
         );

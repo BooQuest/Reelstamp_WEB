@@ -1,6 +1,6 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
-import { getServerApiClient } from '@/app/lib/api/server-client';
+import { getServerApiClient, getMutableServerApiClient } from '@/app/lib/api/server-client';
 import { isCouponAvailability } from './availability';
 import type { CouponAvailability, EntitlementSummary } from './types';
 
@@ -11,8 +11,8 @@ export async function getEntitlements(): Promise<EntitlementSummary> {
   return data.data;
 }
 
-export async function getCouponAvailability(): Promise<CouponAvailability> {
-  const api = await getServerApiClient();
+export async function getCouponAvailability(mutable = false): Promise<CouponAvailability> {
+  const api = await (mutable ? getMutableServerApiClient() : getServerApiClient());
   const { data } = await api.get('/api/coupons/availability', { headers: { 'Cache-Control': 'no-cache' } });
   if (!data.success || !isCouponAvailability(data.data)) throw new Error('Coupon availability unavailable');
   return data.data;
@@ -21,6 +21,7 @@ export async function getCouponAvailability(): Promise<CouponAvailability> {
 export function couponApiError(error: unknown) {
   const response = (error as { response?: { status?: number; data?: { errorCode?: string } } })?.response;
   const messages: Record<string, string> = {
+    AUTH_ACCOUNT_CHANGED: '이전에 사용하던 계정으로 로그인해 주세요.',
     COUPON_WADIZ_DISABLED: '현재 와디즈 쿠폰은 등록할 수 없습니다.',
     COUPON_GENERAL_DISABLED: '현재 일반 쿠폰은 등록할 수 없습니다.',
     COUPON_CODE_INVALID: '쿠폰 코드가 올바르지 않습니다.',

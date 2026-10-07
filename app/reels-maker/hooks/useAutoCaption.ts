@@ -1,5 +1,7 @@
 'use client';
 
+import { authFetch } from '@/app/lib/auth/browser-session';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WebApiResponse } from '@/app/lib/api/auth';
 import type {
@@ -28,7 +30,7 @@ export default function useAutoCaption({
 
   const reloadSession = useCallback(async () => {
     if (!sessionId) return;
-    const response = await fetch(`/api/reels-maker/sessions/${sessionId}`, {
+    const response = await authFetch(`/api/reels-maker/sessions/${sessionId}`, {
       method: 'GET',
       cache: 'no-store',
     });
@@ -41,7 +43,7 @@ export default function useAutoCaption({
   const start = useCallback(async () => {
     if (!sessionId) return null;
     setError(null);
-    const response = await fetch(
+    const response = await authFetch(
       `/api/reels-maker/sessions/${sessionId}/auto-captions`,
       { method: 'POST' }
     );
@@ -63,7 +65,7 @@ export default function useAutoCaption({
 
     const poll = async () => {
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `/api/reels-maker/sessions/${sessionId}/auto-captions/${encodeURIComponent(jobId)}`,
           { method: 'GET', cache: 'no-store' }
         );

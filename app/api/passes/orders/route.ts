@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/app/lib/api/auth';
-import { getServerApiClient } from '@/app/lib/api/server-client';
+import { getMutableServerApiClient } from '@/app/lib/api/server-client';
 import { createPayAppPaymentLink } from '@/app/lib/api/payapp';
 import {
   internalPassRequest,
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       { status: 403 },
     );
   try {
-    const user = await getCurrentUser();
+    const user = await getCurrentUser(true);
     if (!user || user.guest || user.provider === 'GUEST')
       return NextResponse.json(
         { message: '로그인이 필요합니다.' },
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
         { message: '결제 설정을 확인 중입니다.' },
         { status: 503 },
       );
-    const api = await getServerApiClient();
+    const api = await getMutableServerApiClient();
     const { data } = await api.post('/api/passes/orders', {
       code,
       version,

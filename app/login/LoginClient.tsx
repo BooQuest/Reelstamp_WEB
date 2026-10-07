@@ -80,15 +80,13 @@ export default function LoginClient() {
   }, []);
 
   const createOauthNonce = () => {
-    return (
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : Math.random().toString(36).substring(2, 12)
-    );
+    return crypto.randomUUID();
   };
 
-  const prepareOauthState = (prefix: LoginOAuthStatePrefix) => {
+  const prepareOauthState = async (prefix: LoginOAuthStatePrefix) => {
     const state = buildLoginOauthState(prefix, createOauthNonce(), getStoredLoginReturnUrl());
+    const response = await fetch('/api/auth/oauth-state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: prefix.toUpperCase(), state }) });
+    if (!response.ok) throw new Error('로그인을 시작하지 못했습니다. 다시 시도해 주세요.');
     sessionStorage.setItem('oauth_state', state);
     return state;
   };
@@ -133,7 +131,7 @@ export default function LoginClient() {
           return;
         }
       }
-      if (state && storedState && state !== storedState) {
+      if (!storedState || !state || state !== storedState) {
         setError('로그인 state 검증에 실패했습니다. 다시 시도해주세요.');
         setIsProcessing(false);
         return;
@@ -151,13 +149,13 @@ export default function LoginClient() {
       } else if (inferredProvider === 'GOOGLE') {
         handleGoogleCode(code, state as string);
       } else {
-        handleKakaoCode(code);
+        handleKakaoCode(code, state);
       }
     }
   }, [isProcessing, isSocialAuthenticated]);
 
   // [카카오] 인가 코드를 액세스 토큰으로 교환
-  const handleKakaoCode = async (code: string) => {
+  const handleKakaoCode = async (code: string, state: string) => {
     setIsLoadingKakao(true);
     setLoadingText('카카오 로그인 처리 중...');
     setError(null);
@@ -166,7 +164,7 @@ export default function LoginClient() {
       const tokenResponse = await fetch('/api/auth/kakao-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, redirectUri }),
+        body: JSON.stringify({ code, state, redirectUri }),
       });
 
       const tokenData = (await tokenResponse.json()) as OAuthTokenResponse;
@@ -320,22 +318,25 @@ export default function LoginClient() {
   };
 
   // 카카오 로그인 핸들러
-  const handleKakaoLogin = () => {
+  const handleKakaoLogin = async () => {
+    try {
     setIsLoadingKakao(true);
     setLoadingText('카카오 로그인 중...');
     setError(null);
     sessionStorage.setItem('oauth_provider', 'KAKAO');
-    const state = prepareOauthState('kakao');
+    const state = await prepareOauthState('kakao');
     const redirectUri = `${window.location.origin}/login`;
     const kakaoAuthUrl = new URL('/api/auth/kakao-authorize', window.location.origin);
 
     kakaoAuthUrl.searchParams.set('redirectUri', redirectUri);
     kakaoAuthUrl.searchParams.set('state', state);
     window.location.href = kakaoAuthUrl.toString();
+    } catch { setError('로그인을 시작하지 못했습니다. 다시 시도해 주세요.'); setIsLoadingKakao(false); }
   };
 
   // 네이버 로그인 핸들러
-  const handleNaverLogin = () => {
+  const handleNaverLogin = async () => {
+    try {
     const clientId = process.env.NEXT_PUBLIC_NAVER_CLIENT_ID;
     if (!clientId) {
       setError('네이버 API 키가 설정되지 않았습니다.');
@@ -343,7 +344,7 @@ export default function LoginClient() {
     }
 
     const redirectUri = encodeURIComponent(`${window.location.origin}/login`);
-    const state = prepareOauthState('naver');
+    const state = await prepareOauthState('naver');
     
     setIsLoadingNaver(true);
     setLoadingText('네이버 로그인 중...');
@@ -352,10 +353,12 @@ export default function LoginClient() {
 
     const naverAuthUrl = `https://nid.naver.com/oauth2.0/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}`;
     window.location.href = naverAuthUrl;
+    } catch { setError('로그인을 시작하지 못했습니다. 다시 시도해 주세요.'); setIsLoadingNaver(false); }
   };
 
   // 구글 로그인 핸들러
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = async () => {
+    try {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) {
       setError('구글 클라이언트 ID가 설정되지 않았습니다.');
@@ -363,7 +366,7 @@ export default function LoginClient() {
     }
 
     const redirectUri = `${window.location.origin}/login`;
-    const state = prepareOauthState('google');
+    const state = await prepareOauthState('google');
     const scope = encodeURIComponent('openid email profile');
 
     setIsLoadingGoogle(true);
@@ -379,6 +382,7 @@ export default function LoginClient() {
       `&state=${encodeURIComponent(state)}`;
 
     window.location.href = googleAuthUrl;
+    } catch { setError('로그인을 시작하지 못했습니다. 다시 시도해 주세요.'); setIsLoadingGoogle(false); }
   };
 
   // 아직 마운트 전이면 아무것도 렌더링하지 않음

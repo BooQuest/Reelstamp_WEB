@@ -66,6 +66,7 @@ describe('checkout retries', () => {
         .mockResolvedValue({
           ok: false,
           status: 409,
+          clone: () => ({ json: async () => ({ message: '상품 정보가 변경되었습니다.' }) }),
           json: async () => ({ message: '상품 정보가 변경되었습니다.' }),
         }),
     );

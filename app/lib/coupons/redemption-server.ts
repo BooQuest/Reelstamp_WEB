@@ -1,6 +1,6 @@
 import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerApiClient } from '@/app/lib/api/server-client';
+import { getMutableServerApiClient } from '@/app/lib/api/server-client';
 import { sameOrigin } from '@/app/lib/passes/payment-server';
 import { couponApiError } from './server';
 import type { CouponType } from './types';
@@ -20,7 +20,7 @@ export async function proxyCouponRedemption(request: NextRequest, type: CouponTy
     return reject(wadiz ? '닉네임과 쿠폰 코드를 입력해 주세요.' : '쿠폰 코드를 입력해 주세요.');
   }
   try {
-    const api = await getServerApiClient();
+    const api = await getMutableServerApiClient();
     const payload = { ...(wadiz ? { nickname: body.nickname.trim() } : {}), code: body.code.trim().toUpperCase() };
     const { data } = await api.post(wadiz ? '/api/coupons/wadiz/redeem' : '/api/coupons/redeem', payload);
     return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });

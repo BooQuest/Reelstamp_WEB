@@ -75,8 +75,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
 
     const response = await apiClient.post('/api/reels-maker/sessions/delete-batch', {
       sessionIds,

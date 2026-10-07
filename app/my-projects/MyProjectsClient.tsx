@@ -1,5 +1,7 @@
 'use client';
 
+import { authFetch } from '@/app/lib/auth/browser-session';
+
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Clock3, Loader2, Trash2 } from 'lucide-react';
@@ -83,7 +85,7 @@ export default function MyProjectsClient({
     setDeletingId(project.sessionId);
     setNotice(null);
     try {
-      const response = await fetch(`/api/reels-maker/sessions/${project.sessionId}`, {
+      const response = await authFetch(`/api/reels-maker/sessions/${project.sessionId}`, {
         method: 'DELETE',
       });
       const payload = await response.json().catch(() => null);

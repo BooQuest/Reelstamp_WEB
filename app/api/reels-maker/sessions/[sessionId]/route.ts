@@ -33,8 +33,8 @@ export async function GET(
   { params }: { params: Promise<{ sessionId?: string }> }
 ) {
   try {
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
 
     const rawSessionId = await resolveSessionId(request, params);
     if (!rawSessionId) {
@@ -84,8 +84,8 @@ export async function DELETE(
   { params }: { params: Promise<{ sessionId?: string }> }
 ) {
   try {
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
 
     const rawSessionId = await resolveSessionId(request, params);
     if (!rawSessionId) {

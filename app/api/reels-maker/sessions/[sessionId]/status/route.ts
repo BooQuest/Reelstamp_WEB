@@ -6,8 +6,8 @@ export async function GET(
   { params }: { params: Promise<{ sessionId?: string }> }
 ) {
   try {
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
 
     const resolvedParams = await Promise.resolve(params);
     const rawSessionId =

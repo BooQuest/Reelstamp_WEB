@@ -7,8 +7,8 @@ export async function POST(
 ) {
   try {
     const body = await request.json();
-    const { getServerApiClient } = await import('@/app/lib/api/server-client');
-    const apiClient = await getServerApiClient();
+    const { getMutableServerApiClient } = await import('@/app/lib/api/server-client');
+    const apiClient = await getMutableServerApiClient();
 
     const resolvedParams = await Promise.resolve(params);
     const rawSessionId =

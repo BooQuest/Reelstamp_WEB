@@ -10,7 +10,7 @@ const { user, post, pay, internal } = vi.hoisted(() => ({
 }));
 vi.mock('@/app/lib/api/auth', () => ({ getCurrentUser: user }));
 vi.mock('@/app/lib/api/server-client', () => ({
-  getServerApiClient: async () => ({ post }),
+  getMutableServerApiClient: async () => ({ post }),
 }));
 vi.mock('@/app/lib/api/payapp', () => ({ createPayAppPaymentLink: pay }));
 vi.mock('@/app/lib/passes/payment-server', async (original) => ({

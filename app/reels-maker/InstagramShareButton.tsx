@@ -1,11 +1,14 @@
 'use client';
 
+import { authFetch } from '@/app/lib/auth/browser-session';
+
 import { useState } from 'react';
 import { Loader2, Share2, X } from 'lucide-react';
 
 type InstagramShareModalType = 'desktop' | 'unsupported' | 'error';
 
 type InstagramShareButtonProps = {
+  sessionId: number | null;
   finalVideoUrl: string | null;
   finalVideoMimeType: string;
   templateTitle?: string | null;
@@ -57,6 +60,7 @@ const guessShareVideoExtension = (mimeType: string, url: string) => {
 };
 
 export default function InstagramShareButton({
+  sessionId,
   finalVideoUrl,
   finalVideoMimeType,
   templateTitle,
@@ -82,8 +86,8 @@ export default function InstagramShareButton({
     setIsSharing(true);
 
     try {
-      const downloadUrl = `/api/reels-maker/download?url=${encodeURIComponent(finalVideoUrl)}`;
-      const response = await fetch(downloadUrl, { cache: 'no-store' });
+      const downloadUrl = `/api/reels-maker/download?sessionId=${sessionId}`;
+      const response = await authFetch(downloadUrl, { cache: 'no-store' });
 
       if (!response.ok) {
         throw new Error('영상 파일을 불러오지 못했습니다.');

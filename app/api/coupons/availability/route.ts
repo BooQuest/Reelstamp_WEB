@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    return NextResponse.json({ success: true, data: await getCouponAvailability() }, {
+    return NextResponse.json({ success: true, data: await getCouponAvailability(true) }, {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch {
