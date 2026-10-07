@@ -18,22 +18,22 @@ type ServiceNotice = {
   content: ReactNode;
 };
 
-// Temporary beta notices: active from 2026-09-07 00:00 until 2026-10-07 00:00 KST.
+// Temporary beta notices: active from 2026-09-07 00:00 until 2026-10-10 00:00 KST.
 const NOTICE_START_AT = '2026-09-06T15:00:00.000Z';
-const NOTICE_END_AT = '2026-10-06T15:00:00.000Z';
+const NOTICE_END_AT = '2026-10-09T15:00:00.000Z';
 
 export const SERVICE_NOTICE_STORAGE_KEY_PREFIX =
   'reelstamp:temporary-service-notice-dismissed:2026-beta-v1';
 
 const TEMPORARY_SERVICE_NOTICES: ServiceNotice[] = [
   {
-    id: 'launch-schedule-change-2026-10-07',
-    title: '정식 출시 일정 변경 안내 (10/7 출시 예정)',
+    id: 'launch-schedule-change-2026-10-10',
+    title: '정식 출시 일정 변경 안내 (10/10 출시 예정)',
     content: (
       <>
         <p>
           보다 안정적인 서비스 제공을 위한 기능 점검으로 인해 정식 출시 일정을{' '}
-          <strong className="font-bold text-gray-950">10월 7일로</strong> 변경하게
+          <strong className="font-bold text-gray-950">10월 10일로</strong> 변경하게
           되었습니다. 남은 기간 동안 기능 안정성과 사용성을 더욱 꼼꼼히 점검하여 더
           나은 모습으로 찾아뵙겠습니다.
         </p>
