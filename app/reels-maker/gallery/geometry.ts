@@ -1,6 +1,6 @@
 import type { CropRegion, MediaEdit } from './types';
 
-export const MAX_CLIP_SECONDS = 3600;
+export const MAX_CLIP_SECONDS = 60;
 export const clamp = (n: number, low: number, high: number) =>
   Math.max(low, Math.min(high, n));
 export function coverCrop(width: number, height: number): CropRegion {
@@ -36,14 +36,15 @@ export function setEditDuration(
   duration: number,
   max: number,
 ): MediaEdit {
+  const maximum = Math.min(floorTenth(max), MAX_CLIP_SECONDS);
   if (
     !Number.isFinite(duration) ||
     duration < 0.1 ||
-    duration > Math.min(max, MAX_CLIP_SECONDS) ||
+    duration > maximum ||
     Math.abs(duration * 10 - Math.round(duration * 10)) > 1e-6
   )
     throw new Error(
-      '0.1초 단위로 원본 길이 이내의 값을 입력해 주세요. (최대 3,600초)',
+      `0.1초부터 ${maximum.toFixed(1)}초까지 0.1초 단위로 입력해 주세요.`,
     );
   return {
     ...edit,

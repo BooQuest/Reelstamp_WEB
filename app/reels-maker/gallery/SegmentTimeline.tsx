@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 import { useRef, type PointerEvent } from 'react';
-import { clamp, floorTenth } from './geometry';
+import { clamp, floorTenth, MAX_CLIP_SECONDS } from './geometry';
 
 type Segment = { start: number; duration: number };
 type Props = Segment & {
@@ -45,7 +45,7 @@ export default function SegmentTimeline({
       const finish = initial.start + initial.duration;
       const next = clamp(
         rounded,
-        Math.max(0, finish - 3600),
+        Math.max(0, finish - MAX_CLIP_SECONDS),
         floorTenth(finish - 0.1),
       );
       onChange({
@@ -56,7 +56,7 @@ export default function SegmentTimeline({
       const finish = clamp(
         rounded,
         initial.start + 0.1,
-        Math.min(maximum, initial.start + 3600),
+        Math.min(maximum, initial.start + MAX_CLIP_SECONDS),
       );
       onChange({
         start: initial.start,
@@ -101,9 +101,9 @@ export default function SegmentTimeline({
       type="button"
       role="slider"
       aria-label={mode === 'start' ? '구간 시작' : '구간 종료'}
-      aria-valuemin={mode === 'start' ? Math.max(0, end - 3600) : start + 0.1}
+      aria-valuemin={mode === 'start' ? Math.max(0, end - MAX_CLIP_SECONDS) : start + 0.1}
       aria-valuemax={
-        mode === 'start' ? end - 0.1 : Math.min(maximum, start + 3600)
+        mode === 'start' ? end - 0.1 : Math.min(maximum, start + MAX_CLIP_SECONDS)
       }
       aria-valuenow={mode === 'start' ? start : end}
       aria-valuetext={`${(mode === 'start' ? start : end).toFixed(1)}초`}

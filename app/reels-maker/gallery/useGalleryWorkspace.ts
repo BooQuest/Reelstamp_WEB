@@ -20,7 +20,7 @@ import {
   uploadOriginal,
   uploadRevision,
 } from './api';
-import { coverCrop, floorTenth } from './geometry';
+import { coverCrop, floorTenth, MAX_CLIP_SECONDS, setEditDuration } from './geometry';
 import { loadVideoMetadataFromUrl } from '../utils/media/metadata';
 import { captureVideoSegmentToBlob } from '../utils/media/videoSegment';
 import { imageToVideoBlob } from '../utils/media/imageVideo';
@@ -167,7 +167,7 @@ export default function useGalleryWorkspace(options: Options) {
       await image.decode();
       width = image.naturalWidth;
       height = image.naturalHeight;
-      duration = 3600;
+      duration = MAX_CLIP_SECONDS;
     }
     if (signal.aborted || !alive.current) return false;
     if (
@@ -181,7 +181,7 @@ export default function useGalleryWorkspace(options: Options) {
       0.1,
       Math.min(
         floorTenth(duration),
-        3600,
+        MAX_CLIP_SECONDS,
         Math.round((cut.durationSeconds || 3) * 10) / 10,
       ),
     );
@@ -192,6 +192,7 @@ export default function useGalleryWorkspace(options: Options) {
             0.1,
             Math.min(
               floorTenth(duration),
+              MAX_CLIP_SECONDS,
               Math.round(savedEdit.duration * 10) / 10,
             ),
           ),
@@ -289,6 +290,13 @@ export default function useGalleryWorkspace(options: Options) {
   const confirm = (edit: MediaEdit) =>
     run(async (signal) => {
       if (!editing?.item.file) return;
+      edit = setEditDuration(
+        edit,
+        edit.duration,
+        editing.item.kind === 'image'
+          ? MAX_CLIP_SECONDS
+          : floorTenth(editing.sourceDuration),
+      );
       history.begin();
       try {
         const media = editing;

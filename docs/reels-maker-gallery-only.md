@@ -45,6 +45,8 @@ Automated tests mock storage/API boundaries. Local browser checks use a mock ser
 
 ## Duration and cancellation
 
+Gallery photos allow 0.1–60.0 seconds. Video selections allow up to the smaller of 60.0 seconds and the original duration rounded down to a tenth. The same bounds apply to initial/re-edit values, length inputs, timeline handles, and confirmation before conversion. Long video originals remain intact: any source position can be selected as long as the interval is at most 60 seconds and ends within the source. Backend enforces the 60-second limit when preparing new revisions. This limit requires no additional DB migration or AI contract change.
+
 Browser MediaRecorder may include startup padding even when a 0.1-second segment was requested. The preview stops at the selected duration. Backend supplies `targetDurationSeconds` only for newly generated gallery revision outputs, and AI trims/pads video and audio to that duration before concatenation. Old saved clips and fixed-template clips keep their prior duration behavior. This avoids silently changing the user's chosen length.
 
 Conversion and uploads can be cancelled before atomic state application starts. Cancellation leaves the existing cut intact; any abandoned upload is reclaimed by project cleanup. Once the atomic apply request begins, cancel is disabled until its outcome is known. A session switch invalidates queued client updates.
