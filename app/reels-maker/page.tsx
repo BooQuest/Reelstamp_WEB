@@ -1,7 +1,9 @@
 'use client';
 
+import PreparationView from './components/PreparationView';
 import { authFetch } from '@/app/lib/auth/browser-session';
 import GalleryMaker, { type GalleryMakerHandle } from './gallery/GalleryMaker';
+import useGalleryWorkspace from './gallery/useGalleryWorkspace';
 
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { WebApiResponse } from '@/app/lib/api/auth';
@@ -181,7 +183,7 @@ const buildSessionErrorState = ({
 function ReelsMakerInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAuthenticated, setUser, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const templateId = searchParams.get('templateId');
   const requestedSessionId = searchParams.get('sessionId');
   const returnUrlParam = searchParams.get('returnUrl');
@@ -204,7 +206,11 @@ function ReelsMakerInner() {
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [gallerySession, setGallerySession] =
     useState<ReelsMakerSessionResponse | null>(null);
-  const [editorBusy, setEditorBusy] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [preparationError, setPreparationError] = useState<string | null>(null);
+  const completing = useRef(false);
+  const completionStartedAt = useRef<number | null>(null);
+  const completionPreparationState = useRef('saved');
   const galleryMakerRef = useRef<GalleryMakerHandle>(null);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [sessionClipMap, setSessionClipMap] = useState<Record<number, number>>(
@@ -313,13 +319,13 @@ function ReelsMakerInner() {
 
   const {
     serializeEdit,
-    isDraftDirty,
     projectName,
     setProjectName,
     draftSaveStatus,
     lastSavedAt,
     captionsRef,
     saveDraftNow,
+    getDraftVersion,
     hydrateDraft,
     resetDraft,
     applyServerUpdate,
@@ -341,10 +347,9 @@ function ReelsMakerInner() {
   const {
     clips,
     clipPosters,
-    uploadedCuts,
-    uploadingCuts,
     clipUploadErrors,
     fixedClipErrors,
+    replaceClips,
     hydrate: hydrateClips,
     reset: resetClips,
     retryFixedClip,
@@ -357,9 +362,9 @@ function ReelsMakerInner() {
       if (cut.isFixed) {
         return Boolean(clips[index]) && !fixedClipErrors[index];
       }
-      return uploadedCuts[index];
+      return Boolean(clips[index]);
     });
-  }, [clips, cuts, fixedClipErrors, sessionId, uploadedCuts]);
+  }, [clips, cuts, fixedClipErrors, sessionId]);
   const isActiveCutFixed = activeCut?.isFixed ?? false;
   const activeFixedError = fixedClipErrors[activeCutIndex];
   const activeUploadError = clipUploadErrors[activeCutIndex];
@@ -407,8 +412,8 @@ function ReelsMakerInner() {
     (session: ReelsMakerSessionResponse) => {
       setGallerySession(session);
       const nextCaptions = normalizeSessionCaptions(session.captionItems);
-      setCaptions(nextCaptions);
-      setCaptionsEnabled(session.captionsEnabled !== false);
+      // STT refreshes generated captions; retain concurrent local overlay/text edits.
+      setCaptions(current => [...current.filter(item => item.source !== 'AUTO'), ...nextCaptions.filter(item => item.source === 'AUTO')]);
       setAutoCaptionAvailable(Boolean(session.autoCaptionAvailable));
       setAutoCaptionRemainingAttempts(
         session.autoCaptionRemainingAttempts ?? 0,
@@ -427,11 +432,20 @@ function ReelsMakerInner() {
   );
   const applyGallerySession = useCallback(
     async (session: ReelsMakerSessionResponse) => {
-      applyCaptionSessionSnapshot(session);
-      await hydrateClips(session, true);
+      setGallerySession(session);
+      setStaleAutoCaptionClipIds(session.staleAutoCaptionClipIds ?? []);
+      applyServerUpdate(session);
     },
-    [applyCaptionSessionSnapshot, hydrateClips],
+    [applyServerUpdate],
   );
+
+  const galleryWorkspace = useGalleryWorkspace({
+    session: gallerySession, cuts, clips, captions, captionsEnabled, activeCutIndex,
+    onSession: applyGallerySession, serialize: task => serializeEdit(task, true),
+    onLocalClips: replaceClips,
+    onLocalCaptions: (items, enabled) => { setCaptions(items); setCaptionsEnabled(enabled); },
+  });
+  const editorBusy = galleryWorkspace.busy || Boolean(galleryWorkspace.editing);
 
   const {
     job: autoCaptionJob,
@@ -444,7 +458,7 @@ function ReelsMakerInner() {
     onSessionReloaded: applyCaptionSessionSnapshot,
   });
   const currentStaleAutoCaptionClipIds =
-    autoCaptionJob?.staleClipIds ?? staleAutoCaptionClipIds;
+    [...new Set([...(autoCaptionJob?.staleClipIds ?? []), ...staleAutoCaptionClipIds])];
   const exampleReels: TemplateExampleReel[] =
     template?.exampleReels && template.exampleReels.length > 0
       ? template.exampleReels
@@ -701,9 +715,9 @@ function ReelsMakerInner() {
     explicitCompletionReturnUrl,
     hydrateDraft,
     hydrateClips,
+    sessionId,
     requestedSessionId,
     router,
-    setUser,
     setEditingCaptionId,
     setSelectedCaptionId,
     template,
@@ -810,17 +824,20 @@ function ReelsMakerInner() {
   }, []);
 
   const handleFinalComplete = async (options?: FinalCompleteOptions) => {
-    if (!sessionId) return;
-    if (!allDone) return;
-    if (isRegisteredUser) {
-      cancelScheduledSave();
-      const saved = await saveDraftNow();
-      if (!saved) {
-        alert(
-          '최신 작업 내용을 저장하지 못했습니다. 저장을 다시 시도해 주세요.',
-        );
-        return;
-      }
+    if (!sessionId || !allDone || completing.current) return;
+    completing.current = true;
+    completionStartedAt.current = performance.now();
+    completionPreparationState.current = galleryWorkspace.saveState;
+    setPreparing(true); setPreparationError(null);
+    let savedVersion: number | undefined;
+    try {
+      const savedSession = await galleryWorkspace.flush();
+      if (!(await saveDraftNow())) throw new Error('최신 작업 내용을 저장하지 못했습니다.');
+      savedVersion = getDraftVersion() ?? savedSession?.draftVersion ?? undefined;
+    } catch (error) {
+      setPreparationError(error instanceof Error ? error.message : '제작 준비에 실패했습니다.');
+      completing.current = false;
+      return;
     }
 
     const captionItems = captions
@@ -839,6 +856,7 @@ function ReelsMakerInner() {
         style: buildCaptionExportStyle(caption.style),
       }));
 
+    setPreparing(false);
     setStage('processing');
 
     try {
@@ -852,6 +870,7 @@ function ReelsMakerInner() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             captionItems,
+            version: savedVersion,
             captionsEnabled,
             acceptedStaleAutoCaptionClipIds: completionAcceptedStaleClipIds,
           }),
@@ -897,6 +916,12 @@ function ReelsMakerInner() {
       });
       setFinalVideoMimeType('video/mp4');
       setFinalPosterUrl(null);
+      try {
+        const check = await authFetch(`/api/reels-maker/sessions/${sessionId}/status`, { cache: 'no-store' });
+        const result = await check.json();
+        if (result.data?.status === 'PROCESSING' || result.data?.status === 'COMPLETED') return;
+      } catch { /* The server also returns the current job for duplicate completion requests. */ }
+      completing.current = false;
       setStage('capture');
       alert(COMPLETE_START_FAILED_USER_MESSAGE);
     }
@@ -942,6 +967,7 @@ function ReelsMakerInner() {
         if (data.status === 'COMPLETED') {
           setFinalVideoUrl(data.finalVideoUrl || null);
           setFinalVideoMimeType('video/mp4');
+          completing.current = false;
           setStage('preview');
         } else if (data.status === 'FAILED') {
           console.error('[ReelsMakerProcessingFailed]', {
@@ -949,6 +975,7 @@ function ReelsMakerInner() {
             processingJobId: data.processingJobId ?? null,
             errorMessage: data.errorMessage ?? null,
           });
+          completing.current = false;
           setStage('capture');
           alert(PROCESSING_FAILED_USER_MESSAGE);
         } else if (Date.now() - startedAt > PROCESSING_STATUS_TIMEOUT_MS) {
@@ -958,6 +985,7 @@ function ReelsMakerInner() {
             lastKnownStatus: data.status,
             processingJobId: data.processingJobId ?? null,
           });
+          completing.current = false;
           setStage('capture');
           alert(PROCESSING_TIMEOUT_USER_MESSAGE);
         }
@@ -993,15 +1021,12 @@ function ReelsMakerInner() {
         alert('편집 저장이 완료된 뒤 나가주세요.');
         return;
       }
-      if (Object.values(uploadingCuts).some(Boolean)) {
-        alert('영상 업로드가 완료된 뒤 나갈 수 있습니다.');
-        return;
-      }
+
       resumeAutosave();
       setPendingExitHref(href);
       setIsExitConfirmOpen(true);
     },
-    [editorBusy, resumeAutosave, uploadingCuts],
+    [editorBusy, resumeAutosave],
   );
 
   const abandonGuestSession = useCallback(async () => {
@@ -1024,18 +1049,22 @@ function ReelsMakerInner() {
     try {
       cancelScheduledSave();
       if (isGuestUser) {
-        await abandonGuestSession();
+        if (!(await abandonGuestSession())) throw new Error('프로젝트를 삭제하지 못했습니다. 다시 시도해 주세요.');
       } else {
+        await galleryWorkspace.flush();
         const saved = await saveDraftNow();
         if (!saved) return;
       }
       setIsExitConfirmOpen(false);
       router.push(pendingExitHref);
+    } catch (error) {
+      alert(getErrorMessage(error, '작업을 저장하지 못했습니다. 다시 시도해 주세요.'));
     } finally {
       setIsExitSaving(false);
     }
   }, [
     abandonGuestSession,
+    galleryWorkspace,
     cancelScheduledSave,
     isGuestUser,
     pendingExitHref,
@@ -1241,6 +1270,12 @@ function ReelsMakerInner() {
     );
   }
 
+  if (preparing) {
+    return <PreparationView state={galleryWorkspace.saveState} error={preparationError}
+      onRetry={() => void handleFinalComplete()}
+      onBack={() => setPreparing(false)} />;
+  }
+
   if (stage === 'caption-edit' && sessionId) {
     return (
       <AutoCaptionEditor
@@ -1265,7 +1300,7 @@ function ReelsMakerInner() {
         isProcessing={isAutoCaptionProcessing}
         isRegisteredUser={isRegisteredUser}
         loginHref={buildLoginHref(currentReelsMakerHref)}
-        onStartAutoCaption={startAutoCaption}
+        onStartAutoCaption={async () => { await galleryWorkspace.flush(); return startAutoCaption(); }}
         onAcceptStale={setAcceptedStaleAutoCaptionClipIds}
         onBack={() => setStage('capture')}
         onComplete={() => void handleFinalComplete()}
@@ -1309,6 +1344,12 @@ function ReelsMakerInner() {
         onDownload={handleDownload}
         onDone={handleFinalDone}
         onReset={handleResetAll}
+        onReady={() => {
+          if (completionStartedAt.current !== null) {
+            console.info('[ReelsMakerTiming]', { phase: 'complete-to-first-frame', preparationStateAtClick: completionPreparationState.current, elapsedMs: Math.round(performance.now() - completionStartedAt.current) });
+            completionStartedAt.current = null;
+          }
+        }}
         onShared={setDownloadToastMessage}
       />
     );
@@ -1319,22 +1360,14 @@ function ReelsMakerInner() {
       {gallerySession && (
         <GalleryMaker
           key={gallerySession.sessionId}
+          workspace={galleryWorkspace}
           session={gallerySession}
           cuts={cuts}
           clips={clips}
-          captions={captions}
           captionsEnabled={captionsEnabled}
           activeCutIndex={activeCutIndex}
           onSelectCut={setActiveCutIndex}
-          onSession={applyGallerySession}
-          serialize={serializeEdit}
-          onBusy={setEditorBusy}
-          allDone={
-            allDone &&
-            !isDraftDirty &&
-            draftSaveStatus !== 'saving' &&
-            draftSaveStatus !== 'error'
-          }
+          allDone={allDone}
           captionEditor={captionEditor}
           fixedErrors={fixedClipErrors}
           onRetryFixed={retryFixedClip}
@@ -1382,7 +1415,13 @@ function ReelsMakerInner() {
                     }}
                     className="block text-[10px] text-white/60"
                   >
-                    {draftSaveStatus === 'saving'
+                    {galleryWorkspace.saveState === 'uploading'
+                      ? '원본 업로드 중'
+                      : galleryWorkspace.saveState === 'saving'
+                        ? '편집 저장 중'
+                        : galleryWorkspace.saveState === 'error' || galleryWorkspace.saveState === 'conflict'
+                          ? '편집 저장 실패'
+                          : draftSaveStatus === 'saving'
                       ? '저장 중…'
                       : draftSaveStatus === 'error'
                         ? '저장 실패 · 다시 시도'

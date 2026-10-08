@@ -13,22 +13,21 @@ import type {
   MediaEdit,
   EditorSnapshot,
 } from './types';
+import { editorRequest } from './api';
 import {
-  applyEditorState,
-  editorRequest,
-  EditorConflict,
-  uploadOriginal,
-  uploadRevision,
-} from './api';
-import { coverCrop, floorTenth, MAX_CLIP_SECONDS, setEditDuration } from './geometry';
+  coverCrop,
+  floorTenth,
+  MAX_CLIP_SECONDS,
+  setEditDuration,
+} from './geometry';
 import { loadVideoMetadataFromUrl } from '../utils/media/metadata';
-import { captureVideoSegmentToBlob } from '../utils/media/videoSegment';
-import { imageToVideoBlob } from '../utils/media/imageVideo';
 import useMediaSources from './useMediaSources';
 import useEditorHistory from './useEditorHistory';
+import { SourceSync, type SaveState } from './sourceSync';
+import { sessionPreview } from './sessionPreview';
 
 type Options = {
-  session: ReelsMakerSessionResponse;
+  session: ReelsMakerSessionResponse | null;
   cuts: MakerCut[];
   clips: Array<ClipInfo | null>;
   captions: CaptionItem[];
@@ -38,113 +37,166 @@ type Options = {
   serialize: (
     task: (version: number) => Promise<ReelsMakerSessionResponse>,
   ) => Promise<ReelsMakerSessionResponse>;
-  onBusy: (value: boolean) => void;
+  onLocalClips: (clips: Array<ClipInfo | null>) => void;
+  onLocalCaptions: (captions: CaptionItem[], enabled: boolean) => void;
 };
 export default function useGalleryWorkspace(options: Options) {
-  const { session, cuts, clips, activeCutIndex, onSession, serialize, onBusy } =
-    options;
+  const { session, cuts, activeCutIndex } = options;
+  const latest = useRef(options);
+  latest.current = options;
   const sources = useMediaSources();
-  const { release } = sources;
   const [editing, setEditing] = useState<EditingMedia | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [conflict, setConflict] = useState(false);
-  const running = useRef(false);
-  const applying = useRef(false);
-  const [applyingState, setApplyingState] = useState(false);
-  const controller = useRef<AbortController | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>('saved');
+  const [selections, setSelections] = useState<EditorSnapshot['clips']>([]);
+  const selectionsRef = useRef(selections);
+  selectionsRef.current = selections;
+  const local = useRef(new Map<string, ClipInfo>());
+  const sync = useRef<SourceSync | null>(null);
+  const prepareController = useRef<AbortController | null>(null);
   const alive = useRef(true);
+  const sessionId = session?.sessionId;
+  const initialized = useRef<number | null>(null);
+  const syncOptions = () => ({
+    sessionId: sessionId!,
+    serialize: (
+      task: (version: number) => Promise<ReelsMakerSessionResponse>,
+    ) => latest.current.serialize(task),
+    onSession: (result: ReelsMakerSessionResponse) => {
+      void latest.current.onSession(result);
+    },
+    onState: (state: SaveState, message: string | null) => {
+      if (alive.current) {
+        setSaveState(state);
+        setError(message);
+      }
+    },
+  });
   useEffect(() => {
     alive.current = true;
     return () => {
       alive.current = false;
-      controller.current?.abort();
+      prepareController.current?.abort();
+      sync.current?.dispose();
     };
   }, []);
-  const editingUrl = editing?.item.url;
   useEffect(() => {
-    if (editingUrl) return () => release(editingUrl);
-  }, [editingUrl, release]);
-  const targetFor = (cutIndex: number): MediaTarget | null => {
-    const cut = cuts[cutIndex];
-    const clip = session.clips.find((c) => c.order === cut?.order);
-    return cut && !cut.isFixed && clip
-      ? { sessionId: session.sessionId, clipId: clip.clipId, cutIndex }
-      : null;
-  };
-  const validTarget = (target: MediaTarget) => {
-    const expected = targetFor(target.cutIndex);
-    return (
-      expected?.sessionId === target.sessionId &&
-      expected.clipId === target.clipId
-    );
-  };
-  useEffect(() => {
-    onBusy(busy || conflict);
-    return () => onBusy(false);
-  }, [busy, conflict, onBusy]);
-  useEffect(() => {
-    if (!busy) return;
-    const prevent = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = '';
-    };
-    window.addEventListener('beforeunload', prevent);
-    return () => window.removeEventListener('beforeunload', prevent);
-  }, [busy]);
-  const snapshot: EditorSnapshot = {
-    clips: session.clips
+    if (!sessionId) return;
+    const current = latest.current.session!;
+    const initial = current.clips
       .filter((c) => !c.fixed && (c.revision || !c.objectKey))
-      .map((c) => ({ clipId: c.clipId, revisionId: c.revision?.id ?? null })),
+      .map((c) => ({ clipId: c.clipId, revisionId: c.revision?.id ?? null }));
+    local.current.clear();
+    setSelections(initial);
+    selectionsRef.current = initial;
+    sync.current = new SourceSync(syncOptions());
+    sync.current.seed(
+      {
+        clips: initial,
+        captions: latest.current.captions,
+        captionsEnabled: latest.current.captionsEnabled,
+      },
+      current,
+    );
+    initialized.current = sessionId;
+    setSaveState('saved');
+    setError(null);
+    setEditing(null);
+    return () => {
+      sync.current?.dispose();
+      prepareController.current?.abort();
+      initialized.current = null;
+    };
+    // Session objects change on every autosave; only a different session owns new resources.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+  const snapshot: EditorSnapshot = {
+    clips: selections,
     captions: options.captions,
     captionsEnabled: options.captionsEnabled,
   };
-  const snapshotRef = useRef(snapshot);
-  snapshotRef.current = snapshot;
-  const run = async (task: (signal: AbortSignal) => Promise<void>) => {
-    if (running.current || conflict) return;
-    running.current = true;
-    controller.current = new AbortController();
-    setBusy(true);
-    setError(null);
-    try {
-      await task(controller.current.signal);
-    } catch (e) {
-      if (
-        !alive.current ||
-        (e instanceof DOMException && e.name === 'AbortError')
-      )
-        return;
-      setError(
-        e instanceof Error ? e.message : '미디어 편집을 처리하지 못했습니다.',
+  const signature = JSON.stringify(snapshot);
+  useEffect(() => {
+    const next = JSON.parse(signature) as EditorSnapshot;
+    if (
+      initialized.current === sessionId &&
+      JSON.stringify(next.clips) === JSON.stringify(selectionsRef.current)
+    )
+      sync.current?.schedule(next);
+  }, [signature, sessionId]);
+  useEffect(() => {
+    if (saveState === 'saved') return;
+    const prevent = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', prevent);
+    return () => window.removeEventListener('beforeunload', prevent);
+  }, [saveState]);
+  const publish = (next: EditorSnapshot) => {
+    selectionsRef.current = next.clips;
+    setSelections(next.clips);
+    const opts = latest.current;
+    const previews = opts.cuts.map((cut, index) => {
+      const saved = opts.session?.clips.find((c) => c.order === cut.order);
+      const selected = next.clips.find((c) => c.clipId === saved?.clipId);
+      if (cut.isFixed || !selected) return opts.clips[index] ?? null;
+      if (!selected.revisionId) return null;
+      return (
+        local.current.get(selected.revisionId) ??
+        (opts.session ? sessionPreview(opts.session, selected.clipId) : null)
       );
-      if (e instanceof EditorConflict) setConflict(true);
-    } finally {
-      running.current = false;
-      if (alive.current) setBusy(false);
-    }
+    });
+    opts.onLocalClips(previews);
+    opts.onLocalCaptions(next.captions, next.captionsEnabled);
+    sync.current?.schedule(next);
   };
-  const apply = async (state: EditorSnapshot) => {
-    applying.current = true;
-    setApplyingState(true);
-    try {
-      const result = await serialize((version) => {
-        if (!alive.current || controller.current?.signal.aborted)
-          throw new DOMException('Cancelled', 'AbortError');
-        return applyEditorState(
-          session.sessionId,
-          version,
-          state,
-          controller.current?.signal,
-        );
+  const history = useEditorHistory(snapshot, async (next) => {
+    publish(next);
+  });
+  useEffect(() => {
+    history.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+  useEffect(() => {
+    // Commit-after-render runs on the next animation frame; collect after that frame.
+    const timer = setTimeout(() => {
+      if (busy) return;
+      const ids = history.referencedRevisionIds();
+      const urls = new Set<string>();
+      const keys = new Set<string>();
+      if (editing) {
+        urls.add(editing.item.url);
+        keys.add(editing.item.key);
+      }
+      for (const [id, clip] of local.current) {
+        if (ids.has(id)) {
+          urls.add(clip.url);
+          if (clip.source) keys.add(clip.source.key);
+        } else local.current.delete(id);
+      }
+      latest.current.clips.forEach((clip) => {
+        if (clip) {
+          urls.add(clip.url);
+          if (clip.source) keys.add(clip.source.key);
+        }
       });
-      if (alive.current) await onSession(result);
-    } finally {
-      applying.current = false;
-      if (alive.current) setApplyingState(false);
-    }
+      sync.current?.retain(ids, keys);
+      sources.retain(urls);
+    }, 50);
+    return () => clearTimeout(timer);
+  });
+  const targetFor = (cutIndex: number): MediaTarget | null => {
+    const cut = cuts[cutIndex];
+    const clip = session?.clips.find((c) => c.order === cut?.order);
+    return cut && !cut.isFixed && clip && session
+      ? { sessionId: session.sessionId, clipId: clip.clipId, cutIndex }
+      : null;
   };
-  const history = useEditorHistory(snapshot, apply);
+  const validTarget = (target: MediaTarget) =>
+    target.sessionId === latest.current.session?.sessionId &&
+    targetFor(target.cutIndex)?.clipId === target.clipId;
   const openItem = async (
     source: MediaSource,
     target: MediaTarget,
@@ -209,6 +261,11 @@ export default function useGalleryWorkspace(options: Options) {
       ) > 0.002
     )
       edit.crop = coverCrop(width, height);
+    sync.current?.prepare(source, {
+      width,
+      height,
+      duration: source.kind === 'video' ? duration : null,
+    });
     setEditing({
       item: source,
       clipId: target.clipId,
@@ -221,186 +278,169 @@ export default function useGalleryWorkspace(options: Options) {
     });
     return true;
   };
-  const prepareSource = async (
+  const prepare = async (
     source: MediaSource,
     target: MediaTarget,
-    signal: AbortSignal,
     edit?: MediaEdit,
   ) => {
-    let opened = false;
+    prepareController.current?.abort();
+    const controller = new AbortController();
+    prepareController.current = controller;
+    setBusy(true);
+    setError(null);
     try {
-      opened = await openItem(source, target, signal, edit);
+      await openItem(source, target, controller.signal, edit);
+    } catch (e) {
+      if (!controller.signal.aborted)
+        setError(
+          e instanceof Error ? e.message : '미디어를 불러오지 못했습니다.',
+        );
     } finally {
-      if (!opened) sources.release(source.url);
+      if (alive.current && prepareController.current === controller)
+        setBusy(false);
     }
   };
-  const ensureLegacy = async (signal: AbortSignal, target: MediaTarget) => {
-    const cut = cuts[target.cutIndex];
-    if (!cut || cut.isFixed) return session;
-    let saved = session.clips.find((c) => c.order === cut.order);
-    if (!saved?.objectKey) return session;
-    let current = session;
-    if (!saved.revision) {
-      const clip = clips[target.cutIndex];
-      if (!clip) throw new Error('저장된 영상을 먼저 불러와 주세요.');
-      const meta = await loadVideoMetadataFromUrl(clip.url, () => {}, signal);
-      current = await serialize((version) => {
-        if (!alive.current || signal.aborted)
-          throw new DOMException('Cancelled', 'AbortError');
-        return editorRequest<ReelsMakerSessionResponse>(
-          `/api/reels-maker/sessions/${session.sessionId}/clips/${saved!.clipId}/revisions/adopt-legacy`,
-          {
-            version,
-            metadata: {
-              name: `cut-${cut.order}.video`,
-              kind: 'video',
-              contentType: clip.mimeType,
-              duration: meta.duration,
-              width: meta.width,
-              height: meta.height,
-              sizeBytes: clip.blob.size,
-            },
-          },
-          'POST',
-          signal,
-        );
-      });
-      if (!alive.current || signal.aborted)
-        throw new DOMException('Cancelled', 'AbortError');
-      await onSession(current);
-      saved = current.clips.find((c) => c.order === cut.order);
-    }
-    return current;
-  };
-  const reedit = () => {
+  const reedit = async () => {
     const target = targetFor(activeCutIndex);
-    if (!target) return;
-    return run(async (signal) => {
-      const current = await ensureLegacy(signal, target);
-      const saved = current.clips.find((c) => c.clipId === target.clipId);
-      const asset = current.mediaAssets?.find(
-        (a) => a.id === saved?.revision?.assetId,
-      );
-      if (!asset || !saved?.revision)
-        throw new Error('저장된 원본을 찾을 수 없습니다.');
-      const source = await sources.fromAsset(asset, signal);
-      await prepareSource(source, target, signal, saved.revision.edit);
-    });
-  };
-  const confirm = (edit: MediaEdit) =>
-    run(async (signal) => {
-      if (!editing?.item.file) return;
-      edit = setEditDuration(
-        edit,
-        edit.duration,
-        editing.item.kind === 'image'
-          ? MAX_CLIP_SECONDS
-          : floorTenth(editing.sourceDuration),
-      );
-      history.begin();
-      try {
-        const media = editing;
-        const prepared =
-          media.item.kind === 'image'
-            ? await imageToVideoBlob(
-                media.item.file!,
-                edit.duration,
-                () => {},
-                signal,
-                edit.crop,
-              )
-            : await captureVideoSegmentToBlob(
-                media.item.url,
-                {
-                  width: media.width,
-                  height: media.height,
-                  duration: media.sourceDuration,
-                },
-                edit.start,
-                edit.start + edit.duration,
-                () => {},
-                signal,
-                edit.crop,
-              );
-        let asset = media.item.asset;
-        if (!asset) {
-          asset = await uploadOriginal(
-            session.sessionId,
-            media.item.file!,
+    if (!target || !session) return;
+    const current = latest.current.clips[activeCutIndex];
+    if (!current) return;
+    if (current.source && current.edit)
+      return prepare(current.source, target, current.edit);
+    let savedSession = session;
+    let saved = session.clips.find((c) => c.clipId === target.clipId)!;
+    try {
+      if (!saved.revision) {
+        setBusy(true);
+        const metadata = await loadVideoMetadataFromUrl(current.url, () => {});
+        const blob = current.blob ?? (await (await fetch(current.url)).blob());
+        savedSession = await options.serialize((version) =>
+          editorRequest<ReelsMakerSessionResponse>(
+            `/api/reels-maker/sessions/${session.sessionId}/clips/${target.clipId}/revisions/adopt-legacy`,
             {
-              width: media.width,
-              height: media.height,
-              duration:
-                media.item.kind === 'video' ? media.sourceDuration : null,
+              version,
+              metadata: {
+                name: `cut-${saved.order}.video`,
+                kind: 'video',
+                contentType: current.mimeType,
+                duration: metadata.duration,
+                width: metadata.width,
+                height: metadata.height,
+                sizeBytes: blob.size,
+              },
             },
-            signal,
-          );
-          sources.associate(media.item.key, asset);
-          setEditing((previous) =>
-            previous
-              ? { ...previous, item: { ...previous.item, asset } }
-              : null,
-          );
-        }
-        const revision = await uploadRevision(
-          session.sessionId,
-          media.clipId,
-          asset.id,
-          edit,
-          prepared,
-          signal,
+          ),
         );
-        const before = snapshotRef.current;
-        const state = {
-          ...before,
-          clips: [
-            ...before.clips.filter((c) => c.clipId !== media.clipId),
-            { clipId: media.clipId, revisionId: revision.id },
-          ],
-        };
-        await apply(state);
-        if (alive.current) {
-          setEditing(null);
-          history.commitAfterRender();
-        }
-      } catch (e) {
-        history.cancel();
-        throw e;
+        await options.onSession(savedSession);
+        saved = savedSession.clips.find((c) => c.clipId === target.clipId)!;
+        const adopted = { ...current, revisionId: saved.revision!.id };
+        local.current.set(saved.revision!.id, adopted);
+        const next = [
+          ...selectionsRef.current.filter((c) => c.clipId !== target.clipId),
+          { clipId: target.clipId, revisionId: saved.revision!.id },
+        ];
+        selectionsRef.current = next;
+        setSelections(next);
       }
-    });
+      const asset = savedSession.mediaAssets?.find(
+        (a) => a.id === saved.revision?.assetId,
+      );
+      if (!asset || !saved.revision)
+        throw new Error('저장된 원본을 찾을 수 없습니다.');
+      const source = await sources.fromAsset(
+        asset,
+        new AbortController().signal,
+        session.sessionId,
+      );
+      await prepare(source, target, saved.revision.edit);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '원본을 불러오지 못했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  };
   return {
     busy,
     error,
-    conflict,
+    saveState,
+    conflict: saveState === 'conflict',
     editing,
     history,
     targetFor,
     clearError: () => setError(null),
-    openFile: (file: File, target: MediaTarget) => {
-      if (!validTarget(target) || editing) return Promise.resolve();
-      return run(async (signal) => {
-        await ensureLegacy(signal, target);
-        if (signal.aborted || !alive.current) return;
-        await prepareSource(sources.fromFile(file), target, signal);
-      });
+    openFile: async (file: File, target: MediaTarget) => {
+      if (!validTarget(target) || editing) return;
+      await prepare(sources.fromFile(file), target);
     },
     reedit,
-    confirm,
-    canCancel: !applyingState,
-    cancelEdit: () => {
-      if (!applying.current) {
-        controller.current?.abort();
-        setEditing(null);
-        setError(null);
-      }
+    confirm: async (value: MediaEdit) => {
+      if (!editing || !session) return;
+      const startedAt = performance.now();
+      const media = editing;
+      const edit = setEditDuration(
+        value,
+        value.duration,
+        media.item.kind === 'image'
+          ? MAX_CLIP_SECONDS
+          : floorTenth(media.sourceDuration),
+      );
+      history.begin();
+      const previous = latest.current.clips[media.cutIndex];
+      const saved = session.clips.find((c) => c.clipId === media.clipId);
+      if (previous && saved?.revision && !local.current.has(saved.revision.id))
+        local.current.set(saved.revision.id, previous);
+      const id = crypto.randomUUID();
+      local.current.set(id, {
+        url: media.item.url,
+        blob: media.item.file,
+        mimeType: media.item.file?.type || media.item.asset?.contentType || '',
+        duration: edit.duration,
+        kind: media.item.kind,
+        edit,
+        revisionId: id,
+        source: media.item,
+      });
+      sync.current?.register({
+        id,
+        clipId: media.clipId,
+        source: media.item,
+        edit,
+      });
+      publish({
+        ...snapshot,
+        clips: [
+          ...selectionsRef.current.filter((c) => c.clipId !== media.clipId),
+          { clipId: media.clipId, revisionId: id },
+        ],
+      });
+      setEditing(null);
+      history.commitAfterRender();
+      requestAnimationFrame(() => {
+        if (alive.current)
+          console.info('[ReelsMakerTiming]', {
+            phase: 'edit-confirm-to-next-frame',
+            elapsedMs: Math.round(performance.now() - startedAt),
+          });
+      });
     },
-    undo: () =>
-      run(async () => {
-        await history.move(-1);
-      }),
-    redo: () =>
-      run(async () => {
-        await history.move(1);
-      }),
+    canCancel: true,
+    cancelEdit: () => {
+      prepareController.current?.abort();
+      setEditing(null);
+      setBusy(false);
+    },
+    undo: () => history.move(-1),
+    redo: () => history.move(1),
+    flush: async () => {
+      sync.current?.schedule({
+        clips: selectionsRef.current,
+        captions: latest.current.captions,
+        captionsEnabled: latest.current.captionsEnabled,
+      });
+      return sync.current?.flush() ?? null;
+    },
+    retry: async () => {
+      await sync.current?.flush();
+    },
   };
 }

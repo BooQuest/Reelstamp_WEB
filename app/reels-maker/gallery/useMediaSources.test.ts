@@ -17,32 +17,23 @@ const asset: MediaAsset = {
 };
 beforeEach(installObjectUrls);
 describe('editing source ownership', () => {
-  it('reuses an uploaded asset after releasing its temporary editing URL', () => {
+  it('keeps referenced editing URLs and releases unused URLs once', () => {
     const { result, unmount } = renderHook(useMediaSources);
-    const file = new File(['photo'], 'photo.jpg', {
-      type: 'image/jpeg',
-      lastModified: 1,
-    });
+    const file = new File(['photo'], 'photo.jpg', { type: 'image/jpeg' });
     const first = result.current.fromFile(file);
-    result.current.associate(first.key, asset);
-    result.current.release(first.url);
     const second = result.current.fromFile(file);
-    expect(second.asset).toEqual(asset);
-    expect(second.url).not.toBe(first.url);
+    result.current.retain(new Set([second.url]));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(first.url);
     result.current.release(first.url);
     unmount();
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith(second.url);
   });
-  it('does not retain asset associations after leaving the project', () => {
-    const first = renderHook(useMediaSources);
-    const file = new File(['photo'], 'photo.jpg', { type: 'image/jpeg' });
-    const source = first.result.current.fromFile(file);
-    first.result.current.associate(source.key, asset);
-    first.unmount();
-    const second = renderHook(useMediaSources);
-    expect(second.result.current.fromFile(file).asset).toBeUndefined();
-    second.unmount();
-    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+  it('restores originals using an owned streaming endpoint without downloading a blob', async () => {
+    const { result, unmount } = renderHook(useMediaSources);
+    const source = await result.current.fromAsset(asset, new AbortController().signal, 1);
+    expect(source.url).toBe('/api/reels-maker/sessions/1/media?assetId=asset');
+    expect(source.asset).toEqual(asset); expect(source.file).toBeUndefined();
+    unmount(); expect(URL.revokeObjectURL).not.toHaveBeenCalled();
   });
 });

@@ -45,6 +45,9 @@ export default function useEditorHistory(
     [],
   );
   return {
+    referencedRevisionIds: () => new Set([...entries.current.flatMap(entry => [...entry.before.clips, ...entry.after.clips]), ...current.current.clips]
+      .map(clip => clip.revisionId).filter((id): id is string => Boolean(id))),
+    reset: () => { entries.current = []; position.current = 0; before.current = null; },
     canUndo: position.current > 0,
     canRedo: position.current < entries.current.length,
     begin: () => {

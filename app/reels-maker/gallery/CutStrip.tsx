@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react';
+import ClipPlayer from '../components/ClipPlayer';
 import type { MakerCut, ClipInfo } from '../types';
 type Props = {
   cuts: MakerCut[];
@@ -31,13 +32,7 @@ export default function CutStrip({
           className={`relative aspect-[3/4] w-14 shrink-0 overflow-hidden rounded-lg border-2 ${index === activeCutIndex ? 'border-rose-500' : 'border-white/20'}`}
         >
           {clips[index] && (
-            <video
-              src={clips[index]!.url}
-              muted
-              playsInline
-              preload="metadata"
-              className="absolute inset-0 h-full w-full object-cover"
-            />
+            <ClipPlayer key={`${clips[index]!.url}:${clips[index]!.revisionId}`} clip={clips[index]!} thumbnail />
           )}
           <span className="absolute left-1 top-1 rounded bg-black/50 px-1 text-[10px]">
             {index + 1}

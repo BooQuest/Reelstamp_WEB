@@ -171,6 +171,7 @@ export default function MyProjectsClient({
                     <MyProjectThumbnail
                       projectThumbnailUrl={project.projectThumbnailUrl}
                       projectThumbnailContentType={project.projectThumbnailContentType}
+                      projectThumbnailEdit={project.projectThumbnailEdit}
                       templateThumbnailUrl={project.templateThumbnailUrl}
                       alt={`${displayTitle} 썸네일`}
                     />

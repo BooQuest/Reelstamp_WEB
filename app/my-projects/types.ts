@@ -7,6 +7,7 @@ export type DraftProjectItem = {
   templateThumbnailUrl?: string | null;
   projectThumbnailUrl?: string | null;
   projectThumbnailContentType?: string | null;
+  projectThumbnailEdit?: import('../reels-maker/gallery/types').MediaEdit | null;
   projectName?: string | null;
   status: string;
   finalVideoUrl?: string | null;

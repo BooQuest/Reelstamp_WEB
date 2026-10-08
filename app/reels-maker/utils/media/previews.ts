@@ -54,7 +54,7 @@ export async function createPosterFromClip(clip: ClipInfo, signal?: AbortSignal)
   video.muted = true;
   video.playsInline = true;
   video.preload = 'auto';
-  const url = URL.createObjectURL(clip.blob);
+  const url = clip.blob ? URL.createObjectURL(clip.blob) : clip.url;
   try {
     const ready = waitForMediaEvent(video, 'loadeddata', '포스터 생성 실패', signal);
     video.src = url;
@@ -71,7 +71,7 @@ export async function createPosterFromClip(clip: ClipInfo, signal?: AbortSignal)
     return canvas.toDataURL('image/jpeg', 0.92);
   } finally {
     video.src = '';
-    URL.revokeObjectURL(url);
+    if (clip.blob) URL.revokeObjectURL(url);
   }
 }
 

@@ -1,10 +1,8 @@
 import { authFetch } from '@/app/lib/auth/browser-session';
-import type { PreparedClip, ReelsMakerSessionResponse } from '../types';
+import type { ReelsMakerSessionResponse } from '../types';
 import type {
-  ClipRevision,
   EditorSnapshot,
   MediaAsset,
-  MediaEdit,
 } from './types';
 import { buildCaptionExportStyle } from '../utils/captions';
 
@@ -62,29 +60,6 @@ export async function uploadOriginal(
   );
   await putFile(upload, file, signal);
   return editorRequest<MediaAsset>(
-    `${base}/${upload.id}/upload-complete`,
-    undefined,
-    'POST',
-    signal,
-  );
-}
-export async function uploadRevision(
-  sessionId: number,
-  clipId: number,
-  assetId: string,
-  edit: MediaEdit,
-  clip: PreparedClip,
-  signal?: AbortSignal,
-) {
-  const base = `/api/reels-maker/sessions/${sessionId}/clips/${clipId}/revisions`;
-  const upload = await editorRequest<Upload>(
-    `${base}/presign`,
-    { assetId, edit, contentType: clip.mimeType },
-    'POST',
-    signal,
-  );
-  await putFile(upload, clip.blob, signal);
-  return editorRequest<ClipRevision>(
     `${base}/${upload.id}/upload-complete`,
     undefined,
     'POST',
