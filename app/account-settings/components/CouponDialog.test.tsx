@@ -123,7 +123,6 @@ describe('coupon registration', () => {
     expect(screen.getByText('총 4개월 이용권이 지급되었습니다.')).toBeInTheDocument();
     expect(screen.getByText(/2027-03-10 까지/)).toBeInTheDocument();
     expect(screen.getByText(/적용 시작: 2026-11-10 18:00:00/)).toBeInTheDocument();
-    expect(screen.getByText(/전액 환불되면/)).toBeInTheDocument();
     expect(registered).toHaveBeenCalledWith(result);
     expect(screen.getByRole('heading')).toHaveFocus();
   });

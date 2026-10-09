@@ -1,6 +1,6 @@
 import { useEffect, useRef, type FormEvent } from 'react';
 import type { CouponType } from '@/app/lib/coupons/types';
-import { COUPON_EXTENSION_NOTICE, COUPON_REFUND_NOTICE } from '@/app/lib/coupons/display';
+import { COUPON_EXTENSION_NOTICE } from '@/app/lib/coupons/display';
 
 export const couponActionClass = 'w-full rounded-xl bg-gradient-to-r from-[#EB48B1] to-[#F59A39] px-5 py-3 font-semibold text-white disabled:opacity-50';
 export type CouponErrors = { nickname?: string; code?: string };
@@ -40,7 +40,6 @@ export default function CouponRegistrationForm({ type, nickname, code, setNickna
       <div className="space-y-2 rounded-xl bg-gray-50 p-3 text-xs leading-5 text-gray-500">
         {type === 'WADIZ' && <p>2026년 12월 31일까지 등록할 수 있습니다. (한국 시간)</p>}
         <p>{COUPON_EXTENSION_NOTICE}</p>
-        <p>{COUPON_REFUND_NOTICE}</p>
       </div>
       {failure && <p ref={failureMessage} role="alert" aria-atomic="true" className="text-sm leading-6 text-red-600">
         {failure}
