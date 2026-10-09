@@ -946,6 +946,9 @@ function ReelsMakerInner() {
     if (stage !== 'processing' || !sessionId) return;
 
     let isCancelled = false;
+    let finished = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const controller = new AbortController();
     const startedAt = Date.now();
 
     const fetchStatus = async () => {
@@ -955,6 +958,7 @@ function ReelsMakerInner() {
           {
             method: 'GET',
             cache: 'no-store',
+            signal: controller.signal,
           },
         );
         const payload: WebApiResponse<ReelsMakerStatusResponse> =
@@ -965,11 +969,13 @@ function ReelsMakerInner() {
         const data = payload.data;
         if (isCancelled) return;
         if (data.status === 'COMPLETED') {
+          finished = true;
           setFinalVideoUrl(data.finalVideoUrl || null);
           setFinalVideoMimeType('video/mp4');
           completing.current = false;
           setStage('preview');
         } else if (data.status === 'FAILED') {
+          finished = true;
           console.error('[ReelsMakerProcessingFailed]', {
             sessionId,
             processingJobId: data.processingJobId ?? null,
@@ -979,6 +985,7 @@ function ReelsMakerInner() {
           setStage('capture');
           alert(PROCESSING_FAILED_USER_MESSAGE);
         } else if (Date.now() - startedAt > PROCESSING_STATUS_TIMEOUT_MS) {
+          finished = true;
           console.error('[ReelsMakerProcessingTimeout]', {
             sessionId,
             elapsedMs: Date.now() - startedAt,
@@ -990,18 +997,22 @@ function ReelsMakerInner() {
           alert(PROCESSING_TIMEOUT_USER_MESSAGE);
         }
       } catch {
-        // ignore polling errors
+        // Retry transient polling errors without overlapping requests.
+      } finally {
+        if (!isCancelled && !finished) {
+          timer = setTimeout(fetchStatus, gallerySession ? 1000 : 2000);
+        }
       }
     };
 
-    const intervalId = window.setInterval(fetchStatus, 2000);
     fetchStatus();
 
     return () => {
       isCancelled = true;
-      window.clearInterval(intervalId);
+      controller.abort();
+      clearTimeout(timer);
     };
-  }, [sessionId, stage]);
+  }, [sessionId, stage, gallerySession]);
 
   useEffect(() => {
     if (!downloadToastMessage) return;

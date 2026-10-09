@@ -346,6 +346,30 @@ describe('gallery-only maker integration', () => {
     const complete = fetchMock.mock.calls.find(([url]) => url.endsWith('/complete'))!;
     expect(JSON.parse(complete[1].body).version).toBe(session.draftVersion);
   });
+  it('does not overlap slow completion status requests and aborts on unmount', async () => {
+    const original = fetchMock.getMockImplementation()!;
+    let release!: () => void;
+    let signal: AbortSignal | undefined;
+    let statusCalls = 0;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/status')) {
+        statusCalls += 1;
+        signal = init?.signal as AbortSignal;
+        await pending;
+      }
+      return original(url, init);
+    });
+    await openMaker();
+    await applyFile();
+    fireEvent.click(screen.getByRole('button', { name: '완료' }));
+    await waitFor(() => expect(statusCalls).toBe(1));
+    await new Promise(resolve => setTimeout(resolve, 2100));
+    expect(statusCalls).toBe(1);
+    cleanup();
+    expect(signal?.aborted).toBe(true);
+    release();
+  });
   it('keeps the current cut after apply, including templates with fixed cuts', async () => {
     templateCuts = [
       makeCut(),
