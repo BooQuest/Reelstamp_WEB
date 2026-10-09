@@ -1,0 +1,88 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgb(0 0 0 / 55%);
+  backdrop-filter: blur(2px);
+}
+
+.card {
+  /* Keep comfortable viewport margins around the artwork and confirmation button. */
+  width: min(400px, 100%, max(280px, calc((100dvh - 152px) * 822 / 1218)));
+  max-height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 24px;
+  background: white;
+  box-shadow: 0 24px 70px rgb(15 23 42 / 26%);
+}
+
+.scroller { min-height: 0; overflow-y: auto; }
+
+.artwork {
+  position: relative;
+  aspect-ratio: 822 / 1218;
+  overflow: hidden;
+  border-radius: 24px 24px 0 0;
+}
+
+.image {
+  /* Original 941x1672 artwork: display the card at x=60, y=218, w=822, h=1218. */
+  position: absolute;
+  width: 114.477%;
+  max-width: none;
+  height: auto;
+  left: -7.299%;
+  top: -17.898%;
+  /* Bleed past the clipping boundary to hide the source artwork's pale edge. */
+  transform: scale(1.02);
+  transform-origin: center;
+}
+
+.close {
+  position: absolute;
+  right: 2%;
+  top: 2%;
+  width: 12%;
+  min-width: 44px;
+  height: 8%;
+  min-height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.dots {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 9%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3.2%;
+  background: linear-gradient(to bottom, transparent, #fafafa 25%, #fafafa);
+}
+
+.dot, .activeDot { width: 2.8%; aspect-ratio: 1; border-radius: 50%; background: #d1d0d2; }
+.activeDot { background: #ff315f; }
+.footer { flex-shrink: 0; padding: 0 16px 14px; background: white; }
+.confirm {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  background: #ff315f;
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.confirm:hover { background: #e92351; }
+.confirm:focus, .close:focus { outline: none; }
+.overlay[data-keyboard-navigation] .confirm:focus { background: #bd1740; }
+.overlay[data-keyboard-navigation] .close:focus { background: rgb(0 0 0 / 20%); }
