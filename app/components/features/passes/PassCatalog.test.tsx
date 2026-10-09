@@ -7,6 +7,7 @@ const products: PassProduct[] = [
   {
     plan: 'PASS_7D',
     name: '1주일 체험권 test',
+    regularPrice: 1000,
     salePrice: 1000,
     durationValue: 7,
     durationUnit: 'DAY',
@@ -16,6 +17,7 @@ const products: PassProduct[] = [
   {
     plan: 'PASS_1M',
     name: '1개월 이용권',
+    regularPrice: 49500,
     salePrice: 9900,
     durationValue: 1,
     durationUnit: 'MONTH',
@@ -38,6 +40,9 @@ describe('test purchase buttons', () => {
     ).toHaveAttribute('href', '/pricing/checkout/PASS_7D');
     expect(screen.getByRole('button', { name: '출시 예정' })).toBeDisabled();
     expect(screen.getByText('1,000원')).toBeInTheDocument();
+    expect(screen.getByText('49,500원').tagName).toBe('DEL');
+    expect(screen.getByText('80% 할인')).toBeInTheDocument();
+    expect(screen.getByText('9,900원')).toBeInTheDocument();
   });
   it('keeps purchases disabled for accounts without permission', () => {
     render(

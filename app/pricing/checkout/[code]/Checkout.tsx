@@ -5,7 +5,7 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { durationLabel, type PassProduct } from '@/app/lib/passes/catalog';
-import { formatWon } from '@/app/lib/passes/display';
+import PassPrice from '@/app/components/features/passes/PassPrice';
 import { buildLoginReturnHref } from '@/app/lib/auth/loginRedirect';
 export default function Checkout({
   product,
@@ -83,7 +83,7 @@ export default function Checkout({
       >
         <h2 className="text-xl font-bold">{product.name}</h2>
         <p>이용기간 {durationLabel(product)}</p>
-        <p className="text-3xl font-bold">{formatWon(product.salePrice)}</p>
+        <PassPrice product={product} />
         <p className="text-sm text-gray-600">1회 결제 · 자동갱신 없음</p>
         <label className="block text-sm">
           휴대전화번호

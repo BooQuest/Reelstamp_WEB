@@ -1,6 +1,7 @@
 export interface PassProduct {
   plan: string;
   name: string;
+  regularPrice: number | null;
   salePrice: number;
   durationValue: number;
   durationUnit: 'DAY' | 'MONTH' | 'YEAR';
@@ -50,6 +51,7 @@ export function parseProducts(value: unknown): PassProduct[] {
       ({
         plan,
         name,
+        price,
         salePrice,
         durationValue,
         durationUnit,
@@ -59,6 +61,10 @@ export function parseProducts(value: unknown): PassProduct[] {
         ({
           plan,
           name,
+          regularPrice:
+            Number.isSafeInteger(price?.regularPrice) && price.regularPrice > 0
+              ? price.regularPrice
+              : null,
           salePrice,
           durationValue,
           durationUnit,
