@@ -13,7 +13,7 @@ export type MediaAsset = {
   sizeBytes: number;
   downloadUrl: string;
 };
-export type ClipRevision = { id: string; assetId: string; edit: MediaEdit };
+export type ClipRevision = { id: string; assetId: string; edit: MediaEdit; renderMode?: 'RENDERED' | 'SOURCE_EDIT' };
 export type MediaSource = {
   key: string;
   name: string;

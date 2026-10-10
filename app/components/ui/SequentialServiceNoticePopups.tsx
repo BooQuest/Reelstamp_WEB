@@ -95,10 +95,12 @@ const getServerHydrationSnapshot = () => false;
 
 type SequentialServiceNoticePopupsProps = {
   referenceDate?: Date;
+  onVisibilityChange?: (visible: boolean) => void;
 };
 
 export default function SequentialServiceNoticePopups({
   referenceDate,
+  onVisibilityChange,
 }: SequentialServiceNoticePopupsProps) {
   const isHydrated = useSyncExternalStore(
     subscribeToHydration,
@@ -110,6 +112,7 @@ export default function SequentialServiceNoticePopups({
   );
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const [, refreshPeriod] = useState(0);
   const now = referenceDate ?? new Date();
   const currentNotice =
     isHydrated && isWithinNoticePeriod(now)
@@ -117,6 +120,20 @@ export default function SequentialServiceNoticePopups({
           (notice) => !closedNoticeIds.has(notice.id) && !isNoticeDismissed(notice.id)
         ) ?? null
       : null;
+
+  useEffect(() => {
+    if (isHydrated) onVisibilityChange?.(Boolean(currentNotice));
+  }, [isHydrated, currentNotice, onVisibilityChange]);
+
+  useEffect(() => {
+    if (referenceDate) return;
+    const boundary = [NOTICE_START_AT, NOTICE_END_AT]
+      .map(Date.parse).find(timestamp => timestamp > Date.now());
+    if (!boundary) return;
+    const timer = window.setTimeout(() => refreshPeriod(value => value + 1),
+      Math.min(boundary - Date.now(), 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  });
 
   const closeCurrentNotice = useCallback(() => {
     if (!currentNotice) {

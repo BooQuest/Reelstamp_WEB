@@ -24,7 +24,15 @@ export type ClipSource = 'recording' | 'file';
 export type VideoDebugLogger = (event: string, details?: unknown) => void;
 export type SubmitClip = (index: number, clip: PreparedClip, source: ClipSource) => Promise<void>;
 
-export type ClipInfo = PreparedClip & { url: string; objectKey?: string | null };
+export type ClipInfo = Omit<PreparedClip, 'blob'> & {
+  blob?: Blob;
+  url: string;
+  objectKey?: string | null;
+  kind?: 'video' | 'image';
+  edit?: import('./gallery/types').MediaEdit;
+  revisionId?: string;
+  source?: import('./gallery/types').MediaSource;
+};
 
 export type MakerCut = {
   id: string;
@@ -95,6 +103,8 @@ export type ReelsMakerSessionClip = {
 };
 
 export type ReelsMakerSessionResponse = {
+  displayStatus?: 'CAPTURE' | 'PROCESSING' | 'COMPLETED';
+  newEdit?: boolean;
   mediaAssets?: MediaAsset[];
   sessionId: number;
   templateId: string;
@@ -130,6 +140,8 @@ export type ReelsMakerClipPresignResponse = {
 export type DraftSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 export type ReelsMakerStatusResponse = {
+  displayStatus?: 'CAPTURE' | 'PROCESSING' | 'COMPLETED';
+  mediaError?: string | null;
   sessionId: number;
   status: string;
   finalVideoUrl?: string | null;

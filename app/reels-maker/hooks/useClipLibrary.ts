@@ -1,6 +1,6 @@
 'use client';
 
-import { authFetch } from '@/app/lib/auth/browser-session';
+import { sessionPreview } from '../gallery/sessionPreview';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClipInfo, ClipSource, MakerCut, PreparedClip, ReelsMakerSessionResponse } from '../types';
@@ -40,7 +40,7 @@ export default function useClipLibrary({ cuts, sessionId, sessionClipMap }: Opti
 
   const replaceClips = useCallback((next: Array<ClipInfo | null>) => {
     clipsRef.current.forEach((clip, index) => {
-      if (clip?.url && clip.url !== next[index]?.url) revokeBlobUrl(clip.url);
+      if (clip?.url && !clip.edit && clip.url !== next[index]?.url) revokeBlobUrl(clip.url);
     });
     clipsRef.current = next;
     setClips(next);
@@ -60,7 +60,7 @@ export default function useClipLibrary({ cuts, sessionId, sessionClipMap }: Opti
     generationRef.current += 1;
     hydrationRef.current?.abort();
     cancelUploads();
-    clipsRef.current.forEach((clip) => revokeBlobUrl(clip?.url ?? null));
+    clipsRef.current.forEach((clip) => { if (!clip?.edit) revokeBlobUrl(clip?.url ?? null); });
     clipsRef.current = [];
   }, [cancelUploads]);
 
@@ -146,7 +146,6 @@ export default function useClipLibrary({ cuts, sessionId, sessionClipMap }: Opti
     hydrationRef.current = controller;
     const generation = generationRef.current;
     const restored: Array<ClipInfo | null> = Array(cuts.length).fill(null);
-    const createdUrls: string[] = [];
     const uploaded: Record<number, boolean> = {};
     await Promise.all((session.clips ?? []).map(async (clip) => {
       const index = cuts.findIndex((cut) => cut.order === clip.order);
@@ -156,23 +155,9 @@ export default function useClipLibrary({ cuts, sessionId, sessionClipMap }: Opti
       if (!restoreMedia || session.status !== 'CAPTURE' || cut.isFixed || clip.status !== 'UPLOADED' || !clip.downloadUrl) return;
       const existing = clipsRef.current[index];
       if (existing?.objectKey && existing.objectKey === clip.objectKey) { restored[index] = existing; return; }
-      try {
-        const response = await authFetch(`/api/reels-maker/download?url=${encodeURIComponent(clip.downloadUrl)}`, { method: 'GET', cache: 'no-store', signal: controller.signal });
-        if (!response.ok) return;
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        createdUrls.push(url);
-        restored[index] = {
-          blob,
-          objectKey: clip.objectKey,
-          url,
-          mimeType: clip.contentType || blob.type || 'video/webm',
-          duration: clip.actualDurationSeconds ?? clip.durationSeconds ?? 0,
-        };
-      } catch { /* Preserve the server upload status even if the preview cannot load. */ }
+      restored[index] = sessionPreview(session, clip.clipId);
     }));
     if (controller.signal.aborted || generation !== generationRef.current) {
-      createdUrls.forEach(revokeBlobUrl);
       return false;
     }
     updateUploaded(uploaded);
@@ -240,6 +225,6 @@ export default function useClipLibrary({ cuts, sessionId, sessionClipMap }: Opti
 
   return {
     clips, clipSources, clipPosters, uploadedCuts, uploadingCuts, clipUploadErrors,
-    fixedClipErrors, save, hydrate, reset, resetCut, retryFixedClip: resetCut, reportUploadError
+    fixedClipErrors, save, hydrate, reset, resetCut, retryFixedClip: resetCut, reportUploadError, replaceClips
   };
 }

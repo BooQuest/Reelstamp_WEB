@@ -1,11 +1,14 @@
 'use client';
 
 import Image from 'next/image';
+import ClipPlayer from '../reels-maker/components/ClipPlayer';
+import type { MediaEdit } from '../reels-maker/gallery/types';
 import { useMemo, useState } from 'react';
 
 type MyProjectThumbnailProps = {
   projectThumbnailUrl?: string | null;
   projectThumbnailContentType?: string | null;
+  projectThumbnailEdit?: MediaEdit | null;
   templateThumbnailUrl?: string | null;
   alt: string;
 };
@@ -20,6 +23,7 @@ const withInitialFrameFragment = (src: string) => {
 export default function MyProjectThumbnail({
   projectThumbnailUrl,
   projectThumbnailContentType,
+  projectThumbnailEdit,
   templateThumbnailUrl,
   alt,
 }: MyProjectThumbnailProps) {
@@ -37,6 +41,8 @@ export default function MyProjectThumbnail({
   }, [contentType, projectSrc]);
 
   if (projectSrc && !projectMediaFailed) {
+    if (projectThumbnailEdit) return <ClipPlayer thumbnail clip={{ url: projectSrc, mimeType: contentType,
+      kind: isProjectImage ? 'image' : 'video', duration: projectThumbnailEdit.duration, edit: projectThumbnailEdit }} />;
     if (isProjectImage) {
       return (
         <Image

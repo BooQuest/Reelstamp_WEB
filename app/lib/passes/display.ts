@@ -6,7 +6,6 @@ export interface PassSummary {
   name: string;
   startsAt: string | null;
   endsAt: string | null;
-  betaEnabled: boolean;
 }
 
 export interface PaymentRecord {
@@ -42,7 +41,6 @@ interface SubscriptionDisplaySource {
 
 export function toPassSummary(
   source: SubscriptionDisplaySource,
-  betaEnabled: boolean,
 ): PassSummary {
   const subscription = source.subscription;
   const plan = source.subscriptionPlan;
@@ -62,7 +60,6 @@ export function toPassSummary(
     // 다음 결제일을 만료일로 바꾸거나 없는 날짜를 계산하지 않습니다.
     startsAt: noPass ? null : (subscription?.currentPeriodStart ?? null),
     endsAt: noPass ? null : (subscription?.validUntil ?? null),
-    betaEnabled,
   };
 }
 

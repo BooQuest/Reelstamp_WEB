@@ -5,7 +5,6 @@ import { getCurrentUser } from '@/app/lib/api/auth';
 import { buildLoginReturnHref } from '@/app/lib/auth/loginRedirect';
 import PlanClient from './PlanClient';
 import { getSubscriptionStatusAction } from '@/app/actions/auth';
-import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
 import {
   toPassSummary,
   type PassSummary,
@@ -26,7 +25,7 @@ export default async function PlanPage() {
     result.success && result.data
       ? {
           status: 'ready',
-          data: toPassSummary(result.data, isReelstampBetaEnabled()),
+          data: toPassSummary(result.data),
         }
       : { status: 'error' };
 

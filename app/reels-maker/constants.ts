@@ -71,13 +71,10 @@ export const CAPTION_INPUT_MIN_WIDTH_PX = toCaptionRenderPx(140);
 export const PROCESSING_STATUS_TIMEOUT_MS = 5 * 60 * 1000;
 export const COMPLETE_START_FAILED_ERROR_CODE = 'RS-VID-001';
 export const PROCESSING_FAILED_ERROR_CODE = 'RS-VID-002';
-export const PROCESSING_TIMEOUT_ERROR_CODE = 'RS-VID-003';
 export const COMPLETE_START_FAILED_USER_MESSAGE =
   `영상 생성을 시작하지 못했어요. 잠시 후 다시 시도해 주세요. 문제가 계속되면 고객센터로 문의해 주세요. (코드: ${COMPLETE_START_FAILED_ERROR_CODE})`;
 export const PROCESSING_FAILED_USER_MESSAGE =
   `영상 생성 중 문제가 발생했어요. 잠시 후 다시 시도해 주세요. 문제가 계속되면 고객센터로 문의해 주세요. (코드: ${PROCESSING_FAILED_ERROR_CODE})`;
-export const PROCESSING_TIMEOUT_USER_MESSAGE =
-  `영상 생성이 예상보다 오래 걸리고 있어요. 잠시 후 다시 확인해 주세요. 문제가 계속되면 고객센터로 문의해 주세요. (코드: ${PROCESSING_TIMEOUT_ERROR_CODE})`;
 
 export const DEFAULT_CAPTION_STYLE: CaptionStyle = {
   xRatio: 0.5,

@@ -2,34 +2,33 @@ import { describe, expect, it } from 'vitest';
 import { formatPassDate, toPassSummary, toPaymentRecord } from './display';
 
 describe('existing subscription display', () => {
-  it('keeps beta access separate from an owned pass', () => {
-    const summary = toPassSummary({ subscriptionPlan: { plan: 'FREE' } }, true);
+  it('shows the free plan without inventing an owned pass', () => {
+    const summary = toPassSummary({ subscriptionPlan: { plan: 'FREE' } });
     expect(summary).toMatchObject({
       status: 'none',
-      betaEnabled: true,
       startsAt: null,
       endsAt: null,
     });
   });
 
   it.each(['BASIC', 'PRO', 'MASTER'])('keeps the legacy %s product identity', (plan) => {
-    expect(toPassSummary({ subscriptionPlan: { plan } }, false).name.toUpperCase()).toBe(plan);
+    expect(toPassSummary({ subscriptionPlan: { plan } }).name.toUpperCase()).toBe(plan);
   });
 
   it('uses the server access flag even when renewal has been canceled', () => {
     expect(
-      toPassSummary({ subscription: { status: 'CANCELED', active: true } }, false).status,
+      toPassSummary({ subscription: { status: 'CANCELED', active: true } }).status,
     ).toBe('active');
   });
 
   it('distinguishes expired access, no subscription, and insufficient information', () => {
     expect(
-      toPassSummary({ subscription: { active: false, validUntil: '2026-01-31' } }, false).status,
+      toPassSummary({ subscription: { active: false, validUntil: '2026-01-31' } }).status,
     ).toBe('expired');
-    expect(toPassSummary({ subscription: { status: 'NONE', active: false } }, false).status).toBe(
+    expect(toPassSummary({ subscription: { status: 'NONE', active: false } }).status).toBe(
       'none',
     );
-    expect(toPassSummary({}, false)).toMatchObject({
+    expect(toPassSummary({})).toMatchObject({
       status: 'unknown',
       name: '상품 정보 확인 필요',
     });
@@ -37,7 +36,7 @@ describe('existing subscription display', () => {
 
   it('does not invent a product or infer dates from the next billing date', () => {
     const response = { subscription: { active: true, nextBillingDate: '2026-10-31' } };
-    expect(toPassSummary(response, false)).toMatchObject({
+    expect(toPassSummary(response)).toMatchObject({
       name: '상품 정보 확인 필요',
       startsAt: null,
       endsAt: null,

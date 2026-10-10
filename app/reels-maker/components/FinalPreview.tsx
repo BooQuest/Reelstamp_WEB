@@ -15,6 +15,7 @@ type Props = {
   onDownload: () => void;
   onDone: () => void;
   onReset: () => void;
+  onReady?: () => void;
   onShared: (message: string | null) => void;
 };
 
@@ -32,6 +33,7 @@ export default function FinalPreview({
   onDone,
   onReset,
   onShared,
+  onReady,
 }: Props) {
   return (
     <div className="min-h-[100dvh] bg-black text-white">
@@ -56,7 +58,8 @@ export default function FinalPreview({
                   src={finalVideoUrl}
                   muted
                   playsInline
-                  preload="metadata"
+                  preload="auto"
+                  onLoadedData={onReady}
                   poster={finalPosterUrl || undefined}
                   className="w-full h-full object-cover"
                 />

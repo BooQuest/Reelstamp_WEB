@@ -17,15 +17,11 @@ import {
   Scissors,
   Undo2,
 } from 'lucide-react';
-import type {
-  CaptionItem,
-  ClipInfo,
-  MakerCut,
-  ReelsMakerSessionResponse,
-} from '../types';
+import type { ClipInfo, MakerCut, ReelsMakerSessionResponse } from '../types';
 import type useCaptionEditor from '../hooks/useCaptionEditor';
 import CaptionOverlayStage from '../components/CaptionOverlayStage';
-import useGalleryWorkspace from './useGalleryWorkspace';
+import type useGalleryWorkspace from './useGalleryWorkspace';
+import ClipPlayer, { type ClipPlayerHandle } from '../components/ClipPlayer';
 import useSingleMediaPicker from './useSingleMediaPicker';
 import CutStrip from './CutStrip';
 import { createPortal } from 'react-dom';
@@ -37,18 +33,13 @@ export type GalleryMakerHandle = { openPicker: (cutIndex: number) => void };
 
 type Props = {
   ref?: Ref<GalleryMakerHandle>;
+  workspace: ReturnType<typeof useGalleryWorkspace>;
   session: ReelsMakerSessionResponse;
   cuts: MakerCut[];
   clips: Array<ClipInfo | null>;
-  captions: CaptionItem[];
   captionsEnabled: boolean;
   activeCutIndex: number;
   onSelectCut: (index: number) => void;
-  onSession: (session: ReelsMakerSessionResponse) => Promise<void>;
-  serialize: (
-    task: (version: number) => Promise<ReelsMakerSessionResponse>,
-  ) => Promise<ReelsMakerSessionResponse>;
-  onBusy: (busy: boolean) => void;
   onGuide: () => void;
   onNext: () => void;
   allDone: boolean;
@@ -67,7 +58,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
     captionEditor: caption,
     header,
   } = props;
-  const workspace = useGalleryWorkspace(props);
+  const workspace = props.workspace;
   const { history } = workspace;
   const historyRef = useRef(history);
   useLayoutEffect(() => {
@@ -75,11 +66,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
   }, [history]);
   const cut = cuts[activeCutIndex];
   const clip = clips[activeCutIndex];
-  const isEmptyCut = (index: number) =>
-    !cuts[index]?.isFixed &&
-    !clips[index] &&
-    !props.session.clips.find((saved) => saved.order === cuts[index]?.order)
-      ?.objectKey;
+  const isEmptyCut = (index: number) => !cuts[index]?.isFixed && !clips[index];
   const empty = isEmptyCut(activeCutIndex);
   const {
     inputRef,
@@ -87,14 +74,16 @@ export default function GalleryMaker({ ref, ...props }: Props) {
     onChange: onFileChange,
     error: pickerError,
   } = useSingleMediaPicker(props.session.sessionId, workspace.openFile);
-  const video = useRef<HTMLVideoElement>(null);
+  const video = useRef<ClipPlayerHandle>(null);
   const frame = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [playback, setPlayback] = useState({ revision: '', ms: 0 });
+  const mediaKey = `${clip?.url}:${clip?.revisionId ?? ''}`;
+  const playbackMs = playback.revision === mediaKey ? playback.ms : 0;
   const captionPointers = useRef(new Set<number>());
   const wheelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionsRef = useRef({ caption, disabled: false });
-  const disabled =
-    workspace.busy || workspace.conflict || Boolean(workspace.editing);
+  const disabled = workspace.busy || Boolean(workspace.editing);
   useLayoutEffect(() => {
     actionsRef.current = { caption, disabled };
   }, [caption, disabled]);
@@ -243,14 +232,16 @@ export default function GalleryMaker({ ref, ...props }: Props) {
               </button>
             </div>
           ) : clip ? (
-            <video
-              aria-label="컷 영상 미리보기"
-              key={clip.url}
+            <ClipPlayer
+              key={`${clip.url}:${clip.revisionId ?? ''}`}
               ref={video}
-              src={clip.url}
-              playsInline
-              preload="metadata"
-              className="absolute inset-0 h-full w-full object-contain"
+              clip={clip}
+              onTimeUpdate={(event) =>
+                setPlayback({
+                  revision: mediaKey,
+                  ms: event.currentTarget.currentTime * 1000,
+                })
+              }
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               onEnded={() => setPlaying(false)}
@@ -275,7 +266,13 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           {!empty && clip && captionsEnabled && (
             <div className={disabled ? 'pointer-events-none' : ''}>
               <CaptionOverlayStage
-                captions={caption.activeCaptions}
+                captions={caption.activeCaptions.filter(
+                  (item) =>
+                    item.id === caption.editingCaptionId ||
+                    ((item.placement.startMs ?? 0) <= playbackMs &&
+                      (item.placement.endMs == null ||
+                        playbackMs < item.placement.endMs)),
+                )}
                 selectedCaptionId={caption.resolvedSelectedCaptionId}
                 editingCaptionId={caption.editingCaptionId}
                 previewScale={caption.captionPreviewScale}
@@ -386,11 +383,26 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           className="shrink-0 px-3 pb-2 text-center text-xs text-rose-300"
         >
           {workspace.error || pickerError}
+          {workspace.error && !workspace.conflict && (
+            <button
+              type="button"
+              className="ml-2 underline"
+              onClick={() => {
+                void workspace.retry().catch(() => {});
+              }}
+            >
+              저장 다시 시도
+            </button>
+          )}
         </p>
       )}
-      {workspace.busy && (
+      {workspace.saveState !== 'saved' && (
         <p role="status" className="shrink-0 text-center text-xs">
-          미디어를 준비하고 있습니다…
+          {workspace.saveState === 'uploading'
+            ? '원본 업로드 중… 편집을 계속할 수 있습니다.'
+            : workspace.saveState === 'saving'
+              ? '편집 내용 저장 중…'
+              : '서버에 저장되지 않은 변경사항이 있습니다.'}
         </p>
       )}
       <CutStrip

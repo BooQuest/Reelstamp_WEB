@@ -1,6 +1,6 @@
 'use client';
 
-import { authFetch } from '@/app/lib/auth/browser-session';
+import { makerFetch as authFetch } from '@/app/reels-maker/services/editSession';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WebApiResponse } from '@/app/lib/api/auth';

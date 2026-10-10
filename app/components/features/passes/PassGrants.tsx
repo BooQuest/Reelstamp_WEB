@@ -1,5 +1,5 @@
 import type { EntitlementGrant, EntitlementSummary } from '@/app/lib/coupons/types';
-import { COUPON_EXTENSION_NOTICE, COUPON_REFUND_NOTICE, couponDateTime } from '@/app/lib/coupons/display';
+import { COUPON_EXTENSION_NOTICE, couponDateTime } from '@/app/lib/coupons/display';
 import Link from 'next/link';
 function date(value: string) {
   return new Intl.DateTimeFormat('ko-KR', {
@@ -33,9 +33,8 @@ export default function PassGrants({
       {summary?.endsAt && <p className="rounded-xl bg-white p-4 text-sm font-medium">
         전체 이용기간: {couponDateTime(summary.endsAt)}까지
       </p>}
-      <aside className="space-y-2 rounded-xl bg-rose-50 p-4 text-xs leading-5 text-gray-600">
+      <aside className="rounded-xl bg-rose-50 p-4 text-xs leading-5 text-gray-600">
         <p>{COUPON_EXTENSION_NOTICE}</p>
-        <p>{COUPON_REFUND_NOTICE}</p>
       </aside>
       {grants.map((grant) => (
         <article

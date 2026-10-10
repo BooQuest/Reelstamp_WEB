@@ -1,6 +1,7 @@
 'use client';
 
-import { authFetch } from '@/app/lib/auth/browser-session';
+import { EditorConflict } from '../gallery/api';
+import { makerFetch as authFetch } from '@/app/reels-maker/services/editSession';
 
 import {
   useCallback,
@@ -60,6 +61,7 @@ export default function useDraftAutosave({
   sessionHydratedRef,
 }: Params) {
   const sessionEpoch = useRef(0);
+  const conflict = useRef<EditorConflict | null>(null);
   useEffect(
     () => () => {
       sessionEpoch.current += 1;
@@ -118,7 +120,7 @@ export default function useDraftAutosave({
     const saveTask = draftSaveQueueRef.current
       .catch(() => false)
       .then(async () => {
-        if (epoch !== sessionEpoch.current) return false;
+        if (epoch !== sessionEpoch.current || conflict.current || isExitingWithoutSavingRef.current) return false;
         const activeOrder =
           cuts[activeCutIndexRef.current]?.order ?? cuts[0]?.order ?? null;
         const captionItems = captionsRef.current
@@ -165,6 +167,10 @@ export default function useDraftAutosave({
           );
           const payload: WebApiResponse<ReelsMakerSessionResponse> =
             await response.json();
+          if (response.status === 409) {
+            conflict.current = new EditorConflict('다른 작업에서 프로젝트가 변경되었습니다. 새로고침해 주세요.');
+            throw conflict.current;
+          }
           if (!response.ok || !payload?.success || !payload?.data) {
             throw new Error(
               payload?.message || '프로젝트 저장에 실패했습니다.',
@@ -172,7 +178,7 @@ export default function useDraftAutosave({
           }
           if (epoch !== sessionEpoch.current) return false;
           const nextVersion =
-            payload.data.draftVersion ?? draftVersionRef.current;
+            Math.max(payload.data.draftVersion ?? 0, draftVersionRef.current);
           draftVersionRef.current = nextVersion;
           setDraftVersion(nextVersion);
           setLastSavedAt(payload.data.lastEditedAt ?? new Date().toISOString());
@@ -232,6 +238,7 @@ export default function useDraftAutosave({
   }, [draftSaveStatus, isRegisteredUser]);
 
   const hydrateDraft = useCallback((input: HydrateDraftInput) => {
+    conflict.current = null;
     setProjectName(input.projectName);
     projectNameRef.current = input.projectName;
     setDraftVersion(input.draftVersion);
@@ -248,6 +255,7 @@ export default function useDraftAutosave({
 
   const resetDraft = useCallback(() => {
     sessionEpoch.current += 1;
+    conflict.current = null;
     cancelScheduledSave();
     setProjectName('');
     projectNameRef.current = '';
@@ -261,7 +269,7 @@ export default function useDraftAutosave({
 
   const applyServerUpdate = useCallback(
     (session: ReelsMakerSessionResponse) => {
-      const nextVersion = session.draftVersion ?? draftVersionRef.current;
+      const nextVersion = Math.max(session.draftVersion ?? 0, draftVersionRef.current);
       draftVersionRef.current = nextVersion;
       setDraftVersion(nextVersion);
       setLastSavedAt(session.lastEditedAt ?? new Date().toISOString());
@@ -273,14 +281,15 @@ export default function useDraftAutosave({
   );
 
   const serializeEdit = useCallback(
-    (task: (version: number) => Promise<ReelsMakerSessionResponse>) => {
+    (task: (version: number) => Promise<ReelsMakerSessionResponse>, preserveLocal = false) => {
       cancelScheduledSave();
       const epoch = sessionEpoch.current;
       // Preserve pending project name/last-cut/text changes before replacing editor state.
       const saved = saveDraftNow();
       const pending = saved.then(async (ok) => {
-        if (epoch !== sessionEpoch.current)
+        if (epoch !== sessionEpoch.current || isExitingWithoutSavingRef.current)
           throw new DOMException('Session changed', 'AbortError');
+        if (conflict.current) throw conflict.current;
         if (!ok)
           throw new Error(
             '프로젝트 저장에 실패했습니다. 새로고침한 뒤 다시 시도해 주세요.',
@@ -290,13 +299,16 @@ export default function useDraftAutosave({
           const session = await task(draftVersionRef.current);
           if (epoch !== sessionEpoch.current)
             throw new DOMException('Session changed', 'AbortError');
-          captionsRef.current = normalizeSessionCaptions(session.captionItems);
-          captionsEnabledRef.current = session.captionsEnabled !== false;
+
+          if (!preserveLocal) {
+            captionsRef.current = normalizeSessionCaptions(session.captionItems);
+            captionsEnabledRef.current = session.captionsEnabled !== false;
+          }
           lastSavedDraftSignatureRef.current = buildDraftSignature(
             projectNameRef.current,
             cuts[activeCutIndexRef.current]?.order ?? cuts[0]?.order ?? null,
-            captionsRef.current,
-            captionsEnabledRef.current,
+            normalizeSessionCaptions(session.captionItems),
+            session.captionsEnabled !== false,
           );
           applyServerUpdate(session);
           setDraftSaveStatus('saved');
@@ -325,6 +337,7 @@ export default function useDraftAutosave({
   }, [cancelScheduledSave]);
 
   return {
+    getDraftVersion: () => draftVersionRef.current,
     serializeEdit,
     isDraftDirty:
       isRegisteredUser &&
@@ -346,5 +359,6 @@ export default function useDraftAutosave({
     cancelScheduledSave,
     resumeAutosave,
     suspendAutosave,
+    waitForSaves: () => draftSaveQueueRef.current.catch(() => false),
   };
 }

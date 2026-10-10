@@ -2,7 +2,7 @@
 
 import { authFetch } from '@/app/lib/auth/browser-session';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Clock3, Loader2, Trash2 } from 'lucide-react';
 import MyProjectThumbnail from '@/app/my-projects/MyProjectThumbnail';
@@ -67,7 +67,34 @@ export default function MyProjectsClient({
   const router = useRouter();
   const [projects, setProjects] = useState(initialProjects);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [openingId, setOpeningId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => { setProjects(initialProjects); }, [initialProjects]);
+  useEffect(() => {
+    if (activeStatus !== 'PROCESSING') return;
+    const refresh = () => { if (document.visibilityState === 'visible') router.refresh(); };
+    const timer = window.setInterval(refresh, 5000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+  }, [activeStatus, router]);
+
+  const openVideo = async (project: DraftProjectItem) => {
+    const preview = window.open('about:blank', '_blank');
+    if (preview) preview.opener = null;
+    setOpeningId(project.sessionId);
+    setNotice(null);
+    try {
+      const response = await authFetch(`/api/reels-maker/sessions/${project.sessionId}/status`, { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok || !payload.success || payload.data?.status !== 'COMPLETED' || !payload.data.finalVideoUrl)
+        throw new Error(payload.data?.mediaError || '완료 영상을 불러오지 못했습니다. 다시 시도해 주세요.');
+      if (preview) preview.location.replace(payload.data.finalVideoUrl);
+      else window.location.assign(payload.data.finalVideoUrl);
+    } catch (error) {
+      preview?.close();
+      setNotice(error instanceof Error ? error.message : '영상 조회에 실패했습니다.');
+    } finally { setOpeningId(null); }
+  };
   const sortedProjects = useMemo(
     () =>
       [...projects].sort(
@@ -111,7 +138,7 @@ export default function MyProjectsClient({
               제작 중인 프로젝트는 마지막 저장일로부터 30일 동안 보관됩니다.
             </p>
           </div>
-          <span className="text-sm text-white/50">총 {projects.length}개</span>
+          <span className="shrink-0 whitespace-nowrap text-sm text-white/50">총 {projects.length}개</span>
         </div>
 
         <div className="mb-6 flex gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
@@ -138,7 +165,8 @@ export default function MyProjectsClient({
         )}
         {loadError && (
           <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 p-6 text-sm text-rose-200">
-            {loadError}
+            <p>{loadError}</p>
+            <button type="button" onClick={() => router.refresh()} className="mt-3 underline">다시 시도</button>
           </div>
         )}
         {!loadError && projects.length === 0 && (
@@ -171,6 +199,7 @@ export default function MyProjectsClient({
                     <MyProjectThumbnail
                       projectThumbnailUrl={project.projectThumbnailUrl}
                       projectThumbnailContentType={project.projectThumbnailContentType}
+                      projectThumbnailEdit={project.projectThumbnailEdit}
                       templateThumbnailUrl={project.templateThumbnailUrl}
                       alt={`${displayTitle} 썸네일`}
                     />
@@ -208,12 +237,14 @@ export default function MyProjectsClient({
                         </p>
                       )}
                     </div>
+                    {project.errorMessage && <p className="text-xs text-rose-200">{project.errorMessage}</p>}
+                    {project.mediaError && <p className="text-xs text-amber-200">{project.mediaError}</p>}
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => {
-                          if (activeStatus === 'COMPLETED' && project.finalVideoUrl) {
-                            window.open(project.finalVideoUrl, '_blank', 'noopener,noreferrer');
+                          if (activeStatus === 'COMPLETED') {
+                            void openVideo(project);
                             return;
                           }
                           const returnUrl = `/my-projects?status=${encodeURIComponent(activeStatus)}`;
@@ -221,7 +252,8 @@ export default function MyProjectsClient({
                             buildReelsMakerHref(project.templateId, project.sessionId, returnUrl)
                           );
                         }}
-                        className="h-11 flex-1 rounded-full bg-[#FF4D6D] text-sm font-semibold"
+                        disabled={openingId === project.sessionId}
+                        className="h-11 flex-1 rounded-full bg-[#FF4D6D] text-sm font-semibold disabled:opacity-50"
                       >
                         {activeStatus === 'CAPTURE'
                           ? '이어서 만들기'

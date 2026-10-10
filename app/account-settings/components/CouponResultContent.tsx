@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { CouponResult } from '@/app/lib/coupons/types';
-import { COUPON_REFUND_NOTICE, couponDate, couponDateTime, couponTime } from '@/app/lib/coupons/display';
+import { couponDate, couponDateTime, couponTime } from '@/app/lib/coupons/display';
 import { couponActionClass as actionClass } from './CouponRegistrationForm';
 
 export default function CouponResultContent({ result, onClose }: { result: CouponResult; onClose: () => void }) {
@@ -16,7 +16,6 @@ export default function CouponResultContent({ result, onClose }: { result: Coupo
         <p>기존 이용기간 뒤에 이어서 적용되었습니다.</p>
         <p>적용 시작: {couponDateTime(result.startsAt)}</p>
       </div>}
-      <p className="text-xs leading-5 text-gray-500">{COUPON_REFUND_NOTICE}</p>
       <Link href="/plan" className="inline-block text-sm text-rose-600 underline">이용권 정보 확인</Link>
       <button type="button" onClick={onClose} className={actionClass}>확인</button>
     </div>

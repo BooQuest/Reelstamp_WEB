@@ -14,7 +14,7 @@ export const makeSession = (overrides: Partial<ReelsMakerSessionResponse> = {}):
   ...overrides,
 });
 export const makeClip = (): PreparedClip => ({ blob: new Blob(['video'], { type: 'video/webm' }), mimeType: 'video/webm', duration: 3 });
-export const jsonResponse = (data: unknown, ok = true) => ({ ok, json: async () => data }) as Response;
+export const jsonResponse = (data: unknown, ok = true) => new Response(JSON.stringify(data), { status: ok ? 200 : 500, headers: { 'Content-Type': 'application/json' } });
 export const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (error: unknown) => void;

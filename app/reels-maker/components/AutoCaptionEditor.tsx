@@ -1,4 +1,5 @@
 'use client';
+import ClipPlayer, { type ClipPlayerHandle } from './ClipPlayer';
 
 import {
   useEffect,
@@ -158,7 +159,7 @@ export default function AutoCaptionEditor({
   onCaptionTextChange,
   onToggleBox,
 }: Props) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoRef = useRef<ClipPlayerHandle | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const timelineScrubbingRef = useRef(false);
   const pendingSeekRef = useRef<{
@@ -716,11 +717,10 @@ export default function AutoCaptionEditor({
             }}
           >
             {clips[activeCutIndex]?.url ? (
-              <video
+              <ClipPlayer
                 ref={videoRef}
-                src={clips[activeCutIndex]!.url}
-                poster={clipPosters[activeCutIndex]}
-                playsInline
+                key={`${clips[activeCutIndex]!.url}:${clips[activeCutIndex]!.revisionId}`}
+                clip={clips[activeCutIndex]!}
                 className="absolute inset-0 h-full w-full object-cover"
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
@@ -982,10 +982,10 @@ export default function AutoCaptionEditor({
                   <div className="flex gap-3">
                     <button
                       type="button"
-                      className="h-20 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-200"
+                      className="relative h-20 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-200"
                       onClick={() => seekToCut(index, 0, isPlaying)}
                     >
-                      {clipPosters[index] ? (
+                      {clips[index]?.edit ? <ClipPlayer thumbnail clip={clips[index]!} /> : clipPosters[index] ? (
                         <img
                           src={clipPosters[index]}
                           alt={`컷 ${index + 1}`}

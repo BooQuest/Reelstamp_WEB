@@ -13,6 +13,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 const product = {
   plan: 'PASS_1M',
   name: '1개월 이용권',
+  regularPrice: 49500,
   salePrice: 9900,
   durationValue: 1,
   durationUnit: 'MONTH' as const,

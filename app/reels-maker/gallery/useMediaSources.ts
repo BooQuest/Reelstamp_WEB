@@ -1,24 +1,19 @@
 'use client';
 
-import { authFetch } from '@/app/lib/auth/browser-session';
-
 import { useCallback, useEffect, useRef } from 'react';
 import type { MediaAsset, MediaSource } from './types';
 
 // Keep uploaded asset identities without keeping a visible library or retaining local files.
 export default function useMediaSources() {
-  const assets = useRef(new Map<string, MediaAsset>());
   const urls = useRef(new Set<string>());
   const release = useCallback((url: string) => {
     if (urls.current.delete(url)) URL.revokeObjectURL(url);
   }, []);
   useEffect(() => {
     const ownedUrls = urls.current;
-    const knownAssets = assets.current;
     return () => {
       ownedUrls.forEach((url) => URL.revokeObjectURL(url));
       ownedUrls.clear();
-      knownAssets.clear();
     };
   }, []);
   const create = (file: File, key: string, asset?: MediaAsset): MediaSource => {
@@ -35,6 +30,7 @@ export default function useMediaSources() {
   };
   return {
     release,
+    retain: (retained: Set<string>) => { for (const url of urls.current) if (!retained.has(url)) release(url); },
     fromFile: (file: File) => {
       const key = JSON.stringify([
         file.name,
@@ -42,25 +38,11 @@ export default function useMediaSources() {
         file.lastModified,
         file.type,
       ]);
-      return create(file, key, assets.current.get(key));
+      return create(file, key);
     },
-    fromAsset: async (asset: MediaAsset, signal: AbortSignal) => {
-      const response = await authFetch(
-        `/api/reels-maker/download?url=${encodeURIComponent(asset.downloadUrl)}`,
-        { signal },
-      );
-      if (!response.ok)
-        throw new Error('원본을 불러오지 못했습니다. 다시 시도해 주세요.');
-      const blob = await response.blob();
-      if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
-      return create(
-        new File([blob], asset.name, { type: asset.contentType || blob.type }),
-        asset.id,
-        asset,
-      );
-    },
-    associate: (key: string, asset: MediaAsset) => {
-      assets.current.set(key, asset);
-    },
+    fromAsset: async (asset: MediaAsset, _signal: AbortSignal, sessionId: number) => ({
+      key: asset.id, name: asset.name, kind: asset.kind,
+      url: `/api/reels-maker/sessions/${sessionId}/media?assetId=${encodeURIComponent(asset.id)}`, asset,
+    } as MediaSource),
   };
 }

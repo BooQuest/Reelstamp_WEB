@@ -1,68 +1,81 @@
-# Gallery-only reels maker
+# 원본 기반 즉시 편집 및 최종 제작
 
-## Responsibilities
+2026-10-07 구현. 이전 갤러리의 브라우저 재녹화·편집본 업로드 흐름을 대체한다.
 
-- `gallery/GalleryMaker.tsx` coordinates the empty-cut import action, preview, text gestures and controls. `CutStrip` keeps cut navigation in place; there is no web source list.
-- `useSingleMediaPicker` opens a single-file device picker synchronously from the click, captures the session/clip/index destination, and handles cancellation and validation. `GalleryMaker.openPicker` lets guide actions use the same synchronous path without effects.
-- `useGalleryWorkspace` prepares the explicitly targeted source and coordinates conversion, uploads and atomic server state application. `useMediaSources` owns temporary editing URLs and session-local file-to-asset associations. Uploaded originals are reused by ID without retaining a visible list or unused local files.
-- `MediaEditModal`, `SegmentTimeline`, `useCropGesture` and `geometry` own temporary length/crop editing. Crops are normalized source coordinates: the same rectangle positions the editor preview and feeds `drawImage` during export. Cancel does not change the clip.
-- `useEditorHistory` holds the last 10 project-wide edits. Snapshots contain revision IDs and caption data, never copied blobs. Undo/redo applies existing revisions; it does not convert or upload again. Leaving this screen discards history, not saved media.
-- `useDraftAutosave.serializeEdit` serializes draft saves and edit-state requests against `draftVersion`. It flushes pending project metadata before an edit, then synchronizes caption refs before releasing the queue. A version conflict requires reload; no forced overwrite is attempted.
-- `CaptionToolbar` changes V2 font, color, preset, alignment and background settings. Its buttons preserve textarea focus. Mobile positioning follows the visual viewport; desktop tools sit below the preview. Caption gestures use pinch or Alt/Option + wheel.
-- `utils/media` continues to own browser conversion and media-resource cleanup. Local URLs are released by their owner, not by history snapshots.
+## 화면과 상태의 책임
 
-## Direct selection flow
+- `useGalleryWorkspace`는 컷의 원본 참조, 구간·확대 정보, 로컬 편집 이력을 관리한다. 페이지에서 소유하므로 자동 자막 화면이나 제작 준비 화면으로 바뀌어도 업로드가 유지된다.
+- `SourceSync`는 원본 업로드를 한 개씩 진행하고, UUID로 원본 기반 편집 버전을 등록한 뒤 최신 편집 상태를 저장한다. 이전 업로드·저장 응답은 화면의 컷을 덮어쓰지 않는다. 연속 변경은 150ms 동안 최신 상태로 합치며, 실패는 재시도하고 버전 충돌은 자동 덮어쓰기 없이 중단한다.
+- `useDraftAutosave.serializeEdit`는 프로젝트 이름·자막 저장과 컷 편집 저장에 같은 직렬 큐와 `draftVersion`을 사용한다. 서버 응답으로 더 최신인 로컬 자막을 덮어쓰지 않는다.
+- `ClipPlayer`는 일반 편집과 자동 자막 화면에서 공통으로 사용한다. 영상은 원본 시작점을 더해 탐색하고 선택 구간 끝에서 정지한다. 외부에 노출하는 시간은 컷의 0초 기준이다. 사진은 이미지와 가상 재생 시간을 사용한다. 재생 실패와 재시도를 별도로 표시한다.
+- 확인 버튼은 로컬 상태를 반영하고 창을 닫는다. 원본 업로드와 서버 저장은 별도로 진행한다. 업로드 실패 시에도 새 컷 미리보기와 이력은 유지된다.
+- `useEditorHistory`는 10단계의 원본/편집 버전·자막 상태를 유지한다. 실행 취소·다시 실행은 로컬에서 먼저 적용하고 서버 저장이 뒤따른다.
+- `useMediaSources`는 현재 컷·편집 창·이력에서 사용하는 object URL을 유지하고 참조가 사라지거나 페이지가 해제되면 반환한다. 서버 원본 ID는 재사용한다. IndexedDB/OPFS 등 영구 저장은 추가하지 않았다.
+- 컷 썸네일, 자동 자막 컷 목록, 내 프로젝트 썸네일에도 사진 종류와 선택 구간·확대를 반영한다. 썸네일 준비가 편집 확인을 막지 않는다.
 
-- Empty cut click (including the active empty cut), import, replacement, and the per-cut guide action open the device picker immediately. One image or video opens the existing length/segment/crop editor directly.
-- Closing the initial overview, restoring a project, and undoing to an empty cut never open the picker automatically. The empty cut shows `사진·영상 불러오기`.
-- Selecting an existing cut shows its preview. Cancelling the picker/editor preserves that cut; conversion/upload failure preserves its media and history. Successful apply stays on the same cut.
-- Fixed cuts keep their existing preview/retry behavior and cannot select a file. Original re-edit remains available through `길이 다듬기` on normal registered cuts.
-- The picker appearance belongs to the OS/browser. Cut navigation remains on the web page, outside the picker. Android/iOS picker return behavior requires device verification.
-- The former `GalleryList` and `useGalleryLibrary` were removed along with list-only state and tests. Original/revision APIs, retention and deployment requirements below are unchanged by this input-flow update.
+`PreparationView`는 필요한 로컬 컷이 채워졌으면 즉시 진입한다. 원본 준비 → 최신 편집 저장 → 저장 버전을 포함한 제작 요청 순서로 진행한다. 준비 실패 시 재시도/편집 복귀를 제공한다. 진행 중 중복 클릭을 막고, 응답이 유실되면 서버 상태를 확인한다. 서버도 PROCESSING 세션의 재요청에 기존 상태를 반환한다.
 
-## Camera preservation
+등록 사용자의 ‘저장 후 나가기’는 원본 업로드와 최신 편집 저장을 기다린다. 저장 없이 나가기와 게스트 삭제 정책은 유지한다. 저장 상태는 업로드/저장/완료/실패로 표시하며 메모리를 영구 기기 저장으로 표현하지 않는다.
 
-The existing camera hooks, camera-only components and their tests remain in the repository for future camera integration. The gallery page does not mount them or request camera/microphone permission. The superseded single-file gallery hook, old trim hook/layout/modal and their implementation-specific tests were removed. Their current behaviors are covered by the new gallery, editor and page tests. Camera-specific components and the common clip library remain preserved. `MediaRecorder` is still required for file conversion and must not be removed as camera-only code.
+## 계약과 호환성
 
-To reintroduce capture, connect a separately enabled capture entry point to the source/revision upload protocol. Do not reinstate automatic camera startup in gallery selection, restoration, or error recovery.
+- 수동 DB SQL: Backend `reelstamp-api/docs/reels-maker-source-edit-migration.sql`.
+- `render_mode=RENDERED`: 기존 편집본 파일 그대로 재생. 기존 행의 기본값이다.
+- `render_mode=SOURCE_EDIT`: 파일 참조가 원본을 가리킨다. 선택 구간·확대를 함께 적용해야 한다.
+- `POST /api/reels-maker/sessions/{sessionId}/clips/{clipId}/revisions`: `{id, assetId, edit}`. 검증 완료된 소유 원본만 허용하며 같은 UUID/내용은 중복 생성하지 않는다. 다른 내용으로 UUID를 재사용하면 409다.
+- 기존 `PUT .../edit-state`의 버전 검사와 일괄 적용을 유지한다.
+- 완료 요청은 `version`을 전달한다. 원본 기반 컷에는 버전이 필수이며 저장된 자막과 컷 정보로 제작한다. 기존 버전 없는 클라이언트의 RENDERED 계약은 유지한다.
+- WEB `GET .../sessions/{sessionId}/media?assetId=...` 또는 `?clipId=...`는 Backend에서 세션 소유권을 확인한 뒤 해당 자산만 조회한다. 저장소의 Range/206/416과 스트림을 전달한다. 임의 URL은 입력받지 않는다.
+- 기존 최종 영상 다운로드 경로는 유지한다. 잘못된 `download?url=...` 원본 조회를 제거했다.
+- 과거 프로젝트의 새 편집부터 SOURCE_EDIT를 만든다. 원본이 없는 과거 결과는 기존 `adopt-legacy` 방식으로 원본 역할을 맡는다.
+- 자동 자막의 음성 입력은 선택 구간만 사용하고 시간은 구간의 0초부터 시작한다. 사진/무음은 NO_SPEECH다. 변경 감지는 파일 경로뿐 아니라 편집 버전도 포함한다.
+- 완료 후 정리에서도 현재 SOURCE_EDIT의 원본·편집 버전은 보존한다. 사용하지 않는 자료만 정리하며 만료·삭제·게스트 정책은 유지한다.
 
-## Persistence and compatibility
+## AI 처리
 
-New source assets and output revisions use additive APIs under a session. Preparing/completing an upload does not activate it. `PUT edit-state` commits clip references and caption data together using the draft version. Only successful application creates a history step and replaces the visible cut.
+원본의 구간 읽기, 기본 회전 보정, 지정 영역 자르기, 1080×1920 변환, 자막 합성, 음성 정렬을 컷별 한 번의 인코딩에 묶는다. 사진은 서버에서 지정 길이로 생성한다. 30fps, H.264 CRF20/preset fast, AAC 128k/44.1kHz/stereo를 유지한다.
 
-An older project has no original before its saved output. On first re-edit/replacement, `revisions/adopt-legacy` attaches that output as its source under a version check. Already removed frames cannot be recovered. Failed/cancelled replacement preserves the previous revision. Persisted sources are accessed through the applied revision when re-editing; they are not displayed as a gallery.
+OCI 원본의 Range 지원을 확인해 원격 탐색을 우선 사용한다. 미지원/처리 실패 시 동일 작업의 임시 원본 다운로드로 전환한다. 다운로드 대체 경로는 최대 2개, 인코딩은 순차 처리다. 같은 작업 내 원본 다운로드·분석·자막 이미지를 재사용하고 Chromium은 작업당 한 번 실행한다. 규격을 맞춘 컷은 stream copy로 연결하며 결과 검증과 재인코딩 대체 경로를 유지한다. 원본 기반 편집 실패를 원본 전체 출력으로 숨기지 않는다.
 
-A selected file is temporary until applied. Its editing URL is released on cancel, success, preparation failure, or screen exit; URLs owned by the clip preview are unaffected. Previously applied sources remain available until project retention/cleanup. Successful production is followed by server cleanup of unused originals/versions; current clip outputs and the final video remain.
+갤러리 전용 `imageVideo.ts`, `videoSegment.ts`와 더 이상 의미 없는 재녹화 테스트를 제거했다. 카메라 녹화·공통 미디어 도구와 관련 테스트는 보존했다.
 
-## Deployment and verification
+## 자동 검증 결과
 
-1. User applies `Reelstamp_Backend/reelstamp-api/docs/reels-maker-gallery-migration.sql` and its verification queries. No migration is automatically executed by WEB.
-2. Deploy compatible Backend and AI, including the bundled fonts. Configure server-side OCI deletion credentials as described in the Backend gallery document.
-3. Deploy WEB. Current PAR upload/read configuration must remain valid; PAR rotation is outside this feature.
-4. In the development environment, verify original re-edit after re-login, failed replacement, media/text undo, fixed cuts, automatic captions and final download. Then perform the normal release check in the target environment.
+- WEB: 46개 파일, 258개 테스트 통과. TypeScript 검사 통과. 변경 파일 ESLint 오류 0개(기존 이미지 요소 경고 2개). 업로드가 끝나지 않은 상태의 적용·실행 취소·다시 실행·완료 준비 전환, 오래된 응답, 실패 재시도, 버전 충돌, 기존 복원, 고정 컷 등을 포함한다.
+- Range 경로는 실제 로컬 HTTP 서버의 부분 바이트/416 응답을 전달해 검증했다. 세션/자산 소유권 거부와 임의 URL 거부도 확인했다. 실제 OCI 계정 연결 검증과는 별개다.
+- Backend: 선택한 application/adapter 테스트 124개 중 82개 통과, DB 전용 42개 건너뜀. 전체 기동 테스트는 미적용 `render_mode` 컬럼 때문에 스키마 검증 실패. DB 변경은 실행하지 않았다.
+- AI: 40개 테스트 통과. 실제 FFmpeg/Chromium으로 구간·크롭·사진 길이·EXIF 방향·영상 회전·음성 길이·원본 음성 지연 유지·자막 시간·혼합 컷·원격 탐색 실패 대체 경로·명시적 실패를 확인했다.
+- 일반 WEB 프로덕션 빌드는 기존 Google Fonts(Geist/Geist Mono/Praise) 다운로드 연결 오류로 완료하지 못했다. 관련 폰트 코드를 변경하지 않았다.
+- 브라우저 도구 초기화가 `node:process` import 제한으로 실패해 실제 데스크톱 UI 검증을 하지 못했다. iOS Safari/Android Chrome 실기기 및 운영 서버 전체 경로도 미검증이다.
 
-Automated tests mock storage/API boundaries. Local browser checks use a mock server contract and actual browser media conversion. They do not validate deployed authentication, real OCI permissions, Android Chrome, or iOS Safari. Device keyboard, pinch, supported codecs and actual server round trips require those environments.
+## 성능 측정
 
-## Duration and cancellation
+AI `tests/benchmark_source_edit.py`와 `tests/source_edit_benchmark_results.json`에 재현 코드와 3회 원자료를 남겼다. Apple M2 Pro, FFmpeg 8.1, baseline AI commit `42d3d40`. 생성한 같은 원본·구간·크롭·출력 규격으로 비교했다. 기존 파이프라인에는 미리 만들어진 편집본을, 신규 파이프라인에는 원본과 편집 정보를 전달했다. 기존 편집본 준비 비용은 비교 시간에서 제외했다.
 
-Gallery photos allow 0.1–60.0 seconds. Video selections allow up to the smaller of 60.0 seconds and the original duration rounded down to a tenth. The same bounds apply to initial/re-edit values, length inputs, timeline handles, and confirmation before conversion. Long video originals remain intact: any source position can be selected as long as the interval is at most 60 seconds and ends within the source. Backend enforces the 60-second limit when preparing new revisions. This limit requires no additional DB migration or AI contract change.
+아래는 **로컬 합성 처리 시간**의 중앙값이다. 업로드, OCI 다운로드, 작업 대기, 최종 업로드, API 폴링, 결과 다운로드는 제외했다. 브라우저 실시간 재녹화 시간이나 사용자 전체 대기시간으로 해석하면 안 된다.
 
-Browser MediaRecorder may include startup padding even when a 0.1-second segment was requested. The preview stops at the selected duration. Backend supplies `targetDurationSeconds` only for newly generated gallery revision outputs, and AI trims/pads video and audio to that duration before concatenation. Old saved clips and fixed-template clips keep their prior duration behavior. This avoids silently changing the user's chosen length.
+| 사례 | 결과 길이 | 기존 | 변경 |
+| --- | ---: | ---: | ---: |
+| 짧은 영상 | 3초 | 0.924초 | 0.803초 |
+| 60초 원본의 50초 지점 선택 | 3초 | 0.894초 | 0.757초 |
+| 4K 원본 | 1초 | 0.578초 | 0.561초 |
+| 사진 + 영상 | 4초 | 1.189초 | 0.978초 |
+| 자막 8개 | 3초 | 6.158초 | 3.298초 |
 
-Conversion and uploads can be cancelled before atomic state application starts. Cancellation leaves the existing cut intact; any abandoned upload is reclaimed by project cleanup. Once the atomic apply request begins, cancel is disabled until its outcome is known. A session switch invalidates queued client updates.
+4K 사례는 최종 중앙값 0.561초이지만 개별 실행은 0.557~0.597초였고, 앞선 검증 실행 중앙값은 0.585초였다. 기존 0.578초보다 느린 실행도 있어 이 사례의 속도 개선은 확정하지 않는다. 기존 입력이 이미 1080p 편집본인 반면 신규 경로는 4K 원본을 해독한다는 차이와 측정 변동을 함께 고려해야 한다. 앞선 측정 자료도 JSON에 보존했다. 짧고 자막 없는 사례의 작은 차이 역시 반복 측정 오차를 고려해야 한다. 운영 서버에서 같은 개선율이나 특정 대기시간을 보장하지 않는다.
 
-## Initial gallery implementation verification (2026-10-06)
+WEB은 `ReelsMakerTiming`으로 편집 확인→다음 animation frame과 완료 클릭→결과 영상 loadeddata 시간을 기록한다. 전자는 화면 갱신 응답 지표이며 디코더의 첫 프레임 준비 완료 지표가 아니다. AI는 작업 대기, 원본 읽기, 자막 준비, 인코딩, 연결, 업로드 시간을 기록한다. 실제 사용자 환경에서는 원본 준비 완료/업로드 진행 중 조건을 분리해 비교해야 한다. 이 두 조건의 운영 end-to-end 수치는 아직 측정하지 않았다.
 
-- WEB: 36 test files / 199 tests passed; TypeScript and production build passed. ESLint on all changed TS/JS files passed. Full repository lint still reports 18 existing errors and 18 warnings in unchanged code.
-- Backend: 55 tests passed, 28 skipped, and bootJar succeeded with the DB-dependent application-context test excluded. The full-suite context test failed schema validation against the pre-migration database; it must be rerun after the user applies the SQL.
-- AI: 26 tests passed, including actual FFmpeg normalization/concatenation. A separate Korean two-font sample with alignment, shadow and translucent backgrounds rendered at 1080×1920 with H.264/AAC and 0.4-second video/audio streams.
-- Isolated desktop/mobile-viewport browser smoke checks exercised actual video/photo conversion and the mocked upload/apply/text/undo flow. These checks do not replace Android/iOS hardware or a real storage/server integration test.
-- Source binaries and font licenses match between WEB and AI. No DB migration, commit, push, merge or deployment was performed.
+벤치마크 재현은 AI 저장소에서 `PYTHONPATH=. .venv/bin/python tests/benchmark_source_edit.py prepare`, `... after`로 실행한다. 기존 비교는 깨끗한 baseline checkout을 `PYTHONPATH`로 지정하고 `... before`를 실행한다. 임시 디렉터리 외의 DB/스토리지는 사용하지 않는다.
 
-## Direct picker update verification (2026-10-06)
+## 적용과 남은 검증
 
-- WEB: 37 test files / 208 tests passed. TypeScript, ESLint for the gallery area and changed page/tests, and the production build passed.
-- Integration tests cover direct image/video editing, empty/registered/fixed cut navigation, synchronous guide selection, picker/edit cancellation, decode/upload failure, source re-edit, undo/redo and existing final production flow. Picker tests verify destination capture, same-file reselection, invalid files and stale-session selection; source tests verify asset reuse and URL cleanup.
-- Isolated Chromium checks received an actual single-file chooser event and converted both a video and a photo. The mocked upload/apply flow, text edit and undo passed at desktop/mobile viewport sizes. Empty-cut and replacement selection/cancel were also checked. The API/storage boundaries were mocked; no real storage or production data was changed.
-- Android Chrome and iOS Safari hardware were not accessible. Native picker presentation/return behavior on those devices remains unverified.
-- Only WEB changed for this update. Overview bottom padding remains `pb-8`; Backend, AI, API contracts, DB and original retention are unchanged. No commit, push, merge or deployment was performed.
+1. 사용자가 SQL을 실행하고 파일 하단의 읽기 전용 검증 쿼리를 확인한다.
+2. AI API와 Celery worker를 함께 갱신한다. 기존 작업을 안전하게 마친 뒤 원본 기반 계약을 지원하는 worker가 요청을 받도록 한다.
+3. Backend를 갱신하고 스키마 기동 검증, 기존 RENDERED 조회, SOURCE_EDIT 등록·버전 충돌·완료 요청을 확인한다.
+4. WEB을 갱신한다. 느린 네트워크/실기기에서 재생·탐색·사진·이력·저장 후 나가기·재접속·자동 자막·다운로드까지 확인한다.
+5. 원본 준비 완료/업로드 잔여 조건별 완료→첫 화면 시간을 측정한다. 실제 OCI 원격 탐색과 다운로드 대체 경로, 다수 사용자 동시 작업의 영향도 확인한다.
+
+SOURCE_EDIT 데이터 생성 후 이를 이해하지 못하는 구 Backend/AI/WEB으로 단순 롤백하면 원본 전체를 재생하거나 잘못 제작할 수 있다. 문제가 있으면 신규 편집 진입을 중단하고 SOURCE_EDIT 읽기·제작 지원을 유지한 수정 버전을 배포한다. 컬럼 제거·기존 데이터 삭제 방식의 롤백은 제공하지 않는다.
+
+커밋·DB SQL 실행·배포는 이 작업에서 수행하지 않았다.

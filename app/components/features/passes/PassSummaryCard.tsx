@@ -12,15 +12,6 @@ const STATUS_LABELS: Record<PassSummary['status'], string> = {
 export default function PassSummaryCard({ summary, hideEmpty = false }: { summary: PassSummary; hideEmpty?: boolean }) {
   return (
     <div className="space-y-5">
-      {summary.betaEnabled && (
-        <aside className="rounded-2xl border border-rose-100 bg-rose-50 p-5">
-          <p className="font-semibold text-[#D93256]">베타 무료 이용 중</p>
-          <p className="mt-2 text-sm leading-6 text-gray-600">
-            현재 베타 서비스를 무료로 이용하실 수 있습니다. 베타 무료 이용과 보유 이용권은 별도로
-            표시됩니다.
-          </p>
-        </aside>
-      )}
       {!(hideEmpty && summary.status === 'none') && <section
         aria-label="보유 이용권"
         className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8"

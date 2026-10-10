@@ -22,6 +22,8 @@ export default async function MyProjectsPage({
       ? requestedStatus
       : 'CAPTURE';
 
+  const tabLabel = activeStatus === 'CAPTURE' ? '제작 중' : activeStatus === 'PROCESSING' ? '처리 중' : '제작 완료';
+  const fallbackError = `${tabLabel} 프로젝트를 불러오지 못했습니다.`;
   let projects: DraftProjectItem[] = [];
   let loadError: string | null = null;
   try {
@@ -33,10 +35,13 @@ export default async function MyProjectsPage({
     if (response.data?.success) {
       projects = response.data.data?.reels ?? [];
     } else {
-      loadError = response.data?.message || '제작 중인 프로젝트를 불러오지 못했습니다.';
+      loadError = response.data?.message || fallbackError;
     }
-  } catch {
-    loadError = '제작 중인 프로젝트를 불러오지 못했습니다.';
+  } catch (error) {
+    const failure = error as { response?: { status?: number; data?: { errorCode?: string } } };
+    console.error('[MyProjectsLoadFailed]', { status: activeStatus, httpStatus: failure.response?.status,
+      errorCode: failure.response?.data?.errorCode });
+    loadError = fallbackError;
   }
 
   return (

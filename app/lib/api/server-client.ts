@@ -18,7 +18,9 @@ export async function getMutableServerApiClient(): Promise<AxiosInstance> {
 
 async function createClient(mutable: boolean): Promise<AxiosInstance> {
   const store = await cookies();
-  const expectedUser = mutable ? (await headers()).get('x-reelstamp-user') : null;
+  const requestHeaders = mutable ? await headers() : null;
+  const expectedUser = requestHeaders?.get('x-reelstamp-user');
+  const editToken = requestHeaders?.get('x-reelstamp-edit-token');
   let accessToken = store.get('accessToken')?.value;
   let refreshToken = store.get('refreshToken')?.value;
   let pendingRefresh: Promise<void> | undefined;
@@ -44,6 +46,8 @@ async function createClient(mutable: boolean): Promise<AxiosInstance> {
     }
     // Use the refreshed value, never overwrite it by rereading an old request cookie.
     if (expectedUser) config.headers['X-Reelstamp-User'] = expectedUser;
+    if (editToken && config.url?.startsWith('/api/reels-maker/sessions'))
+      config.headers['X-Reelstamp-Edit-Token'] = editToken;
     if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`;
     return config;
   });

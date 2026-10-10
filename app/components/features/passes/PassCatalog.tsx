@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { durationLabel, type PassProduct } from '@/app/lib/passes/catalog';
 import { Check } from 'lucide-react';
 import { PASS_DISPLAY_FEATURES } from '@/app/lib/constants/pass-display';
-import { formatWon } from '@/app/lib/passes/display';
+import PassPrice from './PassPrice';
 
 export default function PassCatalog({
   products,
@@ -30,9 +30,7 @@ export default function PassCatalog({
           <h2 className="mb-4 text-2xl font-bold text-gray-900">
             {product.name}
           </h2>
-          <p className="text-4xl font-bold tracking-tight text-gray-900">
-            {formatWon(product.salePrice)}
-          </p>
+          <PassPrice product={product} />
           <p className="mb-6 mt-2 text-sm text-gray-600">
             이용기간 {durationLabel(product)}
           </p>
