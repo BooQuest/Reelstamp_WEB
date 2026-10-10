@@ -1,5 +1,6 @@
 type Props = {
   isGuestUser: boolean;
+  isNewProject: boolean;
   isSaving: boolean;
   onSaveAndExit: () => void;
   onExitWithoutSaving: () => void;
@@ -8,6 +9,7 @@ type Props = {
 
 export default function ExitConfirmModal({
   isGuestUser,
+  isNewProject,
   isSaving,
   onSaveAndExit,
   onExitWithoutSaving,
@@ -20,7 +22,9 @@ export default function ExitConfirmModal({
         <p className="mt-3 text-sm leading-6 text-white/70">
           {isGuestUser
             ? '게스트의 미완성 프로젝트는 저장되지 않으며, 나가면 업로드한 원본 영상과 작업 내용을 즉시 삭제합니다.'
-            : '저장하지 않고 나가면 마지막 자동 저장 이후의 변경사항은 반영되지 않습니다. 미완성 프로젝트는 마지막 저장일로부터 30일 동안 보관됩니다.'}
+            : isNewProject
+              ? '저장하지 않고 나가면 이 프로젝트와 자동 저장된 작업 내용이 삭제됩니다. 저장한 미완성 프로젝트는 마지막 저장일로부터 30일 동안 보관됩니다.'
+              : '저장하지 않고 나가면 이번 편집에서 변경한 내용을 취소하고, 편집을 시작하기 전 상태로 복원합니다.'}
         </p>
         <div className="mt-6 space-y-2">
           <button

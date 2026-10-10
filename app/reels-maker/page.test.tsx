@@ -1,10 +1,12 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ReelsMakerPage from './page';
 import {
@@ -75,6 +77,10 @@ let templateCuts: ReturnType<typeof makeCut>[];
 let getUserMedia: ReturnType<typeof vi.fn>;
 let pickerClick: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
+  navigation.auth.user.guest = true;
+  navigation.auth.user.provider = 'GUEST';
+  navigation.router.replace.mockReset();
+  sessionStorage.clear();
   installObjectUrls();
   pickerClick = vi
     .spyOn(HTMLInputElement.prototype, 'click')
@@ -255,7 +261,7 @@ afterEach(() => {
 });
 
 async function openMaker() {
-  render(<ReelsMakerPage />);
+  const view = render(<ReelsMakerPage />);
   fireEvent.click(
     await screen.findByRole('button', { name: '저장 없이 계속하기' }),
   );
@@ -264,6 +270,7 @@ async function openMaker() {
   });
   if (guideClose) fireEvent.click(guideClose);
   await screen.findByRole('button', { name: '사진·영상 불러오기' });
+  return view;
 }
 async function importFile(type = 'video/mp4', name = 'clip.mp4') {
   fireEvent.click(
@@ -569,4 +576,132 @@ describe('gallery-only maker integration', () => {
       screen.queryByRole('button', { name: '템플릿 가이드 닫기' }),
     ).not.toBeInTheDocument();
   });
+});
+
+it('preserves the video when completion polling finishes before the POST response arrives', async () => {
+  const original = fetchMock.getMockImplementation()!;
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/complete')) await pending;
+    return original(url, init);
+  });
+  await openMaker(); await applyFile();
+  fireEvent.click(screen.getByRole('button', { name: '완료' }));
+  await screen.findByText('릴스 제작 완료');
+  await act(async () => { release(); });
+  expect(screen.getByRole('button', { name: '영상 다운로드' })).toBeEnabled();
+});
+
+
+describe('project creation across URL transitions', () => {
+  it.each([0, 1, 4])('creates only one project and discards it after applying %i of four cuts', async (appliedCuts) => {
+    navigation.auth.user.guest = false;
+    navigation.auth.user.provider = 'GOOGLE';
+    templateCuts = [1, 2, 3, 4].map(order => makeCut({ id: `cut-${order}`, order }));
+    session = makeSession({ clips: [1, 2, 3, 4].map(order => ({ clipId: 100 + order, order, durationSeconds: 3 })) });
+    const records = new Map<number, ReelsMakerSessionResponse>();
+    const discarded: number[] = [];
+    let created = 0;
+    const original = fetchMock.getMockImplementation()!;
+    let view: ReturnType<typeof render>;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const page = () => <StrictMode><ReelsMakerPage /></StrictMode>;
+    navigation.router.replace.mockImplementation((href: string) => {
+      timers.push(setTimeout(() => {
+        act(() => {
+          navigation.params = new URLSearchParams(href.split('?')[1]);
+          view.rerender(page());
+        });
+      }, 40));
+    });
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/api/reels-maker/sessions' && init?.method === 'POST') {
+        const id = 10 + created++;
+        await new Promise(resolve => setTimeout(resolve, 10));
+        const result = { ...session, sessionId: id, newEdit: true, draftVersion: 0, draftSavingEnabled: true };
+        records.set(id, result);
+        return jsonResponse({ success: true, data: result });
+      }
+      const discard = url.match(/^\/api\/reels-maker\/sessions\/(\d+)\/edit\/discard$/);
+      if (discard) {
+        const id = Number(discard[1]);
+        discarded.push(id);
+        records.delete(id);
+        return jsonResponse({ success: true, data: { outcome: 'DISCARDED' } });
+      }
+      const editState = url.match(/^\/api\/reels-maker\/sessions\/(\d+)\/edit-state$/);
+      if (editState) {
+        const id = Number(editState[1]);
+        session = records.get(id)!;
+        const response = await original(url, init);
+        records.set(id, session);
+        return response;
+      }
+      const get = url.match(/^\/api\/reels-maker\/sessions\/(\d+)(?:\/edit|\/draft)?$/);
+      if (get) return jsonResponse({ success: true, data: records.get(Number(get[1])) });
+      return original(url, init);
+    });
+    try {
+      view = render(page());
+      await screen.findByRole('button', { name: '사진·영상 불러오기' });
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)); });
+      const guide = screen.queryByRole('button', { name: '템플릿 가이드 닫기' });
+      if (guide) fireEvent.click(guide);
+      for (let index = 0; index < appliedCuts; index++) {
+        if (index) fireEvent.click(screen.getByRole('button', { name: `${index + 1}번 컷 선택` }));
+        await applyFile();
+        await waitFor(() => expect(session.clips.filter(clip => clip.status === 'UPLOADED')).toHaveLength(index + 1));
+      }
+      fireEvent.click(screen.getByRole('button', { name: '뒤로가기' }));
+      fireEvent.click(await screen.findByRole('button', { name: '저장하지 않고 나가기' }));
+      await waitFor(() => expect(navigation.router.push).toHaveBeenCalled());
+      expect(created).toBe(1);
+      expect(discarded).toEqual([10]);
+      expect([...records.values()]).toHaveLength(0);
+    } finally { timers.forEach(clearTimeout); }
+  });
+});
+
+
+it('creates one additional project when starting a new reel after completion', async () => {
+  let created = 0;
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+    if (url === '/api/reels-maker/sessions' && init?.method === 'POST') {
+      session = makeSession({ sessionId: 10 + created++ });
+      return jsonResponse({ success: true, data: session });
+    }
+    return original(url, init);
+  });
+  const view = await openMaker();
+  navigation.params = new URLSearchParams('templateId=template&sessionId=10');
+  view.rerender(<ReelsMakerPage />);
+  await applyFile();
+  fireEvent.click(screen.getByRole('button', { name: '완료' }));
+  await screen.findByText('릴스 제작 완료');
+  fireEvent.click(screen.getByRole('button', { name: '새로운 릴스 만들기' }));
+  expect(navigation.router.replace).toHaveBeenLastCalledWith('/reels-maker?templateId=template');
+  navigation.params = new URLSearchParams('templateId=template');
+  view.rerender(<ReelsMakerPage />);
+  await waitFor(() => expect(navigation.router.replace).toHaveBeenLastCalledWith('/reels-maker?templateId=template&sessionId=11'));
+  expect(created).toBe(2);
+});
+
+it('reopens a failed production for editing without creating another project', async () => {
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+    if (url.endsWith('/status')) {
+      session = { ...session, status: 'FAILED', displayStatus: 'CAPTURE' };
+      return jsonResponse({ success: true, data: { sessionId: 10, status: 'FAILED' } });
+    }
+    return original(url, init);
+  });
+  await openMaker();
+  await applyFile();
+  fireEvent.click(screen.getByRole('button', { name: '완료' }));
+  await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === '/api/reels-maker/sessions/10')).toBe(true));
+  await screen.findByRole('button', { name: '완료' });
+  expect(fetchMock.mock.calls.filter(([url]) => url === '/api/reels-maker/sessions')).toHaveLength(1);
+  expect(alert).toHaveBeenCalled();
 });

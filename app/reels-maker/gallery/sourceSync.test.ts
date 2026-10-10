@@ -151,3 +151,19 @@ describe('source synchronization', () => {
     sync.dispose();
   });
 });
+
+it('does not register or apply revisions after an upload resolves during discard', async () => {
+  const upload = deferred<MediaAsset>();
+  vi.mocked(uploadOriginal).mockReturnValue(upload.promise);
+  const { sync, source, onSession } = setup();
+  sync.prepare(source, { width: 100, height: 100, duration: 5 });
+  sync.register({ id: 'discarded', clipId: 1, source, edit });
+  sync.schedule(snapshot('discarded'));
+  const writing = sync.flush();
+  const stopping = sync.pause();
+  upload.resolve(asset);
+  await Promise.allSettled([writing, stopping]);
+  expect(editorRequest).not.toHaveBeenCalled();
+  expect(applyEditorState).not.toHaveBeenCalled();
+  expect(onSession).not.toHaveBeenCalled();
+});

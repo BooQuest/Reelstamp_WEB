@@ -153,3 +153,26 @@ it('ignores an old session response after the active project changes', async () 
   expect(result.current.draftSaveStatus).toBe('saved');
   expect(result.current.captionsRef.current).toEqual([]);
 });
+
+it('drops queued autosaves after discard starts', async () => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>(resolve => { finish = resolve; });
+  const fetcher = vi.fn(() => pending);
+  vi.stubGlobal('fetch', fetcher);
+  const { result } = renderHook(() => useDraftAutosave({
+    cuts: [{ order: 1 }], captions: [], captionsEnabled: true, activeCutIndex: 0,
+    isRegisteredUser: true, sessionId: 10, stage: 'capture', isExitConfirmOpen: false,
+    sessionHydratedRef: { current: true },
+  }));
+  let second!: Promise<boolean>;
+  await act(async () => { void result.current.saveDraftNow(); });
+  act(() => {
+    second = result.current.saveDraftNow();
+    result.current.suspendAutosave();
+  });
+  await act(async () => {
+    finish(jsonResponse({ success: true, data: makeSession({ draftVersion: 1 }) }));
+    expect(await second).toBe(false);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});

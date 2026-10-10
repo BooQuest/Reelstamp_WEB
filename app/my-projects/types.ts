@@ -10,6 +10,9 @@ export type DraftProjectItem = {
   projectThumbnailEdit?: import('../reels-maker/gallery/types').MediaEdit | null;
   projectName?: string | null;
   status: string;
+  displayStatus?: 'CAPTURE' | 'PROCESSING' | 'COMPLETED';
+  errorMessage?: string | null;
+  mediaError?: string | null;
   finalVideoUrl?: string | null;
   completedClipCount: number;
   totalClipCount: number;

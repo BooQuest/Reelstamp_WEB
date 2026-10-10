@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AxiosError, type AxiosResponse } from 'axios';
 import { getMutableServerApiClient, getServerApiClient } from './server-client';
 const { store, refresh } = vi.hoisted(() => ({ store: { get: vi.fn(), set: vi.fn(), delete: vi.fn() }, refresh: vi.fn() }));
-vi.mock('next/headers', () => ({ cookies: async () => store, headers: async () => new Headers() }));
+const incomingHeaders = vi.hoisted(() => ({ values: {} as Record<string, string> }));
+vi.mock('next/headers', () => ({ cookies: async () => store, headers: async () => new Headers(incomingHeaders.values) }));
 vi.mock('@/app/lib/auth/refresh', () => ({ refreshTokens: refresh }));
 const jwt = (seconds: number) => `x.${Buffer.from(JSON.stringify({ type: 'ACCESS', sid: 'id', exp: Date.now() / 1000 + seconds })).toString('base64url')}.x`;
 const renewed = () => ({ accessToken: jwt(3600), refreshToken: 'new-r', sessionId: 'id', expiresIn: 3600,
   accessTokenExpiresAt: new Date(Date.now()+3600000).toISOString(), refreshTokenExpiresAt: new Date(Date.now()+86400000).toISOString() });
-beforeEach(() => { vi.clearAllMocks(); store.get.mockImplementation(name => name === 'refreshToken' ? { value: 'old-r' } : undefined); });
+beforeEach(() => { incomingHeaders.values = {}; vi.clearAllMocks(); store.get.mockImplementation(name => name === 'refreshToken' ? { value: 'old-r' } : undefined); });
 describe('cookie-writing contexts', () => {
   it('refreshes before the business call and sends the refreshed access token', async () => {
     const token = renewed(); refresh.mockResolvedValue(token);
@@ -41,4 +42,16 @@ describe('cookie-writing contexts', () => {
     const api = await getServerApiClient(); api.defaults.adapter = async config => ({ data: {}, status: 200, statusText: '', headers: {}, config });
     await api.get('/private'); expect(refresh).not.toHaveBeenCalled();
   });
+});
+
+it('forwards edit capabilities only to maker session APIs', async () => {
+  incomingHeaders.values = { 'x-reelstamp-edit-token': 'edit-token' };
+  store.get.mockImplementation(name => ({ value: name === 'accessToken' ? jwt(3600) : 'r' }));
+  const api = await getMutableServerApiClient();
+  const adapter = vi.fn(async config => ({ data: {}, status: 200, statusText: '', headers: {}, config }) as AxiosResponse);
+  api.defaults.adapter = adapter;
+  await api.post('/api/reels-maker/sessions/10/edit/discard', { version: 7 });
+  await api.post('/api/other');
+  expect(adapter.mock.calls[0][0].headers['X-Reelstamp-Edit-Token']).toBe('edit-token');
+  expect(adapter.mock.calls[1][0].headers['X-Reelstamp-Edit-Token']).toBeUndefined();
 });

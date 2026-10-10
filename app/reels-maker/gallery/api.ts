@@ -1,4 +1,4 @@
-import { authFetch } from '@/app/lib/auth/browser-session';
+import { makerFetch as authFetch } from '@/app/reels-maker/services/editSession';
 import type { ReelsMakerSessionResponse } from '../types';
 import type {
   EditorSnapshot,

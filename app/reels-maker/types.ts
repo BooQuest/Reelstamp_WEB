@@ -103,6 +103,8 @@ export type ReelsMakerSessionClip = {
 };
 
 export type ReelsMakerSessionResponse = {
+  displayStatus?: 'CAPTURE' | 'PROCESSING' | 'COMPLETED';
+  newEdit?: boolean;
   mediaAssets?: MediaAsset[];
   sessionId: number;
   templateId: string;
@@ -138,6 +140,8 @@ export type ReelsMakerClipPresignResponse = {
 export type DraftSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 export type ReelsMakerStatusResponse = {
+  displayStatus?: 'CAPTURE' | 'PROCESSING' | 'COMPLETED';
+  mediaError?: string | null;
   sessionId: number;
   status: string;
   finalVideoUrl?: string | null;

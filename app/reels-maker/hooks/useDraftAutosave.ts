@@ -1,7 +1,7 @@
 'use client';
 
 import { EditorConflict } from '../gallery/api';
-import { authFetch } from '@/app/lib/auth/browser-session';
+import { makerFetch as authFetch } from '@/app/reels-maker/services/editSession';
 
 import {
   useCallback,
@@ -120,7 +120,7 @@ export default function useDraftAutosave({
     const saveTask = draftSaveQueueRef.current
       .catch(() => false)
       .then(async () => {
-        if (epoch !== sessionEpoch.current || conflict.current) return false;
+        if (epoch !== sessionEpoch.current || conflict.current || isExitingWithoutSavingRef.current) return false;
         const activeOrder =
           cuts[activeCutIndexRef.current]?.order ?? cuts[0]?.order ?? null;
         const captionItems = captionsRef.current
@@ -287,7 +287,7 @@ export default function useDraftAutosave({
       // Preserve pending project name/last-cut/text changes before replacing editor state.
       const saved = saveDraftNow();
       const pending = saved.then(async (ok) => {
-        if (epoch !== sessionEpoch.current)
+        if (epoch !== sessionEpoch.current || isExitingWithoutSavingRef.current)
           throw new DOMException('Session changed', 'AbortError');
         if (conflict.current) throw conflict.current;
         if (!ok)
@@ -359,5 +359,6 @@ export default function useDraftAutosave({
     cancelScheduledSave,
     resumeAutosave,
     suspendAutosave,
+    waitForSaves: () => draftSaveQueueRef.current.catch(() => false),
   };
 }

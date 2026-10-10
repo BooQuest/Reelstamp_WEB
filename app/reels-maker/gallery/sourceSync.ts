@@ -48,6 +48,7 @@ export class SourceSync {
   private running: Promise<void> | null = null;
   private scheduled: ReturnType<typeof setTimeout> | null = null;
   private conflict = false;
+  private paused = false;
   private lastSession: ReelsMakerSessionResponse | null = null;
   constructor(private options: Options) {}
   get disposed() {
@@ -56,6 +57,17 @@ export class SourceSync {
   dispose() {
     if (this.scheduled) clearTimeout(this.scheduled);
     this.controller.abort();
+  }
+  async pause() {
+    this.paused = true;
+    this.dispose();
+    await Promise.allSettled([this.running, this.uploadQueue]);
+  }
+  resume() {
+    if (!this.paused) return;
+    this.paused = false;
+    this.controller = new AbortController();
+    void this.flush().catch(() => {});
   }
   seed(snapshot: EditorSnapshot, session: ReelsMakerSessionResponse) {
     this.savedSignature = JSON.stringify(snapshot);
@@ -193,7 +205,7 @@ export class SourceSync {
     return this.lastSession;
   }
   private async drain() {
-    while (this.latest && JSON.stringify(this.latest) !== this.savedSignature) {
+    while (!this.disposed && this.latest && JSON.stringify(this.latest) !== this.savedSignature) {
       const snapshot = this.latest;
       try {
         for (const selection of snapshot.clips) {
@@ -202,6 +214,7 @@ export class SourceSync {
             : undefined;
           if (!revision || this.registered.has(revision.id)) continue;
           const asset = await this.ensureOriginal(revision.source.key);
+          if (this.disposed) return;
           // An upload may finish after replacement/undo. Persist only the newest selection.
           if (snapshot !== this.latest) break;
           await editorRequest(

@@ -1,7 +1,8 @@
 'use client';
 
+import { SessionInitialization, type SessionInitializationMode } from './services/sessionInitialization';
 import PreparationView from './components/PreparationView';
-import { authFetch } from '@/app/lib/auth/browser-session';
+import { makerFetch as authFetch, loadEditorSession, releaseEditorSession } from '@/app/reels-maker/services/editSession';
 import GalleryMaker, { type GalleryMakerHandle } from './gallery/GalleryMaker';
 import useGalleryWorkspace from './gallery/useGalleryWorkspace';
 
@@ -21,6 +22,7 @@ import {
 import AutoCaptionEditor from '@/app/reels-maker/components/AutoCaptionEditor';
 import CaptionEditDecisionModal from '@/app/reels-maker/components/CaptionEditDecisionModal';
 import CaptureMenu from '@/app/reels-maker/components/CaptureMenu';
+import useProjectExit from '@/app/reels-maker/hooks/useProjectExit';
 import ExitConfirmModal from '@/app/reels-maker/components/ExitConfirmModal';
 import FinalPreview from '@/app/reels-maker/components/FinalPreview';
 import FullScreenState from '@/app/reels-maker/components/FullScreenState';
@@ -35,7 +37,6 @@ import {
   DURATION_MODE_RECOMMENDED,
   PROCESSING_FAILED_USER_MESSAGE,
   PROCESSING_STATUS_TIMEOUT_MS,
-  PROCESSING_TIMEOUT_USER_MESSAGE,
 } from '@/app/reels-maker/constants';
 import useAutoCaption from '@/app/reels-maker/hooks/useAutoCaption';
 import useCaptionEditor from '@/app/reels-maker/hooks/useCaptionEditor';
@@ -197,7 +198,17 @@ function ReelsMakerInner() {
   const cameraFrameRef = useRef<HTMLDivElement | null>(null);
 
   const sessionHydratedRef = useRef(false);
-  const sessionInitKeyRef = useRef<string | null>(null);
+  const sessionInitialization = useRef(new SessionInitialization());
+  const sessionRoute = useRef({ templateId, requestedSessionId });
+  sessionRoute.current = { templateId, requestedSessionId };
+  const sessionMounted = useRef(true);
+  useEffect(() => {
+    sessionMounted.current = true;
+    return () => { sessionMounted.current = false; };
+  }, []);
+  useEffect(() => {
+    sessionInitialization.current.observe(templateId, requestedSessionId);
+  }, [templateId, requestedSessionId]);
 
   const [stage, setStage] = useState<Stage>('capture');
 
@@ -222,7 +233,7 @@ function ReelsMakerInner() {
   );
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
   const [pendingExitHref, setPendingExitHref] = useState('/my-projects');
-  const [isExitSaving, setIsExitSaving] = useState(false);
+  const [processingDelayed, setProcessingDelayed] = useState(false);
   const [showGuestDraftNotice, setShowGuestDraftNotice] = useState(false);
 
   const [activeCutIndex, setActiveCutIndex] = useState(0);
@@ -332,6 +343,7 @@ function ReelsMakerInner() {
     cancelScheduledSave,
     resumeAutosave,
     suspendAutosave,
+    waitForSaves,
   } = useDraftAutosave({
     cuts,
     captions,
@@ -573,34 +585,33 @@ function ReelsMakerInner() {
     };
   }, [templateId, router]);
 
-  const createReelsSession = useCallback(async () => {
-    if (!templateId || !template) return;
-    const initKey = `${templateId}:${requestedSessionId ?? 'new'}`;
-    if (sessionInitKeyRef.current === initKey) return;
-    sessionInitKeyRef.current = initKey;
+  const createReelsSession = useCallback(async (mode: SessionInitializationMode = 'automatic') => {
+    if (!templateId || !template || template.id !== templateId) return;
+    const currentRoute = sessionRoute.current;
+    if (!sessionMounted.current || currentRoute.templateId !== templateId
+        || currentRoute.requestedSessionId !== requestedSessionId) return;
+    const initialization = sessionInitialization.current;
+    initialization.observe(templateId, requestedSessionId);
+    const attempt = initialization.begin(mode);
+    if (!attempt) return;
+    const isCurrent = () => {
+      const route = sessionRoute.current;
+      initialization.observe(route.templateId, route.requestedSessionId);
+      return sessionMounted.current && initialization.isCurrent(attempt);
+    };
+    const restoreExisting = attempt.sessionId !== null;
 
     const fallbackMessage = getSessionFallbackMessage(requestedSessionId);
     setIsSessionLoading(true);
     setSessionError(null);
     sessionHydratedRef.current = false;
     try {
-      const response = requestedSessionId
-        ? await authFetch(
-            `/api/reels-maker/sessions/${encodeURIComponent(requestedSessionId)}`,
-            {
-              method: 'GET',
-              cache: 'no-store',
-            },
-          )
-        : await authFetch('/api/reels-maker/sessions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ templateId }),
-          });
+      const response = await loadEditorSession(templateId, attempt.sessionId);
 
       const payload = (await response.json()) as
         | WebApiResponse<ReelsMakerSessionResponse>
         | ReelsMakerErrorResponse;
+      if (!isCurrent()) return;
       if (!response.ok || !payload?.success || !payload?.data) {
         const status =
           typeof payload?.status === 'number'
@@ -615,8 +626,8 @@ function ReelsMakerInner() {
           fallbackMessage,
         });
 
+        initialization.finish(attempt, 'failed');
         if (nextSessionError.type === 'auth' && sessionId) return;
-        sessionInitKeyRef.current = null;
         setSessionError(nextSessionError);
         setSessionId(null);
         setGallerySession(null);
@@ -628,6 +639,7 @@ function ReelsMakerInner() {
       if (session.templateId !== templateId) {
         throw new Error('선택한 템플릿과 저장된 프로젝트가 일치하지 않습니다.');
       }
+      initialization.resolved(attempt, session.sessionId);
       const mapping: Record<number, number> = {};
       (session.clips ?? []).forEach((clip) => {
         if (clip?.order != null && clip?.clipId != null) {
@@ -655,11 +667,11 @@ function ReelsMakerInner() {
       const resolvedDraftVersion = session.draftVersion ?? 0;
       if (session.status === 'PROCESSING') {
         setStage('processing');
-      } else if (session.status === 'COMPLETED') {
+      } else if (session.status === 'COMPLETED' && session.displayStatus !== 'CAPTURE') {
         setFinalVideoUrl(session.finalVideoUrl || null);
         setFinalVideoMimeType('video/mp4');
         setStage('preview');
-      } else if (session.status === 'FAILED') {
+      } else if (session.status === 'FAILED' || (session.status === 'COMPLETED' && session.displayStatus === 'CAPTURE')) {
         setStage('capture');
       } else if (session.activeAutoCaptionJobId) {
         setStage('caption-edit');
@@ -670,13 +682,14 @@ function ReelsMakerInner() {
         setIsTemplateGuideOpen(true);
       }
 
-      const restored = await hydrateClips(session, Boolean(requestedSessionId));
-      if (!restored) return;
+      const restored = await hydrateClips(session, restoreExisting);
+      if (!isCurrent()) return;
+      if (!restored) throw new Error('프로젝트를 불러오지 못했습니다. 다시 시도해 주세요.');
       const restoredIndex = cuts.findIndex(
         (cut) => cut.order === session.lastActiveClipOrder,
       );
       const resolvedActiveIndex = restoredIndex >= 0 ? restoredIndex : 0;
-      if (requestedSessionId) {
+      if (restoreExisting) {
         setActiveCutIndex(resolvedActiveIndex);
       }
       hydrateDraft({
@@ -688,8 +701,8 @@ function ReelsMakerInner() {
         captionsEnabled: session.captionsEnabled !== false,
       });
       sessionHydratedRef.current = true;
-      if (!requestedSessionId) {
-        sessionInitKeyRef.current = `${templateId}:${session.sessionId}`;
+      initialization.finish(attempt, 'ready');
+      if (!sessionRoute.current.requestedSessionId) {
         router.replace(
           buildReelsMakerHref({
             templateId,
@@ -699,7 +712,8 @@ function ReelsMakerInner() {
         );
       }
     } catch (error: unknown) {
-      sessionInitKeyRef.current = null;
+      if (!isCurrent()) return;
+      initialization.finish(attempt, 'failed');
       setSessionError({
         type: 'generic',
         message: getErrorMessage(error, fallbackMessage),
@@ -708,7 +722,7 @@ function ReelsMakerInner() {
       setGallerySession(null);
       setSessionClipMap({});
     } finally {
-      setIsSessionLoading(false);
+      if (isCurrent()) setIsSessionLoading(false);
     }
   }, [
     cuts,
@@ -857,6 +871,9 @@ function ReelsMakerInner() {
       }));
 
     setPreparing(false);
+    setFinalVideoUrl(null);
+    setFinalVideoMimeType('video/mp4');
+    setFinalPosterUrl(null);
     setStage('processing');
 
     try {
@@ -903,19 +920,12 @@ function ReelsMakerInner() {
         });
         throw new Error('REELS_COMPLETE_START_FAILED');
       }
-      setFinalVideoUrl(null);
-      setFinalVideoMimeType('video/mp4');
+      releaseEditorSession(sessionId);
     } catch (error) {
       console.error('[ReelsMakerCompleteRequestError]', {
         sessionId,
         error,
       });
-      setFinalVideoUrl((prev) => {
-        revokeBlobUrl(prev);
-        return null;
-      });
-      setFinalVideoMimeType('video/mp4');
-      setFinalPosterUrl(null);
       try {
         const check = await authFetch(`/api/reels-maker/sessions/${sessionId}/status`, { cache: 'no-store' });
         const result = await check.json();
@@ -947,9 +957,11 @@ function ReelsMakerInner() {
 
     let isCancelled = false;
     let finished = false;
+    let delayReported = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
     const startedAt = Date.now();
+    setProcessingDelayed(false);
 
     const fetchStatus = async () => {
       try {
@@ -968,7 +980,7 @@ function ReelsMakerInner() {
         }
         const data = payload.data;
         if (isCancelled) return;
-        if (data.status === 'COMPLETED') {
+        if (data.status === 'COMPLETED' && data.finalVideoUrl) {
           finished = true;
           setFinalVideoUrl(data.finalVideoUrl || null);
           setFinalVideoMimeType('video/mp4');
@@ -982,23 +994,27 @@ function ReelsMakerInner() {
             errorMessage: data.errorMessage ?? null,
           });
           completing.current = false;
+          releaseEditorSession(sessionId);
           setStage('capture');
+          void createReelsSession('reload');
           alert(PROCESSING_FAILED_USER_MESSAGE);
-        } else if (Date.now() - startedAt > PROCESSING_STATUS_TIMEOUT_MS) {
-          finished = true;
+        } else if (!delayReported && Date.now() - startedAt > PROCESSING_STATUS_TIMEOUT_MS) {
+          delayReported = true;
           console.error('[ReelsMakerProcessingTimeout]', {
             sessionId,
             elapsedMs: Date.now() - startedAt,
             lastKnownStatus: data.status,
             processingJobId: data.processingJobId ?? null,
           });
-          completing.current = false;
-          setStage('capture');
-          alert(PROCESSING_TIMEOUT_USER_MESSAGE);
+          setProcessingDelayed(true);
         }
       } catch {
         // Retry transient polling errors without overlapping requests.
       } finally {
+        if (!isCancelled && !delayReported && Date.now() - startedAt > PROCESSING_STATUS_TIMEOUT_MS) {
+          delayReported = true;
+          setProcessingDelayed(true);
+        }
         if (!isCancelled && !finished) {
           timer = setTimeout(fetchStatus, gallerySession ? 1000 : 2000);
         }
@@ -1012,7 +1028,7 @@ function ReelsMakerInner() {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [sessionId, stage, gallerySession]);
+  }, [sessionId, stage, gallerySession, createReelsSession]);
 
   useEffect(() => {
     if (!downloadToastMessage) return;
@@ -1040,54 +1056,12 @@ function ReelsMakerInner() {
     [editorBusy, resumeAutosave],
   );
 
-  const abandonGuestSession = useCallback(async () => {
-    if (!sessionId || !isGuestUser) return true;
-    try {
-      const response = await authFetch(
-        `/api/reels-maker/sessions/${sessionId}/abandon`,
-        {
-          method: 'POST',
-        },
-      );
-      return response.ok;
-    } catch {
-      return false;
-    }
-  }, [isGuestUser, sessionId]);
-
-  const handleSaveAndExit = useCallback(async () => {
-    setIsExitSaving(true);
-    try {
-      cancelScheduledSave();
-      if (isGuestUser) {
-        if (!(await abandonGuestSession())) throw new Error('프로젝트를 삭제하지 못했습니다. 다시 시도해 주세요.');
-      } else {
-        await galleryWorkspace.flush();
-        const saved = await saveDraftNow();
-        if (!saved) return;
-      }
-      setIsExitConfirmOpen(false);
-      router.push(pendingExitHref);
-    } catch (error) {
-      alert(getErrorMessage(error, '작업을 저장하지 못했습니다. 다시 시도해 주세요.'));
-    } finally {
-      setIsExitSaving(false);
-    }
-  }, [
-    abandonGuestSession,
-    galleryWorkspace,
-    cancelScheduledSave,
-    isGuestUser,
-    pendingExitHref,
-    router,
-    saveDraftNow,
-  ]);
-
-  const handleExitWithoutSaving = useCallback(() => {
-    suspendAutosave();
-    setIsExitConfirmOpen(false);
-    router.push(pendingExitHref);
-  }, [pendingExitHref, router, suspendAutosave]);
+  const { isSaving: isExitSaving, save: handleSaveAndExit,
+    discard: handleExitWithoutSaving, continueEditing } = useProjectExit({
+    sessionId, isGuestUser, destination: pendingExitHref,
+    navigate: router.push, close: () => setIsExitConfirmOpen(false), workspace: galleryWorkspace,
+    cancelScheduledSave, saveDraftNow, getDraftVersion, suspendAutosave, resumeAutosave, waitForSaves,
+  });
 
   useEffect(() => {
     setEditingCaptionId(null);
@@ -1170,8 +1144,8 @@ function ReelsMakerInner() {
         }),
       );
     } else {
-      sessionInitKeyRef.current = null;
-      createReelsSession();
+      sessionInitialization.current.reset();
+      void createReelsSession();
     }
   };
 
@@ -1262,7 +1236,7 @@ function ReelsMakerInner() {
             ) : (
               <button
                 type="button"
-                onClick={() => createReelsSession()}
+                onClick={() => createReelsSession('retry')}
                 className="w-full rounded-full bg-[#FF4D6D] px-4 py-3 text-sm font-semibold text-white shadow-lg"
               >
                 다시 시도하기
@@ -1337,7 +1311,7 @@ function ReelsMakerInner() {
   }
 
   if (stage === 'processing') {
-    return <ProcessingView />;
+    return <ProcessingView delayed={processingDelayed} onExit={() => router.push('/my-projects?status=PROCESSING')} />;
   }
 
   if (stage === 'preview') {
@@ -1468,10 +1442,11 @@ function ReelsMakerInner() {
       {isExitConfirmOpen && (
         <ExitConfirmModal
           isGuestUser={isGuestUser}
+          isNewProject={gallerySession?.newEdit ?? false}
           isSaving={isExitSaving}
           onSaveAndExit={() => void handleSaveAndExit()}
-          onExitWithoutSaving={handleExitWithoutSaving}
-          onContinue={() => setIsExitConfirmOpen(false)}
+          onExitWithoutSaving={() => void handleExitWithoutSaving()}
+          onContinue={continueEditing}
         />
       )}
       {isCaptureMenuOpen && (

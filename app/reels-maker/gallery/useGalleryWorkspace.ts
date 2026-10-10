@@ -431,6 +431,11 @@ export default function useGalleryWorkspace(options: Options) {
     },
     undo: () => history.move(-1),
     redo: () => history.move(1),
+    suspend: async () => {
+      prepareController.current?.abort();
+      await sync.current?.pause();
+    },
+    resume: () => sync.current?.resume(),
     flush: async () => {
       sync.current?.schedule({
         clips: selectionsRef.current,
