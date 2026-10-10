@@ -9,6 +9,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
+import { SHOW_COMPLETED_REELS_MENU } from '@/app/lib/constants/navigation';
 import {
   User,
   Sparkles,
@@ -104,21 +105,21 @@ const MOBILE_PRIMARY_ITEMS: MobileMenuItem[] = [
     isDisabled: true,
   },
   {
-    href: '/saved-reels',
-    label: '저장된 릴스',
-    icon: Bookmark,
-    requiresAuth: true,
-  },
-  {
     href: '/my-projects',
-    label: '제작 중인 릴스',
+    label: '내 프로젝트',
     icon: FolderOpen,
     requiresAuth: true,
   },
-  {
+  ...(SHOW_COMPLETED_REELS_MENU ? [{
     href: '/completed-reels',
     label: '제작 완료된 릴스',
     icon: CheckCircle,
+    requiresAuth: true,
+  }] : []),
+  {
+    href: '/saved-reels',
+    label: '저장된 릴스',
+    icon: Bookmark,
     requiresAuth: true,
   },
 ];
@@ -548,28 +549,30 @@ export default function Header() {
                             <div className="border-t border-gray-200 my-1"></div>
 
                             <Link
+                              href="/my-projects"
+                              onClick={() => setIsProfileMenuOpen(false)}
+                              className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                              <FolderOpen className="w-5 h-5 text-gray-400" />
+                              <span className="text-base font-medium">내 프로젝트</span>
+                            </Link>
+                            {SHOW_COMPLETED_REELS_MENU && (
+                              <Link
+                                href="/completed-reels"
+                                onClick={() => setIsProfileMenuOpen(false)}
+                                className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                              >
+                                <CheckCircle className="w-5 h-5 text-gray-400" />
+                                <span className="text-base font-medium">제작 완료된 릴스</span>
+                              </Link>
+                            )}
+                            <Link
                               href="/saved-reels"
                               onClick={() => setIsProfileMenuOpen(false)}
                               className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
                             >
                               <Bookmark className="w-5 h-5 text-gray-400" />
                               <span className="text-base font-medium">저장된 릴스</span>
-                            </Link>
-                            <Link
-                              href="/my-projects"
-                              onClick={() => setIsProfileMenuOpen(false)}
-                              className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
-                            >
-                              <FolderOpen className="w-5 h-5 text-gray-400" />
-                              <span className="text-base font-medium">제작 중인 릴스</span>
-                            </Link>
-                            <Link
-                              href="/completed-reels"
-                              onClick={() => setIsProfileMenuOpen(false)}
-                              className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
-                            >
-                              <CheckCircle className="w-5 h-5 text-gray-400" />
-                              <span className="text-base font-medium">제작 완료된 릴스</span>
                             </Link>
                           </div>
                         </motion.div>

@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import { SHOW_COMPLETED_REELS_MENU } from '@/app/lib/constants/navigation';
 import {
   Bookmark,
   CheckCircle,
@@ -39,21 +40,21 @@ export const CAPTURE_MENU_ITEMS: CaptureMenuItem[] = [
     isDisabled: true,
   },
   {
-    href: '/saved-reels',
-    label: '저장된 릴스',
-    icon: Bookmark,
-    requiresAuth: true,
-  },
-  {
     href: '/my-projects',
-    label: '제작 중인 릴스',
+    label: '내 프로젝트',
     icon: FolderOpen,
     requiresAuth: true,
   },
-  {
+  ...(SHOW_COMPLETED_REELS_MENU ? [{
     href: '/completed-reels',
     label: '제작 완료된 릴스',
     icon: CheckCircle,
+    requiresAuth: true,
+  }] : []),
+  {
+    href: '/saved-reels',
+    label: '저장된 릴스',
+    icon: Bookmark,
     requiresAuth: true,
   },
 ];
