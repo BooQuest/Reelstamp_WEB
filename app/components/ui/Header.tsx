@@ -22,6 +22,7 @@ import {
   FolderOpen,
   Bell,
   CreditCard,
+  Ticket,
 } from 'lucide-react';
 
 // 메뉴 항목 타입 정의
@@ -165,7 +166,7 @@ export default function Header() {
   const currentPageLoginHref = pathname.startsWith('/login')
     ? '/login'
     : buildLoginHref(pathname);
-  const videoCreditLabel = subscription?.passActive ? 'pass' : 'free';
+  const hasActivePass = subscription?.passActive === true;
   const hasVisibleLegacyMenuItems = MENU_ITEMS.some(isNavItemVisible);
   const isMenuItemAvailable = (item: { requiresAuth?: boolean }) =>
     !item.requiresAuth || isAuthenticated;
@@ -368,21 +369,30 @@ export default function Header() {
             </nav>
 
             {/* 우측: 가입/로그인 버튼 및 모바일 메뉴 */}
-            <div className="flex items-center gap-3">
-              {/* 영상 횟수 UI (모바일) */}
+            <div className="flex items-center gap-3 md:gap-6">
+              {/* 이용권 상태 (PC·모바일 공통) */}
               {isAuthenticated && subscription && (
-              <div className="md:hidden flex items-center gap-3 px-3 py-1.5 bg-white border border-gray-200 rounded-lg">
-                {/* 재생 버튼 아이콘 */}
-                <div className="w-5 h-5 bg-[#FF496D] rounded flex items-center justify-center flex-shrink-0">
-                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" className="ml-0.5">
-                    <path d="M2 1L6 4L2 7V1Z" fill="white" />
-                  </svg>
-                </div>
-                {/* 크레딧 라벨 */}
-                  <span className="text-sm font-semibold text-[#FF496D]">
-                    {videoCreditLabel}
+                <Link
+                  href={hasActivePass ? '/plan' : '/pricing'}
+                  aria-label={hasActivePass ? '이용권 사용 중, 내 이용권 보기' : '이용권 없음, 요금제 보기'}
+                  className={`group relative inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg border bg-white px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF496D] focus-visible:ring-offset-2 ${
+                    hasActivePass
+                      ? 'border-[#FF496D]/20 text-[#FF496D] hover:bg-[#FFF5F8]'
+                      : 'border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                  }`}
+                >
+                  <Ticket
+                    className={`h-5 w-5${hasActivePass ? ' fill-[#FF496D]/15' : ''}`}
+                    aria-hidden="true"
+                  />
+                  {hasActivePass && <span className="text-sm font-semibold">pass</span>}
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-0 top-full z-10 mt-2 whitespace-nowrap rounded-md bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                  >
+                    {hasActivePass ? '이용권 사용 중' : '이용권 없음'}
                   </span>
-              </div>
+                </Link>
               )}
               {/* 모바일 햄버거 메뉴 버튼 */}
               <button
@@ -414,21 +424,6 @@ export default function Header() {
               </button>
               {/* 로그인/회원가입 또는 프로필 이미지 (PC만 표시) */}
               <div className="hidden md:flex items-center gap-6">
-                {/* 영상 횟수 UI (PC) */}
-                {isAuthenticated && subscription && (
-                <div className="flex items-center gap-4 px-4 py-2 bg-white border border-gray-200 rounded-lg min-w-[80px]">
-                  {/* 재생 버튼 아이콘 */}
-                  <div className="w-5 h-5 bg-[#FF496D] rounded flex items-center justify-center flex-shrink-0">
-                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" className="ml-0.5">
-                      <path d="M2 1L6 4L2 7V1Z" fill="white" />
-                    </svg>
-                  </div>
-                  {/* 크레딧 라벨 */}
-                    <span className="text-sm font-semibold text-[#FF496D]">
-                      {videoCreditLabel}
-                    </span>
-                </div>
-                )}
                 {isAuthenticated ? (
                   // 로그인 상태: 프로필 이미지 (클릭 시 메뉴 표시)
                   <div className="relative" ref={profileMenuRef}>
