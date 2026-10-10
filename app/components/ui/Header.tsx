@@ -325,18 +325,6 @@ export default function Header() {
                 >
                   Reelstamp
                 </span>
-                <span 
-                  className="beta-text text-[22px] md:text-[26px] font-normal leading-[150%] tracking-[-0.03em]"
-                  style={{ 
-                    fontFamily: 'var(--font-praise), serif',
-                    background: 'linear-gradient(180deg, #FFB4C7 0%, #FF496D 100%)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text',
-                  }}
-                >
-                  Beta
-                </span>
               </Link>
             </div>
 
