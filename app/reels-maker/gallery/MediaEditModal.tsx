@@ -6,7 +6,6 @@ import type { EditingMedia, MediaEdit } from './types';
 import { floorTenth, MAX_CLIP_SECONDS, setEditDuration } from './geometry';
 import SegmentTimeline from './SegmentTimeline';
 import useCropGesture from './useCropGesture';
-import { generateTimelineThumbnails } from '../utils/media/previews';
 
 type Props = {
   media: EditingMedia;
@@ -29,7 +28,6 @@ export default function MediaEditModal({
   const [validation, setValidation] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [toast, setToast] = useState(false);
-  const [thumbnails, setThumbnails] = useState<string[]>([]);
   const warned = useRef(false);
   const video = useRef<HTMLVideoElement>(null);
   const image = media.item.kind === 'image';
@@ -51,24 +49,6 @@ export default function MediaEditModal({
     const timer = window.setTimeout(() => setToast(false), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
-  useEffect(() => {
-    if (image) return;
-    const controller = new AbortController();
-    void generateTimelineThumbnails(
-      media.item.url,
-      {
-        duration: media.sourceDuration,
-        width: media.width,
-        height: media.height,
-      },
-      controller.signal,
-    )
-      .then((result) => {
-        if (!controller.signal.aborted) setThumbnails(result);
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, [image, media.item.url, media.sourceDuration, media.width, media.height]);
   const changeDuration = (raw: string) => {
     pause();
     setInput(raw);
@@ -82,6 +62,7 @@ export default function MediaEditModal({
         image ? MAX_CLIP_SECONDS : floorTenth(media.sourceDuration),
       );
       setEdit(next);
+      if (video.current) video.current.currentTime = next.start;
       setValidation(null);
     } catch (e) {
       setValidation((e as Error).message);
@@ -113,13 +94,16 @@ export default function MediaEditModal({
       className="fixed inset-0 z-[90] flex flex-col bg-[#111827] p-3 text-white"
     >
       <p className="shrink-0 py-2 text-center text-sm">
-        이동하거나 확대하여 사용할 화면을 선택하세요
+        이동하거나 확대하여 분홍색 테두리 안에 사용할 화면을 맞추세요
       </p>
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+      <div
+        className="flex min-h-0 flex-1 items-center justify-center overflow-hidden"
+        style={{ containerType: 'size' }}
+      >
         <div
           {...gesture}
-          className="relative aspect-[9/16] max-h-full touch-none overflow-hidden border border-white/40 bg-black"
-          style={{ height: '100%', maxWidth: '100%' }}
+          className="relative aspect-[9/16] shrink-0 touch-none overflow-hidden bg-black"
+          style={{ width: 'min(100cqw, calc(100cqh * 9 / 16))' }}
         >
           {image ? (
             <img
@@ -150,9 +134,14 @@ export default function MediaEditModal({
               onEnded={pause}
             />
           )}
+          <div
+            aria-hidden="true"
+            data-testid="preview-output-frame"
+            className="pointer-events-none absolute inset-0 border-2 border-rose-500"
+          />
         </div>
       </div>
-      <div className="mx-auto w-full max-w-xl shrink-0 space-y-3 py-3">
+      <div className="mx-auto w-full shrink-0 space-y-3 py-3">
         {!image && (
           <>
             <button
@@ -182,16 +171,13 @@ export default function MediaEditModal({
             <SegmentTimeline
               start={edit.start}
               duration={edit.duration}
-              sourceDuration={media.sourceDuration}
-              thumbnails={thumbnails}
+              sourceUrl={media.item.url}
+              metadata={{ duration: media.sourceDuration, width: media.width, height: media.height }}
               disabled={busy}
-              onChange={(segment) => {
+              onStartChange={(start) => {
                 pause();
-                if (segment.duration !== edit.duration) notifyDuration();
-                setEdit((current) => ({ ...current, ...segment }));
-                setInput(String(segment.duration));
-                setValidation(null);
-                if (video.current) video.current.currentTime = segment.start;
+                setEdit((current) => ({ ...current, start }));
+                if (video.current) video.current.currentTime = start;
               }}
             />
           </>
@@ -216,7 +202,7 @@ export default function MediaEditModal({
             {validation || error}
           </p>
         )}
-        <div className="flex justify-between">
+        <div className="mx-auto flex max-w-xl justify-between">
           <button
             type="button"
             disabled={!canCancel}
