@@ -69,7 +69,7 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
         {/* Stats */}
         <div className="grid grid-cols-2 gap-3 mb-6">
           <button
-            onClick={() => router.push('/completed-reels')}
+            onClick={() => router.push('/my-projects?status=COMPLETED')}
             className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-center hover:bg-gray-50 transition-all"
           >
             <p className="text-3xl font-bold text-[#FF496D] mb-1">

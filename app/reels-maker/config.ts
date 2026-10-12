@@ -1,8 +1,6 @@
 import type { ComponentType } from 'react';
-import { SHOW_COMPLETED_REELS_MENU } from '@/app/lib/constants/navigation';
 import {
   Bookmark,
-  CheckCircle,
   FolderOpen,
   LayoutTemplate,
   Sparkles,
@@ -45,12 +43,6 @@ export const CAPTURE_MENU_ITEMS: CaptureMenuItem[] = [
     icon: FolderOpen,
     requiresAuth: true,
   },
-  ...(SHOW_COMPLETED_REELS_MENU ? [{
-    href: '/completed-reels',
-    label: '제작 완료된 릴스',
-    icon: CheckCircle,
-    requiresAuth: true,
-  }] : []),
   {
     href: '/saved-reels',
     label: '저장된 릴스',

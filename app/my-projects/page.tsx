@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/app/lib/api/auth';
+import { buildLoginReturnHref } from '@/app/lib/auth/loginRedirect';
 import MyProjectsClient from '@/app/my-projects/MyProjectsClient';
 import type { DraftProjectItem, DraftProjectListResponse } from '@/app/my-projects/types';
 
@@ -10,17 +11,20 @@ export default async function MyProjectsPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
-  const user = await getCurrentUser();
-  if (!user) {
-    redirect('/login?returnUrl=' + encodeURIComponent('/my-projects'));
-  }
-
   const resolvedSearchParams = await searchParams;
   const requestedStatus = resolvedSearchParams.status?.toUpperCase();
   const activeStatus =
     requestedStatus === 'PROCESSING' || requestedStatus === 'COMPLETED'
       ? requestedStatus
       : 'CAPTURE';
+
+  const user = await getCurrentUser();
+  if (!user) {
+    const returnUrl = activeStatus === 'CAPTURE'
+      ? '/my-projects'
+      : `/my-projects?status=${activeStatus}`;
+    redirect(buildLoginReturnHref(returnUrl));
+  }
 
   const tabLabel = activeStatus === 'CAPTURE' ? '제작 중' : activeStatus === 'PROCESSING' ? '처리 중' : '제작 완료';
   const fallbackError = `${tabLabel} 프로젝트를 불러오지 못했습니다.`;
