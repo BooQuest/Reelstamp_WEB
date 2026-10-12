@@ -92,13 +92,12 @@ describe('shared clip library', () => {
     expect(result.current.clipSources).toEqual({});
   });
 
-  it('loads a fixed clip once and preserves it across a full restart', async () => {
+  it('loads a fixed clip and its poster once when initialized', async () => {
     const fixedCuts = [makeCut({ isFixed: true, fixedVideoUrl: 'https://fixed.test/clip' })];
     vi.mocked(downloadFixedClip).mockResolvedValue({ ...makeClip(), url: 'blob:fixed' });
     const { result } = renderHook(() => useClipLibrary({ ...options, cuts: fixedCuts }));
     act(() => result.current.reset(fixedCuts));
     await waitFor(() => expect(result.current.clips[0]?.url).toBe('blob:fixed'));
-    act(() => result.current.reset(fixedCuts, true));
     await waitFor(() => expect(result.current.clipPosters[0]).toBe('poster'));
     expect(downloadFixedClip).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:fixed');

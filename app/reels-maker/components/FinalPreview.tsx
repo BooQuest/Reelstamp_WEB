@@ -1,6 +1,11 @@
-import { Check, Download, Play, X } from 'lucide-react';
+'use client';
+
+import { useState } from 'react';
+import { Check, Download, Music2, Play, X } from 'lucide-react';
 import InstagramShareButton from '../InstagramShareButton';
 import { EXAMPLE_ASSETS } from '../constants';
+import { resolveRecommendedBgm } from '../utils/bgm';
+import BgmUploadGuide from './BgmUploadGuide';
 
 type Props = {
   sessionId: number | null;
@@ -8,13 +13,14 @@ type Props = {
   finalVideoMimeType: string;
   finalPosterUrl: string | null;
   templateTitle: string;
+  bgmTitle?: string | null;
+  bgmUrl?: string | null;
   downloadToastMessage: string | null;
   isPreviewOpen: boolean;
   onOpenPreview: () => void;
   onClosePreview: () => void;
   onDownload: () => void;
   onDone: () => void;
-  onReset: () => void;
   onReady?: () => void;
   onShared: (message: string | null) => void;
 };
@@ -25,16 +31,20 @@ export default function FinalPreview({
   finalVideoMimeType,
   finalPosterUrl,
   templateTitle,
+  bgmTitle,
+  bgmUrl,
   downloadToastMessage,
   isPreviewOpen,
   onOpenPreview,
   onClosePreview,
   onDownload,
   onDone,
-  onReset,
   onShared,
   onReady,
 }: Props) {
+  const [isBgmGuideOpen, setIsBgmGuideOpen] = useState(false);
+  const bgm = resolveRecommendedBgm(bgmTitle, bgmUrl);
+
   return (
     <div className="min-h-[100dvh] bg-black text-white">
       <div className="max-w-md mx-auto px-4 pt-4 pb-10 space-y-6">
@@ -81,6 +91,12 @@ export default function FinalPreview({
                 <Play className="w-8 h-8 text-white" />
               </button>
             </div>
+            {bgm && (
+              <div className="pointer-events-none absolute inset-x-3 bottom-3 flex items-start gap-2 rounded-xl bg-black/60 px-3 py-2 text-xs leading-5 backdrop-blur-sm">
+                <Music2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 break-words">추천 BGM · {bgm.title}</span>
+              </div>
+            )}
             {downloadToastMessage && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold flex items-center gap-2 shadow-lg">
                 <Check className="w-4 h-4" />
@@ -91,12 +107,19 @@ export default function FinalPreview({
         </div>
 
         <div className="space-y-3">
+          {bgm && (
+            <button type="button" onClick={() => setIsBgmGuideOpen(true)} disabled={!finalVideoUrl || !sessionId}
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-[#FF4D6D] py-4 text-base font-semibold shadow-lg disabled:opacity-50">
+              <Music2 className="h-5 w-5" aria-hidden="true" />BGM과 함께 업로드
+            </button>
+          )}
           <InstagramShareButton
             sessionId={sessionId}
             finalVideoUrl={finalVideoUrl}
             finalVideoMimeType={finalVideoMimeType}
             templateTitle={templateTitle}
             onShared={onShared}
+            variant={bgm ? 'secondary' : 'primary'}
           />
           <button
             type="button"
@@ -107,15 +130,12 @@ export default function FinalPreview({
             <Download className="w-5 h-5" />
             영상 다운로드
           </button>
-          <button
-            type="button"
-            onClick={onReset}
-            className="w-full rounded-full bg-[#3B4557] py-4 text-base font-semibold shadow-lg"
-          >
-            새로운 릴스 만들기
-          </button>
         </div>
       </div>
+
+      {isBgmGuideOpen && bgm && (
+        <BgmUploadGuide bgm={bgm} onDownload={onDownload} onClose={() => setIsBgmGuideOpen(false)} />
+      )}
 
       {isPreviewOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
