@@ -1,4 +1,5 @@
 import { isReelstampBetaEnabled } from '@/app/lib/constants/beta';
+import { USER_ROLES } from '@/app/lib/constants/auth';
 
 export type TemplateAccessType = 'FREE' | 'PAID';
 export type TemplateStatus = 'AVAILABLE' | 'COMING_SOON';
@@ -10,6 +11,7 @@ export type TemplateAccessSource = {
 };
 
 export type TemplateAccessUser = {
+  role?: string | null;
   guest?: boolean | null;
   provider?: string | null;
 } | null | undefined;
@@ -62,6 +64,9 @@ export const isPaidTemplate = (template: TemplateAccessSource | null | undefined
 export const isGuestTemplateUser = (user: TemplateAccessUser) =>
   Boolean(user?.guest || user?.provider === 'GUEST');
 
+const isAdminTemplateUser = (user: TemplateAccessUser) =>
+  user?.role?.trim().toUpperCase() === USER_ROLES.ADMIN;
+
 export const hasActivePaidSubscription = (
   subscription: TemplateAccessSubscription
 ) => {
@@ -85,6 +90,10 @@ export const canUseTemplate = ({
   }
 
   if (!isPaidTemplate(template)) {
+    return true;
+  }
+
+  if (isAuthenticated && isAdminTemplateUser(user)) {
     return true;
   }
 
@@ -117,6 +126,7 @@ export const shouldWaitForPaidTemplateSubscription = ({
       isPaidTemplate(template) &&
       !isReelstampBetaEnabled() &&
       isAuthenticated &&
+      !isAdminTemplateUser(user) &&
       !isGuestTemplateUser(user) &&
       isLoadingSubscription
   );

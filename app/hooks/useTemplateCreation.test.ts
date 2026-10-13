@@ -2,10 +2,11 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useTemplateCreation } from './useTemplateCreation';
 import type { TemplateSummary } from './useSavedTemplates';
+import type { TemplateAccessSubscription } from '@/app/lib/templates/access';
 
 const state = vi.hoisted(() => ({
   push: vi.fn(), beta: false,
-  auth: { isAuthenticated: true, user: { guest: false }, subscription: { passActive: true }, isLoadingSubscription: false },
+  auth: { isAuthenticated: true, user: { role: 'USER', guest: false }, subscription: { passActive: true } as TemplateAccessSubscription, isLoadingSubscription: false },
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: state.push }) }));
 vi.mock('@/app/components/providers/AuthProvider', () => ({ useAuth: () => state.auth }));
@@ -16,7 +17,7 @@ const destination = '/reels-maker?templateId=a%2Fb&returnUrl=%2Fsaved-reels';
 beforeEach(() => {
   vi.useFakeTimers();
   state.beta = false;
-  state.auth = { isAuthenticated: true, user: { guest: false }, subscription: { passActive: true }, isLoadingSubscription: false };
+  state.auth = { isAuthenticated: true, user: { role: 'USER', guest: false }, subscription: { passActive: true }, isLoadingSubscription: false };
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.clearAllMocks(); });
 
@@ -59,8 +60,37 @@ it('cancels a pending login redirect when the preview closes', () => {
 it('preserves beta guest access when that existing policy is enabled', () => {
   state.beta = true;
   state.auth.user.guest = true;
-  state.auth.subscription.passActive = false;
+  state.auth.subscription = { passActive: false };
   const { result } = renderHook(() => useTemplateCreation('/saved-reels'));
   act(() => result.current.create(paid));
   expect(state.push).toHaveBeenCalledExactlyOnceWith(destination);
+});
+
+it.each([
+  { role: 'ADMIN', loading: true, subscription: null },
+  { role: 'admin', loading: false, subscription: null },
+  { role: 'ADMIN', loading: false, subscription: { passActive: false } },
+])('lets $role create a paid template without a pass while loading=$loading', ({ role, loading, subscription }) => {
+  state.auth.user.role = role;
+  state.auth.subscription = subscription;
+  state.auth.isLoadingSubscription = loading;
+  const { result } = renderHook(() => useTemplateCreation('/saved-reels'));
+  expect(result.current.isAccessLoading(paid)).toBe(false);
+  act(() => result.current.create(paid));
+  expect(state.push).toHaveBeenCalledExactlyOnceWith(destination);
+});
+
+it('still blocks coming-soon templates for admins', () => {
+  state.auth.user.role = 'ADMIN';
+  const { result } = renderHook(() => useTemplateCreation('/saved-reels'));
+  act(() => result.current.create({ ...paid, status: 'COMING_SOON' }));
+  expect(state.push).not.toHaveBeenCalled();
+  expect(result.current.accessMessage).toBe('아직 추가 예정인 템플릿입니다.');
+});
+
+it('still redirects regular users without a pass to pricing', () => {
+  state.auth.subscription = { passActive: false };
+  const { result } = renderHook(() => useTemplateCreation('/saved-reels'));
+  act(() => result.current.create(paid));
+  expect(state.push).toHaveBeenCalledExactlyOnceWith('/pricing');
 });
