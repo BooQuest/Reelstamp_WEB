@@ -43,6 +43,4 @@ export class SessionInitialization {
     if (this.isCurrent(attempt)) attempt.phase = phase;
   }
 
-  /** Only an explicit new-production action may forget an assigned project. */
-  reset() { this.attempt = null; }
 }

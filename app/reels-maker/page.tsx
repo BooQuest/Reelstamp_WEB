@@ -1111,44 +1111,6 @@ function ReelsMakerInner() {
     router.replace(completionReturnUrl);
   };
 
-  const handleResetAll = () => {
-    setStage('capture');
-    setActiveCutIndex(0);
-    setSessionId(null);
-    setGallerySession(null);
-    setSessionClipMap({});
-    setSessionError(null);
-    resetClips(cuts, true);
-    setCaptions([]);
-    setSelectedCaptionId(null);
-    setEditingCaptionId(null);
-    resetCaptionGesture();
-    if (finalVideoUrl) {
-      revokeBlobUrl(finalVideoUrl);
-      setFinalVideoUrl(null);
-    }
-    if (finalPosterUrl) {
-      setFinalPosterUrl(null);
-    }
-    setFinalVideoMimeType('video/mp4');
-    setIsPreviewOpen(false);
-    setIsTemplateGuideOpen(false);
-    setTemplateGuideStep('overview');
-    setExampleReelIndex(0);
-    setDownloadToastMessage(null);
-    if (templateId && requestedSessionId) {
-      router.replace(
-        buildReelsMakerHref({
-          templateId,
-          returnUrl: explicitCompletionReturnUrl,
-        }),
-      );
-    } else {
-      sessionInitialization.current.reset();
-      void createReelsSession();
-    }
-  };
-
   if (!templateId) {
     return (
       <FullScreenState>
@@ -1322,13 +1284,14 @@ function ReelsMakerInner() {
         finalVideoMimeType={finalVideoMimeType}
         finalPosterUrl={finalPosterUrl}
         templateTitle={template.title}
+        bgmTitle={template.bgmTitle}
+        bgmUrl={template.bgmUrl}
         downloadToastMessage={downloadToastMessage}
         isPreviewOpen={isPreviewOpen}
         onOpenPreview={() => setIsPreviewOpen(true)}
         onClosePreview={() => setIsPreviewOpen(false)}
         onDownload={handleDownload}
         onDone={handleFinalDone}
-        onReset={handleResetAll}
         onReady={() => {
           if (completionStartedAt.current !== null) {
             console.info('[ReelsMakerTiming]', { phase: 'complete-to-first-frame', preparationStateAtClick: completionPreparationState.current, elapsedMs: Math.round(performance.now() - completionStartedAt.current) });

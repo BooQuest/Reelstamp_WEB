@@ -66,23 +66,18 @@ export default function useClipLibrary({ cuts, sessionId, sessionClipMap }: Opti
 
   useEffect(() => () => cancelUploads(), [sessionId, cancelUploads]);
 
-  const reset = useCallback((nextCuts: MakerCut[], preserveFixed = false) => {
+  const reset = useCallback((nextCuts: MakerCut[]) => {
     generationRef.current += 1;
     hydrationRef.current?.abort();
     initializedCutsRef.current = nextCuts;
     cancelUploads();
-    replaceClips(nextCuts.map((cut, index) =>
-      preserveFixed && cut.isFixed ? clipsRef.current[index] ?? null : null
-    ));
+    replaceClips(nextCuts.map(() => null));
     updateUploaded(Object.fromEntries(nextCuts.map((cut, index) => [index, cut.isFixed])));
     setUploadingCuts({});
     setClipUploadErrors({});
     setFixedClipErrors({});
     setClipSources({});
-    setClipPosters((previous) => preserveFixed
-      ? Object.fromEntries(Object.entries(previous).filter(([index]) => nextCuts[Number(index)]?.isFixed))
-      : {}
-    );
+    setClipPosters({});
     setFixedRevision((revision) => revision + 1);
   }, [cancelUploads, replaceClips, updateUploaded]);
 

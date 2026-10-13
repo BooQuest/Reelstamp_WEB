@@ -76,6 +76,8 @@ export type TemplateCut = {
 export type TemplateDetailResponse = {
   id: string;
   title: string;
+  bgmTitle?: string | null;
+  bgmUrl?: string | null;
   subtitle?: string | null;
   thumbnailUrl?: string | null;
   embedUrl?: string | null;

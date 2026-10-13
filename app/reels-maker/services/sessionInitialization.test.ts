@@ -65,14 +65,3 @@ it('reloads a failed production using the existing project even before URL ackno
   start.finish(first, 'ready');
   expect(start.begin('reload')?.sessionId).toBe('10');
 });
-
-it('can start another production explicitly before the previous URL was acknowledged', () => {
-  const start = new SessionInitialization();
-  start.observe('template', null);
-  const first = start.begin()!;
-  start.resolved(first, 10);
-  start.finish(first, 'ready');
-  start.reset();
-  expect(start.begin()?.sessionId).toBeNull();
-  expect(start.isCurrent(first)).toBe(false);
-});

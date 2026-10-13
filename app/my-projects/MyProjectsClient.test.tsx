@@ -54,3 +54,25 @@ it('keeps list errors distinct from empty lists and offers retry', () => {
   fireEvent.click(screen.getByText('다시 시도'));
   expect(router.refresh).toHaveBeenCalled();
 });
+
+it('deletes a completed project through the individual delete API', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  vi.mocked(authFetch).mockResolvedValue(new Response(JSON.stringify({ success: true })));
+  render(<MyProjectsClient initialProjects={[project]} activeStatus="COMPLETED" loadError={null} />);
+  fireEvent.click(screen.getByRole('button', { name: '프로젝트 삭제' }));
+  expect(await screen.findByText('프로젝트를 삭제했습니다.')).toBeInTheDocument();
+  expect(authFetch).toHaveBeenCalledWith('/api/reels-maker/sessions/10', { method: 'DELETE' });
+  expect(screen.queryByText('Saved reel')).not.toBeInTheDocument();
+});
+
+it('keeps a completed project visible when individual deletion fails', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  vi.mocked(authFetch).mockResolvedValue(new Response(JSON.stringify({
+    success: false, message: '프로젝트 삭제에 실패했습니다.',
+  }), { status: 500 }));
+  render(<MyProjectsClient initialProjects={[project]} activeStatus="COMPLETED" loadError={null} />);
+  fireEvent.click(screen.getByRole('button', { name: '프로젝트 삭제' }));
+  expect(await screen.findByText('프로젝트 삭제에 실패했습니다.')).toBeInTheDocument();
+  expect(screen.getByText('Saved reel')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '프로젝트 삭제' })).toBeEnabled();
+});

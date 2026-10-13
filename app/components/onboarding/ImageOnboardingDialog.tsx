@@ -13,7 +13,7 @@ const SLIDES = {
   ],
   'reels-making': [
     { file: 'first_reelsmaking_1.png', title: '컷별 템플릿 가이드', description: '예시 영상과 컷별 설명을 참고해 촬영하면 템플릿 흐름을 더 쉽게 따라갈 수 있어요.' },
-    { file: 'first_reelsmaking_2.png', title: '컷 구간 설정', description: '바를 움직여 사용할 구간을 선택하고, 아래 길이 입력으로 컷 길이를 조절해보세요.' },
+    { file: 'first_reelsmaking_2.png', title: '컷 구간 설정', description: '썸네일을 좌우로 밀어 사용할 구간을 선택하고, 아래 길이 입력으로 컷 길이를 조절해보세요.' },
     { file: 'first_reelsmaking_3.png', title: '릴스 업로드 완료', description: '완성한 릴스를 인스타그램에 공유하고, 릴스탬프와 함께 릴스 여정을 시작해보세요.' },
   ],
 };

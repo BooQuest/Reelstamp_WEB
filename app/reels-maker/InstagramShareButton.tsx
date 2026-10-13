@@ -3,7 +3,8 @@
 import { authFetch } from '@/app/lib/auth/browser-session';
 
 import { useState } from 'react';
-import { Loader2, Share2, X } from 'lucide-react';
+import { Instagram, Loader2, Share2, X } from 'lucide-react';
+import { isLikelyMobileDevice } from './utils/device';
 
 type InstagramShareModalType = 'desktop' | 'unsupported' | 'error';
 
@@ -13,6 +14,7 @@ type InstagramShareButtonProps = {
   finalVideoMimeType: string;
   templateTitle?: string | null;
   onShared?: (message: string) => void;
+  variant?: 'primary' | 'secondary';
 };
 
 const INSTAGRAM_SHARE_MODAL_COPY: Record<
@@ -36,16 +38,6 @@ const INSTAGRAM_SHARE_MODAL_COPY: Record<
   },
 };
 
-const isLikelyMobileDevice = () => {
-  if (typeof navigator === 'undefined') return false;
-
-  const userAgent = navigator.userAgent || '';
-  const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-  const isIPadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
-
-  return isMobileUserAgent || isIPadOS;
-};
-
 const guessShareVideoExtension = (mimeType: string, url: string) => {
   const lowerMimeType = mimeType.toLowerCase();
   if (lowerMimeType.includes('webm')) return 'webm';
@@ -65,6 +57,7 @@ export default function InstagramShareButton({
   finalVideoMimeType,
   templateTitle,
   onShared,
+  variant = 'primary',
 }: InstagramShareButtonProps) {
   const [modalType, setModalType] = useState<InstagramShareModalType | null>(null);
   const [isSharing, setIsSharing] = useState(false);
@@ -130,12 +123,12 @@ export default function InstagramShareButton({
         type="button"
         onClick={handleShare}
         disabled={!finalVideoUrl || isSharing}
-        className="w-full rounded-full bg-[#FF4D6D] py-4 text-base font-semibold shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+        className={`w-full rounded-full ${variant === 'primary' ? 'bg-[#FF4D6D]' : 'bg-[#2B3446]'} py-4 text-base font-semibold shadow-lg flex items-center justify-center gap-2 disabled:opacity-50`}
       >
         {isSharing ? (
           <Loader2 className="w-5 h-5 animate-spin" />
         ) : (
-          <Share2 className="w-5 h-5" />
+          <Instagram className="w-5 h-5" />
         )}
         {isSharing ? '공유 준비 중...' : '인스타그램에 공유'}
       </button>

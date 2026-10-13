@@ -3,21 +3,27 @@ import { TIMELINE_THUMBNAIL_COUNT } from '../../constants';
 import { seekVideoTo } from './metadata';
 import { assertMediaActive, waitForMediaEvent } from './events';
 
-export const generateTimelineThumbnails = async (url: string, metadata: VideoMetadata, signal?: AbortSignal): Promise<string[]> => {
+export const generateTimelineThumbnails = async (
+  url: string,
+  metadata: VideoMetadata,
+  signal?: AbortSignal,
+  range?: { start: number; end: number },
+): Promise<string[]> => {
   const video = document.createElement('video');
-  video.src = url;
   video.preload = 'auto';
   video.playsInline = true;
   video.muted = true;
 
   try {
-    await waitForMediaEvent(video, 'loadeddata', '썸네일을 생성하지 못했습니다.', signal);
+    const ready = waitForMediaEvent(video, 'loadeddata', '썸네일을 생성하지 못했습니다.', signal);
+    video.src = url;
+    await ready;
 
     const sourceWidth = metadata.width || video.videoWidth || 720;
     const sourceHeight = metadata.height || video.videoHeight || 1280;
     const ratio = sourceWidth / Math.max(1, sourceHeight);
     const thumbnailHeight = 72;
-    const thumbnailWidth = Math.max(48, Math.round(thumbnailHeight * ratio));
+    const thumbnailWidth = Math.min(256, Math.max(48, Math.round(thumbnailHeight * ratio)));
     const canvas = document.createElement('canvas');
     canvas.width = thumbnailWidth;
     canvas.height = thumbnailHeight;
@@ -26,14 +32,16 @@ export const generateTimelineThumbnails = async (url: string, metadata: VideoMet
       throw new Error('썸네일 캔버스를 준비하지 못했습니다.');
     }
 
-    const maxFrameCount = Math.min(
+    const maxFrameCount = range ? TIMELINE_THUMBNAIL_COUNT : Math.min(
       TIMELINE_THUMBNAIL_COUNT,
       Math.max(2, Math.ceil(metadata.duration || 2))
     );
     const thumbnails: string[] = [];
     for (let i = 0; i < maxFrameCount; i += 1) {
-      const progress = maxFrameCount === 1 ? 0 : i / (maxFrameCount - 1);
-      const targetTime = Math.max(0, (metadata.duration || 0) * progress);
+      const progress = range ? (i + 0.5) / maxFrameCount : i / (maxFrameCount - 1);
+      const targetTime = range
+        ? range.start + (range.end - range.start) * progress
+        : Math.max(0, (metadata.duration || 0) * progress);
       try {
         await seekVideoTo(video, targetTime, signal);
       } catch {

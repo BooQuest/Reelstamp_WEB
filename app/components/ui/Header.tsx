@@ -9,14 +9,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import { USER_ROLES } from '@/app/lib/constants/auth';
-import { SHOW_COMPLETED_REELS_MENU } from '@/app/lib/constants/navigation';
 import {
   User,
   Sparkles,
   LayoutTemplate,
   TrendingUp,
   Bookmark,
-  CheckCircle,
   ChevronRight,
   ChevronLeft,
   Menu,
@@ -110,12 +108,6 @@ const MOBILE_PRIMARY_ITEMS: MobileMenuItem[] = [
     icon: FolderOpen,
     requiresAuth: true,
   },
-  ...(SHOW_COMPLETED_REELS_MENU ? [{
-    href: '/completed-reels',
-    label: '제작 완료된 릴스',
-    icon: CheckCircle,
-    requiresAuth: true,
-  }] : []),
   {
     href: '/saved-reels',
     label: '저장된 릴스',
@@ -556,16 +548,6 @@ export default function Header() {
                               <FolderOpen className="w-5 h-5 text-gray-400" />
                               <span className="text-base font-medium">내 프로젝트</span>
                             </Link>
-                            {SHOW_COMPLETED_REELS_MENU && (
-                              <Link
-                                href="/completed-reels"
-                                onClick={() => setIsProfileMenuOpen(false)}
-                                className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
-                              >
-                                <CheckCircle className="w-5 h-5 text-gray-400" />
-                                <span className="text-base font-medium">제작 완료된 릴스</span>
-                              </Link>
-                            )}
                             <Link
                               href="/saved-reels"
                               onClick={() => setIsProfileMenuOpen(false)}

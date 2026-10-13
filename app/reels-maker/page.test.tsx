@@ -23,7 +23,7 @@ import {
   makeCut,
   makeSession,
 } from './test/fixtures';
-import type { ReelsMakerSessionResponse } from './types';
+import type { ReelsMakerSessionResponse, TemplateDetailResponse } from './types';
 import { makeStream } from './test/fixtures';
 
 const navigation = vi.hoisted(() => ({
@@ -64,6 +64,7 @@ vi.mock('./utils/media/metadata', () => ({
 }));
 vi.mock('./services/fixedClip', () => ({ downloadFixedClip: vi.fn() }));
 
+let templateBgm: Pick<TemplateDetailResponse, 'bgmTitle' | 'bgmUrl'>;
 let session: ReelsMakerSessionResponse;
 let fetchMock: ReturnType<typeof vi.fn>;
 let failUpload: boolean;
@@ -89,6 +90,7 @@ beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
   navigation.params = new URLSearchParams('templateId=template');
   session = makeSession();
+  templateBgm = {};
   templateCuts = [makeCut()];
   failUpload = false;
   revisionCount = 0;
@@ -131,7 +133,7 @@ beforeEach(() => {
       if (url === '/api/templates/template')
         return jsonResponse({
           success: true,
-          data: { id: 'template', title: '테스트 템플릿', cuts: templateCuts },
+          data: { id: 'template', title: '테스트 템플릿', cuts: templateCuts, ...templateBgm },
         });
       if (
         url === '/api/reels-maker/sessions' ||
@@ -664,30 +666,6 @@ describe('project creation across URL transitions', () => {
 });
 
 
-it('creates one additional project when starting a new reel after completion', async () => {
-  let created = 0;
-  const original = fetchMock.getMockImplementation()!;
-  fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-    if (url === '/api/reels-maker/sessions' && init?.method === 'POST') {
-      session = makeSession({ sessionId: 10 + created++ });
-      return jsonResponse({ success: true, data: session });
-    }
-    return original(url, init);
-  });
-  const view = await openMaker();
-  navigation.params = new URLSearchParams('templateId=template&sessionId=10');
-  view.rerender(<ReelsMakerPage />);
-  await applyFile();
-  fireEvent.click(screen.getByRole('button', { name: '완료' }));
-  await screen.findByText('릴스 제작 완료');
-  fireEvent.click(screen.getByRole('button', { name: '새로운 릴스 만들기' }));
-  expect(navigation.router.replace).toHaveBeenLastCalledWith('/reels-maker?templateId=template');
-  navigation.params = new URLSearchParams('templateId=template');
-  view.rerender(<ReelsMakerPage />);
-  await waitFor(() => expect(navigation.router.replace).toHaveBeenLastCalledWith('/reels-maker?templateId=template&sessionId=11'));
-  expect(created).toBe(2);
-});
-
 it('reopens a failed production for editing without creating another project', async () => {
   const original = fetchMock.getMockImplementation()!;
   fetchMock.mockImplementation((url: string, init?: RequestInit) => {
@@ -704,4 +682,36 @@ it('reopens a failed production for editing without creating another project', a
   await screen.findByRole('button', { name: '완료' });
   expect(fetchMock.mock.calls.filter(([url]) => url === '/api/reels-maker/sessions')).toHaveLength(1);
   expect(alert).toHaveBeenCalled();
+});
+
+
+describe('BGM on completed projects', () => {
+  beforeEach(() => {
+    templateBgm = { bgmTitle: 'Feeling Good', bgmUrl: 'https://www.instagram.com/reels/audio/631817623935543/' };
+  });
+
+  it('shows the template BGM after making a new reel and preserves the download toast', async () => {
+    const downloadClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    await openMaker();
+    await applyFile();
+    fireEvent.click(screen.getByRole('button', { name: '완료' }));
+    await screen.findByText('릴스 제작 완료');
+    expect(screen.getByText('추천 BGM · Feeling Good')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'BGM과 함께 업로드' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '영상 다운로드' }));
+    expect(downloadClick).toHaveBeenCalledOnce();
+    expect(screen.getByText('다운로드 완료!')).toBeInTheDocument();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('restores BGM when reopening a completed project without creating another session', async () => {
+    navigation.params = new URLSearchParams('templateId=template&sessionId=10');
+    session = makeSession({ status: 'COMPLETED', finalVideoUrl: 'https://media.test/final.mp4' });
+    render(<ReelsMakerPage />);
+    await screen.findByText('릴스 제작 완료');
+    expect(screen.getByText('추천 BGM · Feeling Good')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'BGM과 함께 업로드' })).toBeEnabled();
+    expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/reels-maker/sessions' && init?.method === 'POST')).toBe(false);
+  });
 });
