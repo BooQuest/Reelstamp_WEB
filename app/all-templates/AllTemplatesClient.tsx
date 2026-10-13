@@ -1,48 +1,26 @@
 'use client';
 
 import {
-  useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Bookmark, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { WebApiResponse } from '@/app/lib/api/auth';
-import { useSavedTemplates } from '@/app/hooks/useSavedTemplates';
+import { useSavedTemplates, type TemplateSummary } from '@/app/hooks/useSavedTemplates';
+import TemplatePreviewModal, { type TemplatePreviewSelection } from '@/app/components/features/templates/TemplatePreviewModal';
 import TemplateMediaPreview from '@/app/components/ui/TemplateMediaPreview';
 import TemplateAccessBadge from '@/app/components/ui/TemplateAccessBadge';
+import useOnboarding from '@/app/components/onboarding/useOnboarding';
 import {
-  buildTemplateLoginHref,
-  canUseTemplate,
   isComingSoonTemplate,
-  isGuestTemplateUser,
-  isPaidTemplate,
   resolveTemplateAccessType,
   resolveTemplateStatus,
-  resolveRestrictedTemplateLoginReturnUrl,
-  shouldWaitForPaidTemplateSubscription,
-  TEMPLATE_LOGIN_REQUIRED_MESSAGE,
   TEMPLATE_NOT_AVAILABLE_MESSAGE,
-  TEMPLATE_PAYMENT_PATH,
-  type TemplateAccessType,
-  type TemplateStatus,
 } from '@/app/lib/templates/access';
-import { showAppToast } from '@/app/lib/ui/toast';
 
-type TemplateItem = {
-  id: string;
-  title: string;
-  subtitle: string;
-  thumbnailUrl?: string | null;
-  embedUrl?: string | null;
-  instagramOnly?: boolean;
-  tags: string[];
-  accessType?: TemplateAccessType | null;
-  status?: TemplateStatus | null;
-};
+type TemplateItem = TemplateSummary;
 
 type TemplateCategory = {
   id: string;
@@ -76,24 +54,29 @@ const normalizeCategory = (category: TemplateCategory): TemplateCategory => ({
   templates: (category.templates ?? []).map(normalizeTemplate),
 });
 
-const buildReelsMakerHref = (templateId: string, returnUrl: string) =>
-  `/reels-maker?templateId=${encodeURIComponent(templateId)}&returnUrl=${encodeURIComponent(returnUrl)}`;
-
 export default function AllTemplatesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAuthenticated, user, subscription, isLoadingSubscription } = useAuth();
   const selectedCategoryId = searchParams.get('category');
   const templateIdParam = searchParams.get('templateId');
   const returnUrl = selectedCategoryId
     ? `/all-templates?category=${encodeURIComponent(selectedCategoryId)}`
     : '/all-templates';
-  const { savedSet, toggleSave } = useSavedTemplates({ returnUrl });
+  const { savedSet, toggleSave, error: saveError } = useSavedTemplates({ returnUrl });
   const [categories, setCategories] = useState<TemplateCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const accessRedirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const templateRedirectRef = useRef<string | null>(null);
+  const pageKey = searchParams.toString();
+  const { status: onboardingStatus } = useOnboarding();
+  const [previewState, setPreviewState] = useState<{
+    pageKey: string;
+    selection: TemplatePreviewSelection | null;
+    dismissedLink: boolean;
+  }>({ pageKey, selection: null, dismissedLink: false });
+  // Query navigation starts a new browsing context, including returning to a previously closed link.
+  if (previewState.pageKey !== pageKey) {
+    setPreviewState({ pageKey, selection: null, dismissedLink: false });
+  }
   const showSelectTemplateBanner = searchParams.get('reason') === 'select-template';
 
   const selectedCategory = useMemo(
@@ -114,96 +97,41 @@ export default function AllTemplatesClient() {
   }, [categories]);
 
   const visibleTemplates = useMemo(() => {
-    if (selectedCategory) {
-      return selectedCategory.templates;
+    if (selectedCategoryId) {
+      return selectedCategory?.templates ?? [];
     }
     if (templateIdParam) {
       return allTemplates;
     }
     return [];
-  }, [allTemplates, selectedCategory, templateIdParam]);
+  }, [allTemplates, selectedCategory, selectedCategoryId, templateIdParam]);
 
   const showCategoryHome = !selectedCategoryId && !templateIdParam;
   const showTemplateGrid = Boolean(selectedCategoryId) || Boolean(templateIdParam);
-  const isTemplateAccessLoading = useCallback(
-    (template: TemplateItem | null | undefined) =>
-      shouldWaitForPaidTemplateSubscription({
-        template,
-        isAuthenticated,
-        user,
-        isLoadingSubscription,
-      }),
-    [isAuthenticated, isLoadingSubscription, user]
+  const linkedTemplate = templateIdParam ? visibleTemplates.find(template => template.id === templateIdParam) : null;
+  const linkError = !isLoading && !loadError && templateIdParam && (!linkedTemplate || isComingSoonTemplate(linkedTemplate))
+    ? linkedTemplate ? TEMPLATE_NOT_AVAILABLE_MESSAGE : '템플릿을 찾을 수 없습니다.'
+    : null;
+  const activePreview = previewState.selection ?? (
+    templateIdParam && linkedTemplate && !isComingSoonTemplate(linkedTemplate) && !previewState.dismissedLink && onboardingStatus?.entranceCompleted
+      ? { templates: visibleTemplates, initialTemplateId: templateIdParam }
+      : null
   );
 
-  const redirectToTemplateLogin = useCallback((returnUrl?: string) => {
-    showAppToast({
-      message: TEMPLATE_LOGIN_REQUIRED_MESSAGE,
-      tone: 'error',
-    });
-    if (accessRedirectTimerRef.current) {
-      clearTimeout(accessRedirectTimerRef.current);
+  const openPreview = (template: TemplateItem, templates: TemplateItem[]) => {
+    if (isComingSoonTemplate(template)) return;
+    setPreviewState({ pageKey, selection: { templates: [...templates], initialTemplateId: template.id }, dismissedLink: false });
+  };
+
+  const closePreview = () => {
+    setPreviewState({ pageKey, selection: null, dismissedLink: true });
+    if (templateIdParam) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('templateId');
+      const query = params.toString();
+      router.replace(query ? `/all-templates?${query}` : '/all-templates', { scroll: false });
     }
-    accessRedirectTimerRef.current = setTimeout(() => {
-      router.push(buildTemplateLoginHref(returnUrl));
-    }, 800);
-  }, [router]);
-
-  const handleRestrictedPaidTemplate = useCallback((destination?: string) => {
-    if (!isAuthenticated || isGuestTemplateUser(user)) {
-      redirectToTemplateLogin(resolveRestrictedTemplateLoginReturnUrl(destination));
-      return;
-    }
-
-    router.push(TEMPLATE_PAYMENT_PATH);
-  }, [isAuthenticated, redirectToTemplateLogin, router, user]);
-
-  const ensureTemplateAccess = useCallback((template: TemplateItem, destination?: string) => {
-    if (isComingSoonTemplate(template)) {
-      return false;
-    }
-    if (!isPaidTemplate(template)) {
-      return true;
-    }
-    if (isTemplateAccessLoading(template)) {
-      return false;
-    }
-    if (canUseTemplate({ template, isAuthenticated, user, subscription })) {
-      return true;
-    }
-
-    handleRestrictedPaidTemplate(destination);
-    return false;
-  }, [
-    handleRestrictedPaidTemplate,
-    isAuthenticated,
-    isTemplateAccessLoading,
-    subscription,
-    user,
-  ]);
-
-  const openTemplateGuideFlow = useCallback(
-    (template: TemplateItem) => {
-      if (isComingSoonTemplate(template)) {
-        showAppToast({
-          message: TEMPLATE_NOT_AVAILABLE_MESSAGE,
-          tone: 'error',
-        });
-        return false;
-      }
-
-      const destination = buildReelsMakerHref(template.id, returnUrl);
-      if (!ensureTemplateAccess(template, destination)) {
-        return false;
-      }
-
-      router.push(
-        isAuthenticated ? destination : `/login?returnUrl=${encodeURIComponent(destination)}`
-      );
-      return true;
-    },
-    [ensureTemplateAccess, isAuthenticated, returnUrl, router]
-  );
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -249,45 +177,13 @@ export default function AllTemplatesClient() {
     };
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (accessRedirectTimerRef.current) {
-        clearTimeout(accessRedirectTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!templateIdParam) {
-      templateRedirectRef.current = null;
-      return;
-    }
-    if (templateRedirectRef.current === templateIdParam || isLoading) {
-      return;
-    }
-
-    const template = allTemplates.find((item) => item.id === templateIdParam);
-    if (!template || isTemplateAccessLoading(template)) {
-      return;
-    }
-
-    if (openTemplateGuideFlow(template)) {
-      templateRedirectRef.current = templateIdParam;
-    }
-  }, [
-    allTemplates,
-    isLoading,
-    isTemplateAccessLoading,
-    openTemplateGuideFlow,
-    templateIdParam,
-  ]);
-
   const handleOpenCategory = (categoryId: string) => {
     router.push(`/all-templates?category=${encodeURIComponent(categoryId)}`);
   };
 
   const renderTemplateCard = (
     template: TemplateItem,
+    templates: TemplateItem[],
     options: {
       className: string;
       mediaClassName: string;
@@ -297,8 +193,7 @@ export default function AllTemplatesClient() {
   ) => {
     const isSaved = savedSet.has(template.id);
     const isComingSoon = isComingSoonTemplate(template);
-    const isAccessLoading = isTemplateAccessLoading(template);
-    const isDisabled = isComingSoon || isAccessLoading;
+    const isDisabled = isComingSoon;
     const comingSoonTags = template.tags.filter((tag) => tag.trim().length > 0).slice(0, 2);
 
     return (
@@ -306,13 +201,13 @@ export default function AllTemplatesClient() {
         <div className="relative">
           <button
             type="button"
-            onClick={() => openTemplateGuideFlow(template)}
+            onClick={() => openPreview(template, templates)}
             disabled={isDisabled}
-            className={`${options.mediaClassName} block text-left disabled:cursor-not-allowed ${isAccessLoading ? 'disabled:opacity-60' : ''}`}
+            className={`${options.mediaClassName} block text-left disabled:cursor-not-allowed`}
             aria-label={
               isComingSoon
                 ? `${template.title} 추가 예정 템플릿`
-                : `${template.title} 템플릿으로 릴스 만들기`
+                : `${template.title} 상세 보기`
             }
           >
             {!isComingSoon && (
@@ -336,11 +231,6 @@ export default function AllTemplatesClient() {
             {isComingSoon && (
               <span className="absolute inset-0 bg-black/25" aria-hidden="true" />
             )}
-            {isAccessLoading && (
-              <span className="absolute inset-x-3 bottom-3 z-10 rounded-full bg-black/55 px-3 py-2 text-center text-xs font-semibold text-white">
-                권한 확인 중...
-              </span>
-            )}
           </button>
           {isComingSoon ? (
             <span className="absolute right-2 top-2 z-20 flex h-9 items-center rounded-full bg-white/90 px-3 text-[11px] font-extrabold text-gray-900 shadow-sm ring-1 ring-black/10 sm:right-3 sm:top-3 sm:text-xs">
@@ -363,7 +253,7 @@ export default function AllTemplatesClient() {
         </div>
         <button
           type="button"
-          onClick={() => openTemplateGuideFlow(template)}
+          onClick={() => openPreview(template, templates)}
           disabled={isDisabled}
           className={`${options.titleClassName} disabled:cursor-not-allowed disabled:opacity-60`}
         >
@@ -392,6 +282,10 @@ export default function AllTemplatesClient() {
           <div className="mb-6 rounded-2xl border border-rose-200/60 bg-white px-4 py-3 text-sm sm:text-base text-rose-500 shadow-sm">
             템플릿을 먼저 선택해주세요.
           </div>
+        )}
+
+        {(linkError || (saveError && !activePreview)) && (
+          <p role="alert" className="mb-4 text-sm text-rose-500">{linkError || saveError}</p>
         )}
 
         {isLoading && (
@@ -436,7 +330,7 @@ export default function AllTemplatesClient() {
                 ) : (
                   <div className="flex gap-3 overflow-x-auto pb-2 sm:gap-5 sm:pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {category.templates.map((template) =>
-                      renderTemplateCard(template, {
+                      renderTemplateCard(template, category.templates, {
                         className:
                           'w-[28vw] min-w-[92px] max-w-[108px] flex-none text-left min-[390px]:max-w-[120px] sm:w-[210px] sm:min-w-[210px] sm:max-w-[220px] md:w-[230px] md:max-w-[230px]',
                         mediaClassName:
@@ -484,7 +378,7 @@ export default function AllTemplatesClient() {
             {(!selectedCategoryId || selectedCategory) && visibleTemplates.length > 0 && (
               <div className="grid grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
                 {visibleTemplates.map((template) =>
-                  renderTemplateCard(template, {
+                  renderTemplateCard(template, visibleTemplates, {
                     className: 'min-w-0 text-left',
                     mediaClassName:
                       'relative aspect-[3/4] w-full overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5 sm:rounded-[28px]',
@@ -497,6 +391,17 @@ export default function AllTemplatesClient() {
           </>
         )}
       </div>
+      {activePreview && (
+        <TemplatePreviewModal
+          key={`${pageKey}:${activePreview.initialTemplateId}`}
+          {...activePreview}
+          returnUrl={returnUrl}
+          savedSet={savedSet}
+          saveError={saveError}
+          onToggleSave={toggleSave}
+          onClose={closePreview}
+        />
+      )}
     </div>
   );
 }
