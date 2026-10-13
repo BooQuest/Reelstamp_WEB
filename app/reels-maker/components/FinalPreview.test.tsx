@@ -18,6 +18,7 @@ afterAll(() => {
   Reflect.deleteProperty(HTMLDialogElement.prototype, 'close');
 });
 beforeEach(() => {
+  localStorage.clear();
   vi.spyOn(window, 'open').mockReturnValue(null);
 });
 afterEach(() => {
@@ -76,19 +77,22 @@ describe('completion BGM flow', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '영상 다운로드 후 BGM 열기' }));
     expect(calls).toEqual(['download', 'audio']);
     expect(window.open).toHaveBeenCalledWith(bgmUrl, '_blank', 'noopener,noreferrer');
-    // A blocked opening must leave both the result and a usable direct link available.
     expect(screen.getByRole('button', { name: '영상 다운로드' })).toBeEnabled();
-    expect(within(dialog).getByRole('link', { name: 'BGM 페이지 열기' })).toHaveAttribute('href', bgmUrl);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(localStorage.length).toBe(0);
+    expect(openGuide()).toBeInTheDocument();
   });
 
-  it('provides a direct audio link for an already saved video without downloading again', () => {
-    const props = setup();
-    const link = within(openGuide()).getByRole('link', { name: '이미 저장했어요 · BGM 열기' });
-    expect(link).toHaveAttribute('href', bgmUrl);
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-    fireEvent.click(link);
-    expect(props.onDownload).not.toHaveBeenCalled();
+  it('shows the unchecked preference above the download button without the removed copy or links', () => {
+    setup();
+    const dialog = openGuide();
+    const checkbox = within(dialog).getByRole('checkbox', { name: '다시 보지 않기' });
+    expect(checkbox).not.toBeChecked();
+    const download = within(dialog).getByRole('button', { name: '영상 다운로드 후 BGM 열기' });
+    expect(checkbox.compareDocumentPosition(download) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(dialog).queryByText(/다운로드가 끝난 뒤 Instagram에서/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/자동으로 열리지 않으면/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('이미 저장했어요 · BGM 열기')).not.toBeInTheDocument();
   });
 
   it('closes the guide with the close button or native Escape cancellation', () => {
@@ -149,4 +153,79 @@ describe('completion BGM flow', () => {
     expect(props.onShared).toHaveBeenCalledWith('공유 창을 열었어요.');
     expect(window.open).not.toHaveBeenCalled();
   });
+});
+
+describe('BGM guide dismissal preference', () => {
+  it('does not persist or trigger any action when only the checkbox is changed', () => {
+    const props = setup();
+    openGuide();
+    fireEvent.click(screen.getByRole('checkbox', { name: '다시 보지 않기' }));
+    expect(localStorage.length).toBe(0);
+    expect(props.onDownload).not.toHaveBeenCalled();
+    expect(window.open).not.toHaveBeenCalled();
+    cleanup();
+    setup();
+    expect(within(openGuide()).getByRole('checkbox')).not.toBeChecked();
+  });
+
+  it.each(['영상 다운로드 후 BGM 열기', 'BGM 안내 닫기'])(
+    'persists on checked %s, then skips the guide for other templates after remounting', (action) => {
+      const props = setup();
+      openGuide();
+      fireEvent.click(screen.getByRole('checkbox', { name: '다시 보지 않기' }));
+      fireEvent.click(screen.getByRole('button', { name: action }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(props.onDownload).toHaveBeenCalledTimes(action === '영상 다운로드 후 BGM 열기' ? 1 : 0);
+      expect(window.open).toHaveBeenCalledTimes(action === '영상 다운로드 후 BGM 열기' ? 1 : 0);
+      cleanup();
+      vi.mocked(window.open).mockClear();
+      const calls: string[] = [];
+      vi.mocked(window.open).mockImplementation(() => { calls.push('audio'); return null; });
+      const otherUrl = 'https://www.instagram.com/reels/audio/631817623935543/';
+      const next = setup({ bgmTitle: 'Feeling Good', bgmUrl: otherUrl, onDownload: vi.fn(() => { calls.push('download'); }) });
+      fireEvent.click(screen.getByRole('button', { name: 'BGM과 함께 업로드' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(next.onDownload).toHaveBeenCalledOnce();
+      expect(window.open).toHaveBeenCalledWith(otherUrl, '_blank', 'noopener,noreferrer');
+      expect(calls).toEqual(['download', 'audio']);
+    },
+  );
+
+  it.each(['escape', 'backdrop'])('discards the checked preference on %s', (action) => {
+    setup();
+    const dialog = openGuide();
+    fireEvent.click(screen.getByRole('checkbox', { name: '다시 보지 않기' }));
+    if (action === 'escape') fireEvent(dialog, new Event('cancel', { bubbles: true }));
+    else fireEvent.click(dialog);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(localStorage.length).toBe(0);
+    expect(within(openGuide()).getByRole('checkbox')).not.toBeChecked();
+  });
+
+  it.each(['영상 다운로드 후 BGM 열기', 'BGM 안내 닫기'])(
+    'does not persist on %s if the checkbox was checked and then unchecked', (action) => {
+      setup();
+      openGuide();
+      const checkbox = screen.getByRole('checkbox', { name: '다시 보지 않기' });
+      fireEvent.click(checkbox);
+      fireEvent.click(checkbox);
+      fireEvent.click(screen.getByRole('button', { name: action }));
+      expect(localStorage.length).toBe(0);
+      expect(openGuide()).toBeInTheDocument();
+    },
+  );
+
+  it.each(['영상 다운로드 후 BGM 열기', 'BGM 안내 닫기'])(
+    'still handles %s when browser storage is unavailable', (action) => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+      const props = setup();
+      openGuide();
+      fireEvent.click(screen.getByRole('checkbox', { name: '다시 보지 않기' }));
+      fireEvent.click(screen.getByRole('button', { name: action }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(props.onDownload).toHaveBeenCalledTimes(action === '영상 다운로드 후 BGM 열기' ? 1 : 0);
+      expect(openGuide()).toBeInTheDocument();
+    },
+  );
 });

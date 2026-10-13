@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Check, Download, Music2, Play, X } from 'lucide-react';
 import InstagramShareButton from '../InstagramShareButton';
 import { EXAMPLE_ASSETS } from '../constants';
-import { resolveRecommendedBgm } from '../utils/bgm';
+import { openBgmPage, resolveRecommendedBgm } from '../utils/bgm';
+import { isBgmGuideDismissed } from '../utils/bgmGuidePreference';
 import BgmUploadGuide from './BgmUploadGuide';
 
 type Props = {
@@ -44,6 +45,16 @@ export default function FinalPreview({
 }: Props) {
   const [isBgmGuideOpen, setIsBgmGuideOpen] = useState(false);
   const bgm = resolveRecommendedBgm(bgmTitle, bgmUrl);
+
+  const handleBgmUpload = () => {
+    if (!bgm || !finalVideoUrl || !sessionId) return;
+    if (isBgmGuideDismissed()) {
+      onDownload();
+      openBgmPage(bgm.url);
+    } else {
+      setIsBgmGuideOpen(true);
+    }
+  };
 
   return (
     <div className="min-h-[100dvh] bg-black text-white">
@@ -108,7 +119,7 @@ export default function FinalPreview({
 
         <div className="space-y-3">
           {bgm && (
-            <button type="button" onClick={() => setIsBgmGuideOpen(true)} disabled={!finalVideoUrl || !sessionId}
+            <button type="button" onClick={handleBgmUpload} disabled={!finalVideoUrl || !sessionId}
               className="flex w-full items-center justify-center gap-2 rounded-full bg-[#FF4D6D] py-4 text-base font-semibold shadow-lg disabled:opacity-50">
               <Music2 className="h-5 w-5" aria-hidden="true" />BGM과 함께 업로드
             </button>

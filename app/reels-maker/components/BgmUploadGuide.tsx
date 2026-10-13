@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Copy, Download, Music2, X } from 'lucide-react';
 import { openBgmPage, type RecommendedBgm } from '../utils/bgm';
+import { dismissBgmGuide } from '../utils/bgmGuidePreference';
 import { isAppleMobileDevice, isLikelyMobileDevice } from '../utils/device';
 
 type Props = {
@@ -15,6 +16,7 @@ export default function BgmUploadGuide({ bgm, onDownload, onClose }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [copyMessage, setCopyMessage] = useState('');
+  const [dontShowAgain, setDontShowAgain] = useState(false);
   const isDesktop = !isLikelyMobileDevice();
 
   useEffect(() => {
@@ -28,8 +30,15 @@ export default function BgmUploadGuide({ bgm, onDownload, onClose }: Props) {
   }, []);
 
   const downloadAndOpen = () => {
+    if (dontShowAgain) dismissBgmGuide();
     onDownload();
     openBgmPage(bgm.url);
+    onClose();
+  };
+
+  const closeWithPreference = () => {
+    if (dontShowAgain) dismissBgmGuide();
+    onClose();
   };
 
   const copyLink = async () => {
@@ -50,7 +59,7 @@ export default function BgmUploadGuide({ bgm, onDownload, onClose }: Props) {
       className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-sm overflow-y-auto rounded-[24px] border border-white/15 bg-[#121A2A] p-0 text-white shadow-2xl backdrop:bg-black/75"
     >
       <div className="relative p-6">
-        <button type="button" onClick={onClose} aria-label="BGM 안내 닫기"
+        <button type="button" onClick={closeWithPreference} aria-label="BGM 안내 닫기"
           className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/10">
           <X className="h-4 w-4" />
         </button>
@@ -62,7 +71,6 @@ export default function BgmUploadGuide({ bgm, onDownload, onClose }: Props) {
           <li>함께 열리는 Instagram 음원 페이지에서 <strong>오디오 사용 / Use audio</strong>를 눌러 주세요.</li>
           <li>갤러리에서 저장한 영상을 선택하고, 음원 구간과 볼륨을 확인한 뒤 게시해 주세요.</li>
         </ol>
-        <p className="mt-3 text-xs leading-5 text-white/60">다운로드가 끝난 뒤 Instagram에서 영상을 선택해 주세요.</p>
         {isAppleMobileDevice() && (
           <p className="mt-3 rounded-xl bg-white/5 p-3 text-xs leading-5 text-white/70">
             파일 앱에 저장되었다면 영상을 열고 공유 메뉴의 ‘비디오 저장’을 눌러 사진 앱에 저장해 주세요.
@@ -74,19 +82,19 @@ export default function BgmUploadGuide({ bgm, onDownload, onClose }: Props) {
           </p>
         )}
         <div className="mt-5 space-y-3">
+          <label className="flex cursor-pointer items-center gap-2 py-1 text-sm text-white/80">
+            <input
+              type="checkbox"
+              checked={dontShowAgain}
+              onChange={(event) => setDontShowAgain(event.target.checked)}
+              className="h-4 w-4 accent-[#FF4D6D]"
+            />
+            다시 보지 않기
+          </label>
           <button type="button" onClick={downloadAndOpen}
             className="flex w-full items-center justify-center gap-2 rounded-full bg-[#FF4D6D] px-3 py-3 text-sm font-semibold">
             <Download className="h-4 w-4" aria-hidden="true" />영상 다운로드 후 BGM 열기
           </button>
-          <a href={bgm.url} target="_blank" rel="noopener noreferrer"
-            className="block rounded-full bg-white/10 px-3 py-3 text-center text-sm font-semibold">
-            이미 저장했어요 · BGM 열기
-          </a>
-          <p className="text-center text-xs leading-5 text-white/60">
-            자동으로 열리지 않으면{' '}
-            <a href={bgm.url} target="_blank" rel="noopener noreferrer" className="text-white underline underline-offset-2">BGM 페이지 열기</a>
-            를 눌러 주세요.
-          </p>
           {isDesktop && (
             <>
               <button type="button" onClick={copyLink} className="flex w-full items-center justify-center gap-2 py-2 text-sm text-white/80">
