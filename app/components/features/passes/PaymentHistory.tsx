@@ -34,7 +34,7 @@ export default function PaymentHistory({ payments }: { payments: PaymentRecord[]
       {payments.map((payment) => (
         <li key={payment.id} className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <h2 className="text-lg font-bold text-gray-900">{t(payment.name)}</h2>
+            <h2 className="text-lg font-bold text-gray-900">{payment.displayLocale ? (payment.displayLocale === t.locale ? payment.name : t('불러오는 중입니다.')) : t(payment.name)}</h2>
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold ${payment.status === 'paid' ? 'bg-rose-50 text-[#D93256]' : 'bg-gray-100 text-gray-600'}`}
             >

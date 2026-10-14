@@ -24,7 +24,7 @@ const order = {
   status: 'PENDING',
   payUrl: 'https://payapp.kr/pay',
 };
-function request(origin = 'https://test.local') {
+function request(origin = 'https://test.local', locale?: string) {
   return new NextRequest('https://test.local/api/passes/orders', {
     method: 'POST',
     headers: { origin, 'Content-Type': 'application/json' },
@@ -33,6 +33,7 @@ function request(origin = 'https://test.local') {
       version: 'server-version',
       phone: '01012345678',
       idempotencyKey: 'same-request-key',
+      locale,
       price: 1,
       productName: 'forged',
     }),
@@ -63,6 +64,7 @@ describe('server-priced checkout', () => {
       version: 'server-version',
       phone: '01012345678',
       idempotencyKey: 'same-request-key',
+      locale: 'ko',
     });
     expect(pay).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -98,4 +100,19 @@ describe('server-priced checkout', () => {
     });
     expect(pay).toHaveBeenCalledTimes(1);
   });
+});
+
+it('blocks forced English purchases when English is disabled', async () => {
+  vi.stubEnv('REELSTAMP_ENGLISH_ENABLED', 'false');
+  const response = await POST(request('https://test.local', 'en'));
+  expect(response.status).toBe(404);
+  expect(await response.json()).toMatchObject({ errorCode: 'ENGLISH_NOT_ENABLED' });
+  expect(post).not.toHaveBeenCalled();
+  expect(pay).not.toHaveBeenCalled();
+});
+it('keeps the original PG name for an English purchase', async () => {
+  vi.stubEnv('REELSTAMP_ENGLISH_ENABLED', 'true');
+  expect((await POST(request('https://test.local', 'en'))).status).toBe(200);
+  expect(post).toHaveBeenCalledWith('/api/passes/orders', expect.objectContaining({ locale: 'en' }));
+  expect(pay).toHaveBeenCalledWith(expect.objectContaining({ goodname: 'DB 상품', price: 9900 }));
 });

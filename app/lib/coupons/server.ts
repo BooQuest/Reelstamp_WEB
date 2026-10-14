@@ -1,4 +1,5 @@
 import 'server-only';
+import { getUiLocale } from '@/app/i18n/server';
 import { NextResponse } from 'next/server';
 import { getServerApiClient, getMutableServerApiClient } from '@/app/lib/api/server-client';
 import { isCouponAvailability } from './availability';
@@ -6,7 +7,7 @@ import type { CouponAvailability, EntitlementSummary } from './types';
 
 export async function getEntitlements(): Promise<EntitlementSummary> {
   const api = await getServerApiClient();
-  const { data } = await api.get('/api/passes/entitlements');
+  const { data } = await api.get(`/api/passes/entitlements?locale=${await getUiLocale()}`);
   if (!data.success || !Array.isArray(data.data?.grants)) throw new Error('Entitlements unavailable');
   return data.data;
 }

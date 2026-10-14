@@ -1,5 +1,7 @@
 'use client';
 import { useUiText } from '@/app/i18n/LocaleProvider';
+import { catalogName } from '@/app/lib/passes/localised-name';
+import { publicErrorMessage } from '@/app/i18n/errors';
 
 
 import { authFetch } from '@/app/lib/auth/browser-session';
@@ -20,15 +22,15 @@ export default function Checkout({
   const router = useRouter();
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<{ errorCode?: string; message?: string } | null>(null);
   const [stale, setStale] = useState(false);
   const key = useRef<string | null>(null);
   const lockedPhone = useRef<string | null>(null);
   async function purchase(event: React.FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || (product.locale ?? 'ko') !== t.locale) return;
     setBusy(true);
-    setError('');
+    setError(null);
     try {
       const storageKey = `pass-checkout-${userId}-${product.plan}-${product.version}`;
       const saved = sessionStorage.getItem(storageKey);
@@ -48,6 +50,7 @@ export default function Checkout({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code: product.plan,
+          locale: t.locale,
           version: product.version,
           phone: lockedPhone.current,
           idempotencyKey: key.current,
@@ -60,7 +63,8 @@ export default function Checkout({
       }
       if (!response.ok) {
         if (response.status === 409) setStale(true);
-        throw new Error(data.message || '결제 요청을 확인할 수 없습니다.');
+        setError({ errorCode: data.errorCode, message: data.message });
+        return;
       }
       // 주문 확인 이후에만 새 구매를 허용합니다. 네트워크 오류 때에는 키를 유지합니다.
       sessionStorage.removeItem(storageKey);
@@ -69,10 +73,8 @@ export default function Checkout({
         router.push(
           `/pricing/success?orderId=${encodeURIComponent(data.orderId)}`,
         );
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : '결제 요청을 확인할 수 없습니다.',
-      );
+    } catch {
+      setError({ message: '결제 요청을 확인할 수 없습니다.' });
     } finally {
       setBusy(false);
     }
@@ -84,8 +86,8 @@ export default function Checkout({
         onSubmit={purchase}
         className="space-y-6 rounded-3xl border border-gray-200 bg-white p-7"
       >
-        <h2 className="text-xl font-bold">{t(product.name)}</h2>
-        <p>{t("이용기간 ")}{t(durationLabel(product))}</p>
+        <h2 className="text-xl font-bold">{catalogName(product, t)}</h2>
+        <p>{t("이용기간 ")}{durationLabel(product, t.locale)}</p>
         <PassPrice product={product} />
         <p className="text-sm text-gray-600">{t("1회 결제 · 자동갱신 없음")}</p>
         <label className="block text-sm">
@@ -103,7 +105,7 @@ export default function Checkout({
         </label>
         {error && (
           <p role="alert" className="text-sm text-red-700">
-            {t(error)}
+            {publicErrorMessage(error, t.locale)}
           </p>
         )}
         {stale ? (
@@ -111,10 +113,10 @@ export default function Checkout({
             {t("변경된 이용권 확인하기")}</Link>
         ) : (
           <button
-            disabled={busy}
+            disabled={busy || (product.locale ?? 'ko') !== t.locale}
             className="w-full rounded-xl bg-[#FF496D] p-3 font-semibold text-white disabled:opacity-50"
           >
-            {t(busy ? '결제 요청 확인 중…' : `${product.name} 구매하기`)}
+            {busy ? t('결제 요청 확인 중…') : t.format('{name} 구매하기', { name: catalogName(product, t) })}
           </button>
         )}
         <Link

@@ -8,6 +8,7 @@ const messages: Record<string, string> = {
   PAYMENT_HISTORY_NOT_FOUND: '결제 내역을 찾을 수 없습니다.',
   AUTH_SERVICE_UNAVAILABLE: '로그인 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.',
 
+  PASS_TRANSLATION_NOT_AVAILABLE: '선택한 언어로 제공되지 않는 이용권입니다.',
   UNSUPPORTED_LOCALE: '지원하지 않는 언어입니다.',
   ENGLISH_NOT_ENABLED: '영어 템플릿을 준비하고 있습니다.',
   TEMPLATE_TRANSLATION_NOT_AVAILABLE: '선택한 언어로 제공되지 않는 템플릿입니다.',

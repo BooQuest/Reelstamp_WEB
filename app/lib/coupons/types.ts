@@ -9,6 +9,8 @@ export type CouponRequest =
   | { couponType: 'GENERAL'; code: string };
 
 export interface EntitlementGrant {
+  displayProductName?: string;
+  displayLocale?: 'ko' | 'en';
   id: string;
   source: 'PURCHASE' | 'COUPON' | 'LEGACY';
   couponType?: CouponType | null;

@@ -1,12 +1,14 @@
 import 'server-only';
+import { getUiLocale } from '@/app/i18n/server';
 import { API_CONFIG } from '@/app/lib/constants/api';
 import { getServerApiClient } from '@/app/lib/api/server-client';
 import { getEntitlements } from '@/app/lib/coupons/server';
 import type { EntitlementSummary } from '@/app/lib/coupons/types';
 import { parseProducts } from './catalog';
 export async function getPassProducts() {
+  const locale = await getUiLocale();
   const response = await fetch(
-    `${API_CONFIG.WEB_BASE_URL}/api/subscription/plans`,
+    `${API_CONFIG.WEB_BASE_URL}/api/subscription/plans?locale=${locale}`,
     {
       cache: 'no-store',
       signal: AbortSignal.timeout(15000),
@@ -15,7 +17,7 @@ export async function getPassProducts() {
   if (!response.ok) throw new Error('Catalog unavailable');
   const body = await response.json();
   if (!body.success) throw new Error('Catalog unavailable');
-  return parseProducts(body.data?.plans);
+  return parseProducts(body.data?.plans, locale);
 }
 export async function getPassAvailability() {
   try {

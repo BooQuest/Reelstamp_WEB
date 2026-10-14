@@ -1,5 +1,6 @@
 'use client';
 import { useUiText } from '@/app/i18n/LocaleProvider';
+import { purchasedPassName } from '@/app/lib/passes/localised-name';
 
 
 import { authFetch } from '@/app/lib/auth/browser-session';
@@ -25,7 +26,7 @@ export default function PaymentResult({ orderId }: { orderId: string }) {
     async function poll() {
       try {
         const response = await authFetch(
-          `/api/passes/orders/${encodeURIComponent(orderId)}`,
+          `/api/passes/orders/${encodeURIComponent(orderId)}?locale=${t.locale}`,
           { cache: 'no-store', signal: controller.signal },
         );
         if (!response.ok) throw new Error('Query failed');
@@ -46,7 +47,7 @@ export default function PaymentResult({ orderId }: { orderId: string }) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [orderId, retry]);
+  }, [orderId, retry, t.locale]);
   const status = order?.status;
   useEffect(() => {
     if (status && ['PAID', 'REFUNDED', 'PARTIAL_REFUND'].includes(status))
@@ -67,7 +68,7 @@ export default function PaymentResult({ orderId }: { orderId: string }) {
         </h1>
         {order && (
           <p>
-            {t(order.productName)} · {t(formatWon(order.price))}
+            {purchasedPassName(order, t)} · {t(formatWon(order.price))}
           </p>
         )}
         {order?.status === 'WAITING_DEPOSIT' && (

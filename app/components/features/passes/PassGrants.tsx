@@ -4,6 +4,7 @@ import { useUiText } from '@/app/i18n/LocaleProvider';
 import type { EntitlementGrant, EntitlementSummary } from '@/app/lib/coupons/types';
 import { COUPON_EXTENSION_NOTICE, couponDateTime } from '@/app/lib/coupons/display';
 import Link from 'next/link';
+import { purchasedPassName } from '@/app/lib/passes/localised-name';
 function date(value: string, locale: 'ko' | 'en' = 'ko') {
   return new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'ko-KR', {
     timeZone: 'Asia/Seoul',
@@ -44,7 +45,7 @@ export default function PassGrants({
           className="rounded-2xl border border-rose-100 bg-white p-6"
         >
           {grant.source === 'COUPON' && <p className="mb-1 text-xs text-gray-500">{t(grant.couponType === 'WADIZ' ? '와디즈 쿠폰 이용권' : grant.couponType === 'GENERAL' ? '일반 쿠폰 이용권' : '쿠폰 이용권')}</p>}
-          <h2 className="text-lg font-bold">{t(grant.productName)}</h2>
+          <h2 className="text-lg font-bold">{grant.source === 'PURCHASE' ? purchasedPassName(grant, t) : t(grant.productName)}</h2>
           <p className="mt-2 text-sm text-[#D93256]">
             {grant.revokedAt
               ? t('환불로 회수됨')

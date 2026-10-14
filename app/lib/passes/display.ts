@@ -9,6 +9,7 @@ export interface PassSummary {
 }
 
 export interface PaymentRecord {
+  displayLocale?: 'ko' | 'en';
   id: string;
   orderId: string | null;
   name: string;

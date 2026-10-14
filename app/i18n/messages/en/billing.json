@@ -117,5 +117,8 @@
   "m134edc5f6677": "We are checking the payment result. Please do not pay again; check back shortly.",
   "mded00c3d3308": "View my passes",
   "ma77116a90b99": "Could not confirm payment status.",
-  "mb5ea706cd2e4": "View payment history"
+  "mb5ea706cd2e4": "View payment history",
+  "m0f98dec3f957": "This pass is not available in the selected language.",
+  "m1ce6240d7f22": "Passes in your selected language are coming soon.",
+  "mad6bd6bf3dd3": "Buy {name}"
 }

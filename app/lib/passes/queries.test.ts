@@ -3,6 +3,7 @@ import { getPaymentHistory } from './queries';
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('server-only', () => ({}));
+vi.mock('@/app/i18n/server', () => ({ getUiLocale: async () => 'ko' }));
 vi.mock('@/app/lib/api/server-client', () => ({ getServerApiClient: async () => ({ get }) }));
 beforeEach(() => {
   get.mockReset();
@@ -19,7 +20,7 @@ describe('existing payment history query', () => {
     get.mockResolvedValueOnce({ data: { success: true, data: [{ orderId: 'PASS-test', productName: '구매 당시 이름', price: 4900, status: 'REFUNDED', paidAt: '2026-09-30T00:00:00Z' }] } });
     const result = await getPaymentHistory();
     expect(get).toHaveBeenNthCalledWith(1, '/api/subscription/payments');
-    expect(get).toHaveBeenNthCalledWith(2, '/api/passes/orders');
+    expect(get).toHaveBeenNthCalledWith(2, '/api/passes/orders?locale=ko');
     expect(JSON.stringify(result)).toContain('구매 당시 이름');
     expect(JSON.stringify(result)).toContain('refunded');
     expect(result.status).toBe('ready');
