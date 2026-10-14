@@ -4,6 +4,7 @@ import { useUiText } from '@/app/i18n/LocaleProvider';
 import type { EntitlementGrant, EntitlementSummary } from '@/app/lib/coupons/types';
 import { COUPON_EXTENSION_NOTICE, couponDateTime } from '@/app/lib/coupons/display';
 import Link from 'next/link';
+import { wadizBenefit } from '@/app/lib/coupons/localised-display';
 import { purchasedPassName } from '@/app/lib/passes/localised-name';
 function date(value: string, locale: 'ko' | 'en' = 'ko') {
   return new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'ko-KR', {
@@ -35,7 +36,7 @@ export default function PassGrants({
   return (
     <section className="mb-6 space-y-4" aria-label={t("기간제 이용권")}>
       {summary?.endsAt && <p className="rounded-xl bg-white p-4 text-sm font-medium">
-        {t("전체 이용기간: ")}{t(couponDateTime(summary.endsAt))}{t("까지")}</p>}
+        {t.format('전체 이용기간: {date}까지', { date: couponDateTime(summary.endsAt, t) })}</p>}
       <aside className="rounded-xl bg-rose-50 p-4 text-xs leading-5 text-gray-600">
         <p>{t(COUPON_EXTENSION_NOTICE)}</p>
       </aside>
@@ -45,7 +46,13 @@ export default function PassGrants({
           className="rounded-2xl border border-rose-100 bg-white p-6"
         >
           {grant.source === 'COUPON' && <p className="mb-1 text-xs text-gray-500">{t(grant.couponType === 'WADIZ' ? '와디즈 쿠폰 이용권' : grant.couponType === 'GENERAL' ? '일반 쿠폰 이용권' : '쿠폰 이용권')}</p>}
-          <h2 className="text-lg font-bold">{grant.source === 'PURCHASE' ? purchasedPassName(grant, t) : t(grant.productName)}</h2>
+          <h2 className="text-lg font-bold">
+            {grant.source === 'PURCHASE'
+              ? purchasedPassName(grant, t)
+              : grant.couponType === 'WADIZ'
+                ? wadizBenefit(grant, grant.productName, t)
+                : t(grant.productName)}
+          </h2>
           <p className="mt-2 text-sm text-[#D93256]">
             {grant.revokedAt
               ? t('환불로 회수됨')

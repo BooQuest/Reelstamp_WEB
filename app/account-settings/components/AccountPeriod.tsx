@@ -25,8 +25,8 @@ export default function AccountPeriod({ summary, onRetry }: {
             </p>
           ) : summary.endsAt ? (
             <>
-              <p>{t(couponDate(summary.endsAt))}{t("까지")}{t(expired ? ' · 기간 만료' : '')}</p>
-              <p className="mt-1 text-xs text-gray-500">{t(couponTime(summary.endsAt))} {t(" 만료 (한국 시간)")}</p>
+              <p>{t.format('{date}까지', { date: couponDate(summary.endsAt) })}{t(expired ? ' · 기간 만료' : '')}</p>
+              <p className="mt-1 text-xs text-gray-500">{t.format('{time} 만료 (한국 시간)', { time: couponTime(summary.endsAt) })}</p>
               <Link href="/plan" className="mt-1 inline-block text-xs text-rose-600 underline">{t("이용권 정보 확인")}</Link>
             </>
           ) : <p>{t("보유 이용권 없음")}</p>}

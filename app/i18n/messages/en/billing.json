@@ -9,7 +9,6 @@
   "m7e7e4bfa5e67": "Coming soon",
   "m9bb313e1668d": "Could not load access passes.",
   "me52c4ab6e269": "Time-based access pass",
-  "m3916385d93e0": "Total access period:",
   "m3efd501d94f5": "Wadiz coupon pass",
   "mcf823b22d8d1": "General coupon pass",
   "mcfa67f57e3c3": "Coupon pass",
@@ -120,5 +119,17 @@
   "mb5ea706cd2e4": "View payment history",
   "m0f98dec3f957": "This pass is not available in the selected language.",
   "m1ce6240d7f22": "Passes in your selected language are coming soon.",
-  "mad6bd6bf3dd3": "Buy {name}"
+  "mad6bd6bf3dd3": "Buy {name}",
+  "m20c36272f1bf": "7-day pass + 1 bonus month",
+  "m5cb8d8e3b3b7": "1-month pass + 1 bonus month",
+  "m3df74c10c003": "3-month pass + 1 bonus month",
+  "m71b44ec407bd": "1-year pass + 3 bonus months",
+  "md888ddc7bacb": "You’ve received {period} of access.",
+  "m0421796137c9": "(Valid until: {date})",
+  "me610d5fc8ec8": "Expires at {time} (Korea time)",
+  "mbf64dc716b4c": "Access starts: {date}",
+  "m84a532b454b8": "Access valid until {date}",
+  "m92ec021d6213": "Valid until {date}",
+  "m31e25838f514": "{date} (Korea time)",
+  "m1594656a64e3": "{years} and {months}"
 }
