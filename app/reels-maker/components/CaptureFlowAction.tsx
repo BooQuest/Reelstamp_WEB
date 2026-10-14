@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { Check } from 'lucide-react';
 
@@ -13,6 +15,7 @@ export default function CaptureFlowAction({
   disabled,
   onComplete,
 }: Props) {
+  const t = useUiText();
   if (!variant) return null;
 
   return (
@@ -23,7 +26,6 @@ export default function CaptureFlowAction({
       className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#FF4D6D] px-4 text-sm font-semibold text-white shadow-lg transition hover:bg-[#ff3f64] disabled:cursor-not-allowed disabled:opacity-45"
     >
       <Check className="h-4 w-4" />
-      완료하기
-    </button>
+      {t("완료하기")}</button>
   );
 }

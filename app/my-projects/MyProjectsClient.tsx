@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { authFetch } from '@/app/lib/auth/browser-session';
 
@@ -14,9 +16,9 @@ type Props = {
   activeStatus: 'CAPTURE' | 'PROCESSING' | 'COMPLETED';
 };
 
-const formatDateTime = (value?: string | null) => {
+const formatDateTime = (value?: string | null, locale: 'ko' | 'en' = 'ko') => {
   if (!value) return '-';
-  return new Intl.DateTimeFormat('ko-KR', {
+  return new Intl.DateTimeFormat(locale === 'en' ? 'en-GB' : 'ko-KR', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -64,6 +66,7 @@ export default function MyProjectsClient({
   loadError,
   activeStatus,
 }: Props) {
+  const t = useUiText();
   const router = useRouter();
   const [projects, setProjects] = useState(initialProjects);
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -106,7 +109,7 @@ export default function MyProjectsClient({
   );
 
   const deleteProject = async (project: DraftProjectItem) => {
-    if (!window.confirm(`"${resolveProjectDisplayTitle(project)}"를 삭제할까요?`)) {
+    if (!window.confirm(t.format("\"{v0}\"를 삭제할까요?", {v0: resolveProjectDisplayTitle(project)}))) {
       return;
     }
     setDeletingId(project.sessionId);
@@ -133,12 +136,11 @@ export default function MyProjectsClient({
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-8">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold sm:text-3xl">내 프로젝트</h1>
+            <h1 className="text-2xl font-bold sm:text-3xl">{t("내 프로젝트")}</h1>
             <p className="mt-2 text-sm text-white/60">
-              제작 중인 프로젝트는 마지막 저장일로부터 30일 동안 보관됩니다.
-            </p>
+              {t("제작 중인 프로젝트는 마지막 저장일로부터 30일 동안 보관됩니다.")}</p>
           </div>
-          <span className="shrink-0 whitespace-nowrap text-sm text-white/50">총 {projects.length}개</span>
+          <span className="shrink-0 whitespace-nowrap text-sm text-white/50">{t("총 ")}{t(projects.length)}{t("개")}</span>
         </div>
 
         <div className="mb-6 flex gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
@@ -153,32 +155,31 @@ export default function MyProjectsClient({
                   : 'text-white/55 hover:bg-white/5'
               }`}
             >
-              {tab.label}
+              {t(tab.label)}
             </button>
           ))}
         </div>
 
         {notice && (
           <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/75">
-            {notice}
+            {t(notice)}
           </div>
         )}
         {loadError && (
           <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 p-6 text-sm text-rose-200">
-            <p>{loadError}</p>
-            <button type="button" onClick={() => router.refresh()} className="mt-3 underline">다시 시도</button>
+            <p>{t(loadError)}</p>
+            <button type="button" onClick={() => router.refresh()} className="mt-3 underline">{t("다시 시도")}</button>
           </div>
         )}
         {!loadError && projects.length === 0 && (
           <div className="rounded-3xl border border-white/10 bg-white/5 p-12 text-center">
-            <p className="text-white/65">해당 상태의 프로젝트가 없습니다.</p>
+            <p className="text-white/65">{t("해당 상태의 프로젝트가 없습니다.")}</p>
             <button
               type="button"
               onClick={() => router.push('/all-templates')}
               className="mt-5 rounded-full bg-[#FF4D6D] px-5 py-3 text-sm font-semibold"
             >
-              새 릴스 만들기
-            </button>
+              {t("새 릴스 만들기")}</button>
           </div>
         )}
 
@@ -201,7 +202,7 @@ export default function MyProjectsClient({
                       projectThumbnailContentType={project.projectThumbnailContentType}
                       projectThumbnailEdit={project.projectThumbnailEdit}
                       templateThumbnailUrl={project.templateThumbnailUrl}
-                      alt={`${displayTitle} 썸네일`}
+                      alt={t.format("{v0} 썸네일", {v0: displayTitle})}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                     <div className="absolute inset-x-4 bottom-4">
@@ -209,7 +210,7 @@ export default function MyProjectsClient({
                         {displayTitle}
                       </h2>
                       <p className="mt-1 truncate text-xs text-white/65">
-                        {project.templateTitle || '템플릿'}
+                        {project.templateTitle || t('템플릿')}
                       </p>
                     </div>
                   </div>
@@ -217,9 +218,8 @@ export default function MyProjectsClient({
                     <div>
                       <div className="mb-2 flex justify-between text-xs text-white/60">
                         <span>
-                          {project.completedClipCount}/{project.totalClipCount}컷 완료
-                        </span>
-                        <span>{progress}%</span>
+                          {project.completedClipCount}/{project.totalClipCount}{t("컷 완료")}</span>
+                        <span>{t(progress)}%</span>
                       </div>
                       <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
                         <div
@@ -229,11 +229,11 @@ export default function MyProjectsClient({
                       </div>
                     </div>
                     <div className="space-y-1 text-xs text-white/55">
-                      <p>마지막 저장: {formatDateTime(project.lastEditedAt || project.createdAt)}</p>
+                      <p>{t("마지막 저장: ")}{t(formatDateTime(project.lastEditedAt || project.createdAt, t.locale))}</p>
                       {activeStatus === 'CAPTURE' && (
                         <p className="flex items-center gap-1 text-amber-200/80">
                           <Clock3 className="h-3.5 w-3.5" />
-                          {expiryLabel(project.expiresAt)}
+                          {t(expiryLabel(project.expiresAt))}
                         </p>
                       )}
                     </div>
@@ -255,18 +255,18 @@ export default function MyProjectsClient({
                         disabled={openingId === project.sessionId}
                         className="h-11 flex-1 rounded-full bg-[#FF4D6D] text-sm font-semibold disabled:opacity-50"
                       >
-                        {activeStatus === 'CAPTURE'
+                        {t(activeStatus === 'CAPTURE'
                           ? '이어서 만들기'
                           : activeStatus === 'PROCESSING'
                             ? '처리 상태 보기'
-                            : '영상 보기'}
+                            : '영상 보기')}
                       </button>
                       <button
                         type="button"
                         onClick={() => void deleteProject(project)}
                         disabled={deletingId === project.sessionId}
                         className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 text-white/70 disabled:opacity-50"
-                        aria-label="프로젝트 삭제"
+                        aria-label={t("프로젝트 삭제")}
                       >
                         {deletingId === project.sessionId ? (
                           <Loader2 className="h-4 w-4 animate-spin" />

@@ -1,7 +1,9 @@
+'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
 
 import { authFetch } from '@/app/lib/auth/browser-session';
 // 플랜 카드 래퍼: 결제 로직을 처리하는 클라이언트 컴포넌트
-'use client';
+
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -44,6 +46,7 @@ export default function PricingPlanCard({
   blurDetails = false,
   earlybirdHref,
 }: PricingPlanCardProps) {
+  const t = useUiText();
   const router = useRouter();
   const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
 
@@ -78,11 +81,11 @@ export default function PricingPlanCard({
         // PayApp 결제 페이지로 이동
         window.location.href = data.payurl;
       } else {
-        alert(data.message || '결제 요청 중 오류가 발생했습니다.');
+        alert(t(data.message || '결제 요청 중 오류가 발생했습니다.'));
       }
     } catch (error) {
       console.error('Payment Error:', error);
-      alert('결제 시스템과 통신 중 오류가 발생했습니다.');
+      alert(t('결제 시스템과 통신 중 오류가 발생했습니다.'));
     } finally {
       setIsPaymentProcessing(false);
     }
@@ -97,7 +100,7 @@ export default function PricingPlanCard({
       eventBenefit={eventBenefit}
       isPopular={isPopular}
       buttonType="button"
-      buttonText={isDisabled ? '준비 중' : isPaymentProcessing ? '처리 중...' : buttonText}
+      buttonText={isDisabled ? t('준비 중') : isPaymentProcessing ? t('처리 중...') : buttonText}
       buttonOnClick={handlePayment}
       isCurrentPlan={isCurrentPlan}
       buttonDisabled={isDisabled || isPaymentProcessing || isCurrentPlan}

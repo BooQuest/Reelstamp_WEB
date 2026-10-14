@@ -1,5 +1,7 @@
 // 플랜 카드 공통 컴포넌트
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { Check } from 'lucide-react';
 import Link from 'next/link';
@@ -55,6 +57,7 @@ export default function PlanCard({
   blurDetails = false,
   earlybirdHref,
 }: PlanCardProps) {
+  const t = useUiText();
   const earlybirdButtonClassName =
     'inline-flex items-center justify-center rounded-full bg-[#FF496D] px-5 py-3 text-sm font-extrabold text-white shadow-lg shadow-[#FF496D]/30 transition-colors hover:bg-[#E63E62]';
 
@@ -76,21 +79,21 @@ export default function PlanCard({
                 background: 'rgba(255, 73, 109, 0.1)',
               }}
             >
-              <span className="text-sm font-bold text-[#FF496D]">가장 인기</span>
+              <span className="text-sm font-bold text-[#FF496D]">{t("가장 인기")}</span>
             </div>
           )}
-          <h2 className="text-2xl font-bold text-gray-900">{planName}</h2>
+          <h2 className="text-2xl font-bold text-gray-900">{t(planName)}</h2>
         </div>
         
         <div className="mb-6">
           {discountInfo && (
             <div className="text-base text-gray-500 mb-2">
-              <span className="text-[#FF496D] font-bold">{discountInfo.percentage}</span> 월 <span className="line-through">{discountInfo.originalPrice}</span>
+              <span className="text-[#FF496D] font-bold">{t(discountInfo.percentage)}</span> {t(" 월 ")}<span className="line-through">{t(discountInfo.originalPrice)}</span>
             </div>
           )}
           <div className="flex items-baseline gap-2">
-            <span className="text-4xl font-bold text-gray-900">{price}</span>
-            <span className="text-sm text-gray-600">/ 월</span>
+            <span className="text-4xl font-bold text-gray-900">{t(price)}</span>
+            <span className="text-sm text-gray-600">{t("/ 월")}</span>
           </div>
         </div>
 
@@ -105,7 +108,7 @@ export default function PlanCard({
                     <div key={index} className="flex items-start gap-2">
                       <Check className="w-5 h-5 text-[#FF496D] flex-shrink-0 mt-0.5" />
                       <div className="flex-1">
-                        <div className="text-base text-gray-700 leading-relaxed mb-1">{feature.main}</div>
+                        <div className="text-base text-gray-700 leading-relaxed mb-1">{t(feature.main)}</div>
                         <div className="pl-0 space-y-0.5">
                           {feature.subItems?.map((subItem, subIndex) => (
                             <div key={subIndex} className="flex items-center">
@@ -121,7 +124,7 @@ export default function PlanCard({
                                   color: '#6C6E7F',
                                 }}
                               >
-                                {subItem}
+                                {t(subItem)}
                               </span>
                             </div>
                           ))}
@@ -134,7 +137,7 @@ export default function PlanCard({
                 return (
                   <div key={index} className="flex items-start gap-2">
                     <Check className="w-5 h-5 text-[#FF496D] flex-shrink-0 mt-0.5" />
-                    <span className="text-base text-gray-700 leading-relaxed">{feature as string}</span>
+                    <span className="text-base text-gray-700 leading-relaxed">{t(feature as string)}</span>
                   </div>
                 );
               })}
@@ -143,12 +146,12 @@ export default function PlanCard({
             {/* 오픈 이벤트 혜택 */}
             {eventBenefit && (
               <div className="mb-6">
-                <div className="text-base font-bold text-[#FF496D] mb-2 text-center">{eventBenefit.title}</div>
+                <div className="text-base font-bold text-[#FF496D] mb-2 text-center">{t(eventBenefit.title)}</div>
                 {eventBenefit.mainItem && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-center gap-2">
                       <Check className="w-5 h-5 text-[#FF496D] flex-shrink-0" />
-                      <span className="text-base text-gray-700 leading-relaxed text-center">{eventBenefit.mainItem}</span>
+                      <span className="text-base text-gray-700 leading-relaxed text-center">{t(eventBenefit.mainItem)}</span>
                     </div>
                     {eventBenefit.subItems && eventBenefit.subItems.length > 0 && (
                       <div className="space-y-0.5">
@@ -167,7 +170,7 @@ export default function PlanCard({
                                 textAlign: 'center',
                               }}
                             >
-                              {subItem}
+                              {t(subItem)}
                             </span>
                           </div>
                         ))}
@@ -183,16 +186,13 @@ export default function PlanCard({
             <div className="absolute inset-0 flex flex-col items-center justify-center px-3 text-center">
               {earlybirdHref ? (
                 <Link href={earlybirdHref} className={earlybirdButtonClassName}>
-                  얼리버드 참여하기
-                </Link>
+                  {t("얼리버드 참여하기")}</Link>
               ) : (
                 <button type="button" className={earlybirdButtonClassName}>
-                  얼리버드 참여하기
-                </button>
+                  {t("얼리버드 참여하기")}</button>
               )}
               <p className="mt-3 text-sm font-medium leading-5 text-gray-800">
-                정시 출시 전 특별가로 더 많은 템플릿과 AI 편집 기능을 이용해보세요
-              </p>
+                {t("정시 출시 전 특별가로 더 많은 템플릿과 AI 편집 기능을 이용해보세요")}</p>
             </div>
           )}
         </div>
@@ -205,7 +205,7 @@ export default function PlanCard({
             href={buttonHref}
             className={`w-full py-3 px-4 rounded-xl font-bold transition-colors text-center ${buttonClassName}`}
           >
-            {buttonText}
+            {t(buttonText)}
           </Link>
         ) : (
           <button
@@ -217,7 +217,7 @@ export default function PlanCard({
                 : buttonClassName
             }`}
           >
-            {buttonText}
+            {t(buttonText)}
           </button>
         )
       )}

@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useState } from 'react';
 import { Bookmark, Play } from 'lucide-react';
@@ -9,6 +11,7 @@ import TemplatePreviewModal, { type TemplatePreviewSelection } from '@/app/compo
 import { isComingSoonTemplate, resolveTemplateAccessType } from '@/app/lib/templates/access';
 
 export default function SavedReelsClient() {
+  const t = useUiText();
   const { savedTemplates, savedSet, isLoading, error, toggleSave } = useSavedTemplates({
     returnUrl: '/saved-reels',
   });
@@ -23,16 +26,15 @@ export default function SavedReelsClient() {
   if (isLoading) {
     return (
       <div className="py-16 text-center text-sm sm:text-base text-gray-500">
-        저장된 릴스를 불러오는 중입니다...
-      </div>
+        {t("저장된 릴스를 불러오는 중입니다...")}</div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {error && !preview && <p role="alert" className="py-4 text-sm text-rose-500">{error}</p>}
+      {error && !preview && <p role="alert" className="py-4 text-sm text-rose-500">{t(error)}</p>}
       {!error && savedTemplates.length === 0 && (
-        <p className="py-16 text-center text-sm sm:text-base text-gray-500">저장된 릴스가 없습니다.</p>
+        <p className="py-16 text-center text-sm sm:text-base text-gray-500">{t("저장된 릴스가 없습니다.")}</p>
       )}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6">
         {savedTemplates.map((template) => {
@@ -44,14 +46,13 @@ export default function SavedReelsClient() {
                 <button
                   type="button"
                   onClick={() => handleOpen(template)}
-                  aria-label={`${template.title} 상세 보기`}
+                  aria-label={t.format("{v0} 상세 보기", {v0: template.title})}
                   disabled={isComingSoon}
                   className="relative block h-full w-full disabled:cursor-not-allowed"
                 >
                   {isComingSoon ? (
                     <span className="absolute left-2 top-2 z-10 flex h-9 items-center rounded-full bg-white/90 px-3 text-[11px] font-extrabold text-gray-900 shadow-sm ring-1 ring-black/10 sm:left-3 sm:top-3 sm:text-xs">
-                      추가 예정
-                    </span>
+                      {t("추가 예정")}</span>
                   ) : (
                     <TemplateAccessBadge
                       accessType={resolveTemplateAccessType(template)}
@@ -87,7 +88,7 @@ export default function SavedReelsClient() {
                   type="button"
                   onClick={() => toggleSave(template)}
                   aria-pressed
-                  aria-label={`${template.title} 저장 취소`}
+                  aria-label={t.format("{v0} 저장 취소", {v0: template.title})}
                   className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/70 text-[#FF4D6D] flex items-center justify-center shadow"
                 >
                   <Bookmark className="w-4 h-4" fill="#FF4D6D" />
@@ -109,7 +110,7 @@ export default function SavedReelsClient() {
                   disabled={isComingSoon}
                   className="shrink-0 px-3 py-2 text-xs font-semibold rounded-full bg-[#FF4D6D] text-white hover:bg-[#FF5F7A] transition-colors disabled:cursor-not-allowed disabled:bg-gray-300"
                 >
-                  {isComingSoon ? '추가 예정' : '상세 보기'}
+                  {t(isComingSoon ? '추가 예정' : '상세 보기')}
                 </button>
               </div>
             </div>

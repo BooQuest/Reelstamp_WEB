@@ -1,9 +1,11 @@
 // Next.js 설정 파일: 빌드, 이미지 최적화, 리다이렉트 등 Next.js 동작을 제어
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 
 const nextConfig: NextConfig = {
   // Docker를 위한 standalone 빌드 출력
   output: 'standalone',
+  distDir: process.env.REELSTAMP_BUILD_DIR || '.next',
   // 이미지 최적화 설정
   images: {
     formats: ['image/avif', 'image/webp'],
@@ -30,4 +32,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default createNextIntlPlugin("./app/i18n/request.ts")(nextConfig);

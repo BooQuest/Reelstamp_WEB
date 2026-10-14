@@ -1,3 +1,6 @@
+'use client';
+
+import { useUiText } from '@/app/i18n/LocaleProvider';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronRight, User, X } from 'lucide-react';
@@ -29,6 +32,7 @@ export default function CaptureMenu({
   onClose,
   onRequestExit,
 }: Props) {
+  const t = useUiText();
   const requestExit = (href: string) => {
     onClose();
     onRequestExit(href);
@@ -41,12 +45,12 @@ export default function CaptureMenu({
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 px-5">
-          <span className="text-lg font-bold">메뉴</span>
+          <span className="text-lg font-bold">{t("메뉴")}</span>
           <button
             type="button"
             onClick={onClose}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-gray-700"
-            aria-label="메뉴 닫기"
+            aria-label={t("메뉴 닫기")}
           >
             <X className="h-5 w-5" />
           </button>
@@ -63,7 +67,7 @@ export default function CaptureMenu({
                 {user.profileImageUrl ? (
                   <Image
                     src={user.profileImageUrl}
-                    alt="프로필"
+                    alt={t("프로필")}
                     width={56}
                     height={56}
                     className="h-full w-full object-cover"
@@ -81,7 +85,7 @@ export default function CaptureMenu({
                   <p className="truncate text-sm text-gray-500">{user.email}</p>
                 )}
                 {!user.email && isGuestUser && (
-                  <p className="truncate text-sm text-gray-500">가입 없이 이용 중</p>
+                  <p className="truncate text-sm text-gray-500">{t("가입 없이 이용 중")}</p>
                 )}
               </div>
               <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" />
@@ -96,8 +100,7 @@ export default function CaptureMenu({
               onClick={() => requestExit('/my-projects')}
               className="mb-4 flex w-full items-center justify-center rounded-xl bg-[#FF496D] px-5 py-3 text-base font-semibold text-white"
             >
-              저장 후 나가기
-            </button>
+              {t("저장 후 나가기")}</button>
           )}
           {isGuestUser && (
             <Link
@@ -105,8 +108,7 @@ export default function CaptureMenu({
               onClick={onClose}
               className="mb-4 flex w-full items-center justify-center rounded-xl bg-[#FF496D] px-5 py-3 text-base font-semibold text-white"
             >
-              회원가입하고 보관하기
-            </Link>
+              {t("회원가입하고 보관하기")}</Link>
           )}
           {!isAuthenticated && (
             <Link
@@ -114,8 +116,7 @@ export default function CaptureMenu({
               onClick={onClose}
               className="mb-4 flex w-full items-center justify-center rounded-xl bg-[#FF496D] px-5 py-3 text-base font-semibold text-white"
             >
-              로그인 / 회원가입
-            </Link>
+              {t("로그인 / 회원가입")}</Link>
           )}
 
           {CAPTURE_MENU_ITEMS
@@ -134,7 +135,7 @@ export default function CaptureMenu({
                   className="flex w-full items-center gap-3 rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
                 >
                   <Icon className="h-5 w-5 text-gray-600" />
-                  <span>{item.label}</span>
+                  <span>{t(item.label)}</span>
                 </Link>
               );
             })}
@@ -153,8 +154,7 @@ export default function CaptureMenu({
                 }}
                 className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
               >
-                인기 급상승 릴스
-              </Link>
+                {t("인기 급상승 릴스")}</Link>
             </>
           )}
 
@@ -167,8 +167,7 @@ export default function CaptureMenu({
               }}
               className="block w-full rounded-xl px-5 py-3.5 text-lg font-medium text-gray-900 transition hover:bg-gray-50"
             >
-              관리자
-            </Link>
+              {t("관리자")}</Link>
           )}
         </div>
       </nav>

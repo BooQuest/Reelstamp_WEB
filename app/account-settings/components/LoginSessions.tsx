@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useEffect, useState } from 'react';
 import { notifyAuthChanged } from '@/app/lib/auth/browser-session';
@@ -11,9 +13,10 @@ function browserLabel(agent: string | null) {
   const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows' : /Macintosh/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : '';
   return [browser, os].filter(Boolean).join(' · ');
 }
-const date = (value: string | null) => value ? new Date(value).toLocaleString('ko-KR') : '이전 로그인';
+const date = (value: string | null, locale: 'ko' | 'en' = 'ko') => value ? new Date(value).toLocaleString(locale === 'en' ? 'en-GB' : 'ko-KR') : '이전 로그인';
 
 export default function LoginSessions() {
+  const t = useUiText();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,7 +30,7 @@ export default function LoginSessions() {
   }
   useEffect(() => { void load(); }, []);
   async function revoke(session?: Session) {
-    if (!window.confirm(session ? '이 브라우저에서 로그아웃할까요?' : '현재 브라우저를 포함한 모든 브라우저에서 로그아웃할까요?')) return;
+    if (!window.confirm(t(session ? '이 브라우저에서 로그아웃할까요?' : '현재 브라우저를 포함한 모든 브라우저에서 로그아웃할까요?'))) return;
     setBusy(true); setError('');
     try {
       const response = await fetch(session ? `/api/auth/sessions/${session.sessionId}` : '/api/auth/logout-all', { method: session ? 'DELETE' : 'POST' });
@@ -39,16 +42,16 @@ export default function LoginSessions() {
     finally { setBusy(false); }
   }
   return <section className="mb-6 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-    <h2 className="text-lg font-bold">로그인된 브라우저</h2>
-    <p className="mt-2 text-xs text-gray-500">각 브라우저의 최초 로그인부터 최대 14일간 유지됩니다.</p>
-    {error && <p role="alert" className="mt-3 text-sm text-red-600">{error} <button onClick={() => void load()} className="underline">다시 시도</button></p>}
+    <h2 className="text-lg font-bold">{t("로그인된 브라우저")}</h2>
+    <p className="mt-2 text-xs text-gray-500">{t("각 브라우저의 최초 로그인부터 최대 14일간 유지됩니다.")}</p>
+    {error && <p role="alert" className="mt-3 text-sm text-red-600">{t(error)} <button onClick={() => void load()} className="underline">{t("다시 시도")}</button></p>}
     <ul className="divide-y">{sessions.map(session => <li key={session.sessionId} className="py-4">
-      <div className="text-sm font-semibold">{browserLabel(session.userAgent)} {session.current && <span className="text-pink-600">현재 브라우저</span>}</div>
+      <div className="text-sm font-semibold">{t(browserLabel(session.userAgent))} {session.current && <span className="text-pink-600">{t("현재 브라우저")}</span>}</div>
       <dl className="mt-2 space-y-1 text-xs text-gray-500">
-        <div>로그인: {date(session.authenticatedAt)}</div><div>최근 활동: {date(session.lastSeenAt)}</div><div>만료: {date(session.expiresAt)}</div>
+        <div>{t("로그인: ")}{t(date(session.authenticatedAt, t.locale))}</div><div>{t("최근 활동: ")}{t(date(session.lastSeenAt, t.locale))}</div><div>{t("만료: ")}{t(date(session.expiresAt, t.locale))}</div>
       </dl>
-      <button disabled={busy} onClick={() => void revoke(session)} className="mt-2 text-sm underline disabled:opacity-50">로그아웃</button>
+      <button disabled={busy} onClick={() => void revoke(session)} className="mt-2 text-sm underline disabled:opacity-50">{t("로그아웃")}</button>
     </li>)}</ul>
-    <button disabled={busy} onClick={() => void revoke()} className="mt-2 w-full rounded-xl border p-3 text-sm disabled:opacity-50">모든 브라우저에서 로그아웃</button>
+    <button disabled={busy} onClick={() => void revoke()} className="mt-2 w-full rounded-xl border p-3 text-sm disabled:opacity-50">{t("모든 브라우저에서 로그아웃")}</button>
   </section>;
 }

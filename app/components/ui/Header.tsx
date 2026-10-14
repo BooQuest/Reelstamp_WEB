@@ -1,6 +1,9 @@
 // 공통 헤더 컴포넌트: 브랜드 로고, 메뉴 영역, 가입/로그인 버튼을 포함하는 상단 네비게이션
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
 
+
+import LanguageSelector from '@/app/i18n/LanguageSelector';
 import { useState, useEffect, useCallback, useRef, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
@@ -139,6 +142,7 @@ const SIMPLE_HEADER_CONFIG: Record<string, { title: string; backHref: string }> 
 
 // 헤더 컴포넌트
 export default function Header() {
+  const t = useUiText();
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, user, subscription } = useAuth();
@@ -184,7 +188,7 @@ export default function Header() {
           }`}
         >
           <Icon className="w-5 h-5 text-gray-600" />
-          <span>{item.label}</span>
+          <span>{t(item.label)}</span>
         </Link>
       );
     });
@@ -270,14 +274,14 @@ export default function Header() {
     >
       <div className="w-full pl-4 pr-4 sm:px-8 lg:px-12">
         {simpleHeader ? (
-          <div className="flex items-center justify-between h-18">
+          <div className="flex items-center justify-between h-18 gap-2">
             <Link
               href={simpleHeader.backHref}
               onClick={() => setIsMobileMenuOpen(false)}
               className={`w-10 h-10 flex items-center justify-center ${
                 isDarkHeader ? 'text-white' : 'text-gray-700'
               }`}
-              aria-label="뒤로가기"
+              aria-label={t("뒤로가기")}
             >
               <ChevronLeft className="w-6 h-6" />
             </Link>
@@ -286,21 +290,24 @@ export default function Header() {
                 isDarkHeader ? 'text-white' : 'text-gray-900'
               }`}
             >
-              {simpleHeader.title}
+              {t(simpleHeader.title)}
             </h1>
-            <button
-              type="button"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className={`w-10 h-10 flex items-center justify-center ${
-                isDarkHeader ? 'text-white' : 'text-gray-700'
-              }`}
-              aria-label="메뉴"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <LanguageSelector />
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className={`w-10 h-10 flex items-center justify-center ${
+                  isDarkHeader ? 'text-white' : 'text-gray-700'
+                }`}
+                aria-label={t("메뉴")}
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+            </div>
           </div>
         ) : (
-          <div className="flex items-center justify-between h-18">
+          <div className="flex items-center justify-between h-18 gap-2">
             {/* 좌측: 브랜드 로고 (타이포그래피) */}
             <div className="flex items-center">
               <Link 
@@ -323,7 +330,7 @@ export default function Header() {
             </div>
 
             {/* 중앙: 메뉴 영역 (PC) */}
-            <nav className="hidden md:flex items-center gap-10">
+            <nav className="hidden lg:flex items-center gap-3 whitespace-nowrap xl:gap-10">
               {DESKTOP_MENU_ITEMS.filter(isNavItemVisible).map((item) => {
                 const active = isActive(item);
                 const targetHref =
@@ -342,7 +349,7 @@ export default function Header() {
                         : 'text-gray-700 hover:text-gray-900 font-medium'
                     }`}
                   >
-                    {item.label}
+                    {t(item.label)}
                   </Link>
                 );
               })}
@@ -356,18 +363,18 @@ export default function Header() {
                       : 'text-gray-700 hover:text-gray-900 font-medium'
                   }`}
                 >
-                  관리자
-                </Link>
+                  {t("관리자")}</Link>
               )}
             </nav>
 
             {/* 우측: 가입/로그인 버튼 및 모바일 메뉴 */}
-            <div className="flex items-center gap-3 md:gap-6">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3 lg:gap-4 xl:gap-6">
+              <LanguageSelector />
               {/* 이용권 상태 (PC·모바일 공통) */}
               {isAuthenticated && subscription && (
                 <Link
                   href={hasActivePass ? '/plan' : '/pricing'}
-                  aria-label={hasActivePass ? '이용권 사용 중, 내 이용권 보기' : '이용권 없음, 요금제 보기'}
+                  aria-label={t(hasActivePass ? '이용권 사용 중, 내 이용권 보기' : '이용권 없음, 요금제 보기')}
                   className={`group relative inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg border bg-white px-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF496D] focus-visible:ring-offset-2 ${
                     hasActivePass
                       ? 'border-[#FF496D]/20 text-[#FF496D] hover:bg-[#FFF5F8]'
@@ -378,12 +385,12 @@ export default function Header() {
                     className={`h-5 w-5${hasActivePass ? ' fill-[#FF496D]/15' : ''}`}
                     aria-hidden="true"
                   />
-                  {hasActivePass && <span className="text-sm font-semibold">pass</span>}
+                  {hasActivePass && <span className="hidden text-sm font-semibold min-[360px]:inline">pass</span>}
                   <span
                     aria-hidden="true"
                     className="pointer-events-none absolute right-0 top-full z-10 mt-2 whitespace-nowrap rounded-md bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
                   >
-                    {hasActivePass ? '이용권 사용 중' : '이용권 없음'}
+                    {t(hasActivePass ? '이용권 사용 중' : '이용권 없음')}
                   </span>
                 </Link>
               )}
@@ -391,8 +398,8 @@ export default function Header() {
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="md:hidden p-1.5 rounded-lg bg-gradient-to-r from-[#EB48B1] to-[#F59A39] hover:from-[#D93D9F] hover:to-[#E6892F] transition-all shadow-sm hover:shadow-md"
-                aria-label="메뉴"
+                className="lg:hidden p-1.5 rounded-lg bg-gradient-to-r from-[#EB48B1] to-[#F59A39] hover:from-[#D93D9F] hover:to-[#E6892F] transition-all shadow-sm hover:shadow-md"
+                aria-label={t("메뉴")}
               >
                 <div className="w-5 h-4 flex flex-col justify-between items-end">
                   <motion.span
@@ -416,19 +423,19 @@ export default function Header() {
                 </div>
               </button>
               {/* 로그인/회원가입 또는 프로필 이미지 (PC만 표시) */}
-              <div className="hidden md:flex items-center gap-6">
+              <div className="hidden lg:flex items-center gap-6">
                 {isAuthenticated ? (
                   // 로그인 상태: 프로필 이미지 (클릭 시 메뉴 표시)
                   <div className="relative" ref={profileMenuRef}>
                     <button
                       onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                       className="relative w-10 h-10 rounded-full overflow-hidden transition-all hover:ring-2 hover:ring-gray-300 flex items-center justify-center bg-gray-100 border-2 border-gray-200 shadow-sm hover:shadow-md"
-                      aria-label="프로필 메뉴"
+                      aria-label={t("프로필 메뉴")}
                     >
                       {user?.profileImageUrl ? (
                         <Image
                           src={user.profileImageUrl}
-                          alt="프로필"
+                          alt={t("프로필")}
                           width={40}
                           height={40}
                           className="w-full h-full object-cover"
@@ -456,7 +463,7 @@ export default function Header() {
                                 {user?.profileImageUrl ? (
                                   <Image
                                     src={user.profileImageUrl}
-                                    alt="프로필"
+                                    alt={t("프로필")}
                                     width={48}
                                     height={48}
                                     className="w-full h-full object-cover"
@@ -478,7 +485,7 @@ export default function Header() {
                                   <p className="text-sm text-gray-500 truncate">{user.email}</p>
                                 )}
                                 {!user?.email && isGuestUser && (
-                                  <p className="text-sm text-gray-500 truncate">가입 없이 이용 중</p>
+                                  <p className="text-sm text-gray-500 truncate">{t("가입 없이 이용 중")}</p>
                                 )}
                               </div>
                             </div>
@@ -493,8 +500,7 @@ export default function Header() {
                                   onClick={() => setIsProfileMenuOpen(false)}
                                   className="mx-3 mb-2 px-4 py-3 flex items-center justify-center rounded-lg bg-[#FF496D] text-white text-sm font-semibold hover:bg-[#E63E62] transition-colors"
                                 >
-                                  회원가입하고 보관하기
-                                </Link>
+                                  {t("회원가입하고 보관하기")}</Link>
                                 <div className="border-t border-gray-200 my-1"></div>
                               </>
                             )}
@@ -506,7 +512,7 @@ export default function Header() {
                               className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
                             >
                               <User className="w-5 h-5 text-gray-400" />
-                              <span className="text-base font-medium">내 정보</span>
+                              <span className="text-base font-medium">{t("내 정보")}</span>
                             </button>
 
                             <div className="border-t border-gray-200 my-1"></div>
@@ -517,7 +523,7 @@ export default function Header() {
                               className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
                             >
                               <Sparkles className="w-5 h-5 text-gray-400" />
-                              <span className="text-base font-medium">오늘의 릴스 트렌드</span>
+                              <span className="text-base font-medium">{t("오늘의 릴스 트렌드")}</span>
                             </Link>
                             <Link
                               href="/all-templates"
@@ -525,7 +531,7 @@ export default function Header() {
                               className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
                             >
                               <LayoutTemplate className="w-5 h-5 text-gray-400" />
-                              <span className="text-base font-medium">릴스 템플릿</span>
+                              <span className="text-base font-medium">{t("릴스 템플릿")}</span>
                             </Link>
                             {SHOW_DISABLED_NAV_ITEMS && (
                               <Link
@@ -534,7 +540,7 @@ export default function Header() {
                                 className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
                               >
                                 <TrendingUp className="w-5 h-5 text-gray-400" />
-                                <span className="text-base font-medium">(구)오늘의 릴스 트렌드</span>
+                                <span className="text-base font-medium">{t("(구)오늘의 릴스 트렌드")}</span>
                               </Link>
                             )}
 
@@ -546,7 +552,7 @@ export default function Header() {
                               className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
                             >
                               <FolderOpen className="w-5 h-5 text-gray-400" />
-                              <span className="text-base font-medium">내 프로젝트</span>
+                              <span className="text-base font-medium">{t("내 프로젝트")}</span>
                             </Link>
                             <Link
                               href="/saved-reels"
@@ -554,7 +560,7 @@ export default function Header() {
                               className="w-full px-4 py-3 flex items-center gap-3 text-left text-gray-700 hover:bg-gray-50 transition-colors"
                             >
                               <Bookmark className="w-5 h-5 text-gray-400" />
-                              <span className="text-base font-medium">저장된 릴스</span>
+                              <span className="text-base font-medium">{t("저장된 릴스")}</span>
                             </Link>
                           </div>
                         </motion.div>
@@ -567,10 +573,9 @@ export default function Header() {
                     href={currentPageLoginHref}
                     className="px-5 py-2 text-base font-medium text-white rounded-xl transition-all hover:bg-[#1F2128] hover:shadow-lg flex items-center justify-center"
                     style={{ backgroundColor: '#2B2D37' }}
-                    aria-label="로그인/회원가입"
+                    aria-label={t("로그인/회원가입")}
                   >
-                    로그인/회원가입
-                  </Link>
+                    {t("로그인/회원가입")}</Link>
                 )}
               </div>
             </div>
@@ -583,7 +588,7 @@ export default function Header() {
         <AnimatePresence>
           {isMobileMenuOpen && (
             <motion.div
-                className={`fixed top-[72px] left-0 right-0 bottom-0 z-[9999] bg-white ${simpleHeader ? '' : 'md:hidden'}`}
+                className={`fixed top-[72px] left-0 right-0 bottom-0 z-[9999] bg-white ${simpleHeader ? '' : 'lg:hidden'}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -604,7 +609,7 @@ export default function Header() {
                           {user.profileImageUrl ? (
                             <Image
                               src={user.profileImageUrl}
-                              alt="프로필"
+                              alt={t("프로필")}
                               width={56}
                               height={56}
                               className="w-full h-full object-cover"
@@ -626,7 +631,7 @@ export default function Header() {
                             <p className="text-sm text-gray-500 truncate">{user.email}</p>
                           )}
                           {!user.email && isGuestUser && (
-                            <p className="text-sm text-gray-500 truncate">가입 없이 이용 중</p>
+                            <p className="text-sm text-gray-500 truncate">{t("가입 없이 이용 중")}</p>
                           )}
                         </div>
                         <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
@@ -642,8 +647,7 @@ export default function Header() {
                         className="w-full mb-4 px-5 py-3 text-base font-semibold text-white rounded-xl transition-all hover:bg-[#E63E62] text-center"
                         style={{ backgroundColor: '#FF496D' }}
                       >
-                        회원가입하고 보관하기
-                      </Link>
+                        {t("회원가입하고 보관하기")}</Link>
                     )}
                     {!isAuthenticated && (
                       <Link
@@ -651,25 +655,24 @@ export default function Header() {
                         onClick={() => setIsMobileMenuOpen(false)}
                         className="w-full mb-4 px-5 py-3 text-base font-semibold text-white rounded-xl transition-all hover:bg-[#FF496D]/90 text-center"
                         style={{ backgroundColor: '#FF496D' }}
-                        aria-label="로그인/회원가입"
+                        aria-label={t("로그인/회원가입")}
                       >
-                        로그인 / 회원가입
-                      </Link>
+                        {t("로그인 / 회원가입")}</Link>
                     )}
 
                     <div className="flex flex-col space-y-2">
                       {/* 신규 메뉴 */}
-                      {renderMobileMenuItems(MOBILE_PRIMARY_ITEMS.slice(0, 3))}
+                      {t(renderMobileMenuItems(MOBILE_PRIMARY_ITEMS.slice(0, 3)))}
 
                       <div className="border-t border-gray-200 my-2"></div>
 
-                      {renderMobileMenuItems(mobileAuthenticatedMenuItems)}
+                      {t(renderMobileMenuItems(mobileAuthenticatedMenuItems))}
 
                       {hasVisibleMobileAuthenticatedMenuItems && (
                         <div className="border-t border-gray-200 my-2"></div>
                       )}
 
-                      {renderMobileMenuItems(MOBILE_INFO_ITEMS)}
+                      {t(renderMobileMenuItems(MOBILE_INFO_ITEMS))}
 
                       {(hasVisibleLegacyMenuItems || (isAuthenticated && isAdmin)) && (
                         <div className="border-t border-gray-200 my-2"></div>
@@ -691,7 +694,7 @@ export default function Header() {
                                 : 'text-gray-900 font-medium hover:bg-gray-50'
                             }`}
                           >
-                            {item.label}
+                            {t(item.label)}
                           </Link>
                         );
                       })}
@@ -706,8 +709,7 @@ export default function Header() {
                               : 'text-gray-900 font-medium hover:bg-gray-50'
                           }`}
                         >
-                          관리자
-                        </Link>
+                          {t("관리자")}</Link>
                       )}
                     </div>
                   </div>

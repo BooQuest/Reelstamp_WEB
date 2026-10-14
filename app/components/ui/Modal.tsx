@@ -1,5 +1,7 @@
 // 범용 모달 컴포넌트: 제목과 내용을 파라미터로 받아 재사용 가능한 팝업 창
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -23,6 +25,7 @@ export default function Modal({
   buttonText = '확인',
   icon,
 }: ModalProps) {
+  const t = useUiText();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -57,7 +60,7 @@ export default function Modal({
               <button
                 onClick={onClose}
                 className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-full hover:bg-gray-100"
-                aria-label="닫기"
+                aria-label={t("닫기")}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -67,19 +70,19 @@ export default function Modal({
                 {/* 아이콘 영역 */}
                 {icon && (
                   <div className="mx-auto mb-6 flex items-center justify-center">
-                    {icon}
+                    {t(icon)}
                   </div>
                 )}
 
                 {/* 제목 */}
                 <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                  {title}
+                  {t(title)}
                 </h3>
 
                 {/* 설명 */}
                 <div className="text-gray-600 mb-6 leading-relaxed">
                   {typeof description === 'string' ? (
-                    <p>{description}</p>
+                    <p>{t(description)}</p>
                   ) : (
                     description
                   )}
@@ -90,7 +93,7 @@ export default function Modal({
                   onClick={onClose}
                   className="w-full px-6 py-3 bg-gradient-to-r from-[#EB48B1] to-[#F59A39] text-white font-semibold rounded-lg hover:from-[#D93D9F] hover:to-[#E6892F] transition-all shadow-md hover:shadow-lg"
                 >
-                  {buttonText}
+                  {t(buttonText)}
                 </button>
               </div>
             </motion.div>

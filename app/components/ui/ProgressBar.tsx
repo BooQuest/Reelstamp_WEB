@@ -1,5 +1,7 @@
 // 진행 상태바 컴포넌트: 단계별 진행 상황을 시각적으로 표시하는 UI 컴포넌트
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { motion } from 'framer-motion';
 import { CheckCircle2 } from 'lucide-react';
@@ -33,6 +35,7 @@ export default function ProgressBar({
   remainingMinutes,
   totalMinutes,
 }: ProgressBarProps) {
+  const t = useUiText();
   // 시간 기반 진행률 계산 (퍼센트)
   const progress = (completedMinutes / totalMinutes) * 100;
 
@@ -49,12 +52,11 @@ export default function ProgressBar({
       {/* 상단: 배지 + 시간 정보 */}
       <div className="relative z-10 flex items-center justify-between mb-4">
         <span className="inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold shadow-sm">
-          ⚡ {totalMinutes}분 완성
-        </span>
+          ⚡ {t(totalMinutes)}{t("분 완성")}</span>
         <div className="flex items-center gap-3 text-sm font-semibold">
-          <span className="text-purple-600">{completedMinutes}분 완료</span>
+          <span className="text-purple-600">{t(completedMinutes)}{t("분 완료")}</span>
           <span className="text-gray-300">·</span>
-          <span className="text-gray-500">{remainingMinutes}분 남음</span>
+          <span className="text-gray-500">{t(remainingMinutes)}{t("분 남음")}</span>
         </div>
       </div>
       
@@ -105,19 +107,19 @@ export default function ProgressBar({
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ type: 'spring', stiffness: 200, damping: 15 }}
               >
-                {Math.round(progress)}%
+                {t(Math.round(progress))}%
               </motion.span>
             </div>
           </motion.div>
           
           {/* 단계 정보 */}
           <div className="flex flex-col">
-            <span className="text-xs text-gray-500 font-medium mb-1">현재 진행</span>
+            <span className="text-xs text-gray-500 font-medium mb-1">{t("현재 진행")}</span>
             <span className={`text-lg font-black bg-gradient-to-r ${currentGradient} bg-clip-text text-transparent`}>
-              STEP {currentStep + 1} / {totalSteps}
+              STEP {t(currentStep + 1)} / {t(totalSteps)}
             </span>
             <span className="text-xs text-gray-600 font-medium mt-0.5">
-              {stepTitle}
+              {t(stepTitle)}
             </span>
           </div>
         </div>

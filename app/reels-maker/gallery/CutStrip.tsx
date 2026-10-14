@@ -1,3 +1,6 @@
+'use client';
+
+import { useUiText } from '@/app/i18n/LocaleProvider';
 import { Check } from 'lucide-react';
 import ClipPlayer from '../components/ClipPlayer';
 import type { MakerCut, ClipInfo } from '../types';
@@ -19,13 +22,14 @@ export default function CutStrip({
   errors,
   onSelect,
 }: Props) {
+  const t = useUiText();
   return (
     <div className="flex shrink-0 gap-2 overflow-x-auto px-3 py-2">
       {cuts.map((item, index) => (
         <button
           type="button"
           key={item.id}
-          aria-label={`${index + 1}번 컷 선택`}
+          aria-label={t.format("{v0}번 컷 선택", {v0: index + 1})}
           aria-current={index === activeCutIndex}
           disabled={disabled}
           onClick={() => onSelect(index)}
@@ -35,16 +39,15 @@ export default function CutStrip({
             <ClipPlayer key={`${clips[index]!.url}:${clips[index]!.revisionId}`} clip={clips[index]!} thumbnail />
           )}
           <span className="absolute left-1 top-1 rounded bg-black/50 px-1 text-[10px]">
-            {index + 1}
+            {t(index + 1)}
           </span>
           {busy && index === activeCutIndex ? (
             <span className="absolute inset-x-0 top-6 text-[9px]">
-              처리 중…
-            </span>
+              {t("처리 중…")}</span>
           ) : errors[index] ? (
             <span
               className="absolute right-1 top-1 text-rose-400"
-              aria-label="고정 컷 오류"
+              aria-label={t("고정 컷 오류")}
             >
               !
             </span>
@@ -57,9 +60,9 @@ export default function CutStrip({
             )
           )}
           <span className="absolute inset-x-0 bottom-0 bg-black/60 py-1 text-[10px]">
-            {Number(
+            {t(Number(
               (clips[index]?.duration ?? item.durationSeconds).toFixed(1),
-            )}
+            ))}
             s
           </span>
         </button>

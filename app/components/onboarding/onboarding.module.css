@@ -86,3 +86,6 @@
 .confirm:focus, .close:focus { outline: none; }
 .overlay[data-keyboard-navigation] .confirm:focus { background: #bd1740; }
 .overlay[data-keyboard-navigation] .close:focus { background: rgb(0 0 0 / 20%); }
+
+/* English instructions are reflowable text, independent of the Korean artwork ratio. */
+.englishArtwork { position: relative; padding-bottom: 38px; }

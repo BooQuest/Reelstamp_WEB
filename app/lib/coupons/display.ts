@@ -1,3 +1,5 @@
+import type { UiText } from '@/app/i18n/text';
+
 export const COUPON_EXTENSION_NOTICE =
   '이용기간이 남아 있으면 기존 이용기간 종료 후 이어서 적용됩니다.';
 
@@ -13,6 +15,6 @@ export function couponTime(value: string) {
   }).format(new Date(value));
 }
 
-export function couponDateTime(value: string) {
-  return `${couponDate(value)} ${couponTime(value)} (한국 시간)`;
+export function couponDateTime(value: string, t: UiText) {
+  return t.format('{date} (한국 시간)', { date: `${couponDate(value)} ${couponTime(value)}` });
 }

@@ -1,0 +1,14 @@
+import ko_common from './ko/common.json';
+import ko_auth from './ko/auth.json';
+import ko_billing from './ko/billing.json';
+import ko_templates from './ko/templates.json';
+import ko_editor from './ko/editor.json';
+import ko_policies from './ko/policies.json';
+import en_common from './en/common.json';
+import en_auth from './en/auth.json';
+import en_billing from './en/billing.json';
+import en_templates from './en/templates.json';
+import en_editor from './en/editor.json';
+import en_policies from './en/policies.json';
+export const ko = {common: ko_common, auth: ko_auth, billing: ko_billing, templates: ko_templates, editor: ko_editor, policies: ko_policies};
+export const en = {common: en_common, auth: en_auth, billing: en_billing, templates: en_templates, editor: en_editor, policies: en_policies};

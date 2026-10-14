@@ -1,3 +1,5 @@
+
+import { getUiText } from '@/app/i18n/server';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getCurrentUser } from '@/app/lib/api/auth';
@@ -10,6 +12,7 @@ export default async function CheckoutPage({
 }: {
   params: Promise<{ code: string }>;
 }) {
+  const t = await getUiText();
   const { code } = await params;
   const user = await getCurrentUser();
   if (!user || user.guest || user.provider === 'GUEST')
@@ -28,8 +31,8 @@ export default async function CheckoutPage({
   )
     return (
       <div className="p-12 text-center">
-        <h1>현재 이용권 판매가 중지되어 있습니다.</h1>
-        <Link href="/pricing">이용권 안내로 돌아가기</Link>
+        <h1>{t("현재 이용권 판매가 중지되어 있습니다.")}</h1>
+        <Link href="/pricing">{t("이용권 안내로 돌아가기")}</Link>
       </div>
     );
   return <Checkout product={product} userId={user.id} />;

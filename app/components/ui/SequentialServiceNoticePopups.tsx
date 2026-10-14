@@ -1,4 +1,8 @@
 'use client';
+import UiMessage from '@/app/i18n/UiMessage';
+
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import {
   useCallback,
@@ -32,23 +36,15 @@ const TEMPORARY_SERVICE_NOTICES: ServiceNotice[] = [
     content: (
       <>
         <p>
-          보다 안정적인 서비스 제공을 위한 기능 점검으로 인해 정식 출시 일정을{' '}
-          <strong className="font-bold text-gray-950">10월 10일로</strong> 변경하게
-          되었습니다. 남은 기간 동안 기능 안정성과 사용성을 더욱 꼼꼼히 점검하여 더
-          나은 모습으로 찾아뵙겠습니다.
-        </p>
+          <UiMessage source="보다 안정적인 서비스 제공을 위한 기능 점검으로 인해 정식 출시 일정을" />{' '}
+          <strong className="font-bold text-gray-950"><UiMessage source="10월 10일로" /></strong> <UiMessage source="변경하게 되었습니다. 남은 기간 동안 기능 안정성과 사용성을 더욱 꼼꼼히 점검하여 더 나은 모습으로 찾아뵙겠습니다." /></p>
         <p>
           <strong className="font-bold text-gray-950">
-            정식 출시 전까지는 현재 베타 서비스를 계속 자유롭게 이용하실 수 있으며,
-            릴스탬프의 모든 템플릿을 무료로 사용하실 수 있습니다.
-          </strong>
+            <UiMessage source="정식 출시 전까지는 현재 베타 서비스를 계속 자유롭게 이용하실 수 있으며, 릴스탬프의 모든 템플릿을 무료로 사용하실 수 있습니다." /></strong>
         </p>
         <p>
-          오류 제보 및 기능 개선 요청은{' '}
-          <strong className="font-bold text-gray-950">마이페이지 &gt; 고객센터</strong>를
-          이용해주세요. 보내주시는 의견을 적극 반영하여 더욱 만족스러운 서비스를
-          만들어가겠습니다.
-        </p>
+          <UiMessage source="오류 제보 및 기능 개선 요청은" />{' '}
+          <strong className="font-bold text-gray-950"><UiMessage source="마이페이지 > 고객센터" /></strong><UiMessage source="를 이용해주세요. 보내주시는 의견을 적극 반영하여 더욱 만족스러운 서비스를 만들어가겠습니다." /></p>
       </>
     ),
   },
@@ -57,10 +53,7 @@ const TEMPORARY_SERVICE_NOTICES: ServiceNotice[] = [
     title: '일부 기능 안정화 작업 안내',
     content: (
       <p>
-        현재 자막 편집 기능 및 촬영 화질 개선 작업 진행 중으로 해당 기능 사용 시 원활하지
-        않을 수 있음을 안내드립니다. 그 외에도 사용자의 편의를 위한 다양한 기능을 추가
-        중이니 조금만 기다려 주시면 감사하겠습니다.
-      </p>
+        <UiMessage source="현재 자막 편집 기능 및 촬영 화질 개선 작업 진행 중으로 해당 기능 사용 시 원활하지 않을 수 있음을 안내드립니다. 그 외에도 사용자의 편의를 위한 다양한 기능을 추가 중이니 조금만 기다려 주시면 감사하겠습니다." /></p>
     ),
   },
 ];
@@ -102,6 +95,7 @@ export default function SequentialServiceNoticePopups({
   referenceDate,
   onVisibilityChange,
 }: SequentialServiceNoticePopupsProps) {
+  const t = useUiText();
   const isHydrated = useSyncExternalStore(
     subscribeToHydration,
     getClientHydrationSnapshot,
@@ -213,10 +207,10 @@ export default function SequentialServiceNoticePopups({
                 id={`service-notice-title-${currentNotice.id}`}
                 className="text-lg font-extrabold leading-6 text-gray-950 [word-break:keep-all] sm:text-xl sm:leading-7 [@media(max-height:600px)]:text-base [@media(max-height:600px)]:leading-[22px]"
               >
-                {currentNotice.title}
+                {t(currentNotice.title)}
               </h2>
               <div className="mt-3 space-y-2 text-[13px] leading-5 text-gray-700 [word-break:keep-all] sm:text-sm sm:leading-6 [@media(max-height:600px)]:text-xs [@media(max-height:600px)]:leading-[18px]">
-                {currentNotice.content}
+                {t(currentNotice.content)}
               </div>
             </div>
 
@@ -228,8 +222,7 @@ export default function SequentialServiceNoticePopups({
                   onChange={(event) => setDontShowAgain(event.target.checked)}
                   className="h-4 w-4 rounded border-gray-300 accent-[#FF496D]"
                 />
-                다시 보지 않기
-              </label>
+                {t("다시 보지 않기")}</label>
               <button
                 ref={confirmButtonRef}
                 type="button"
@@ -237,8 +230,7 @@ export default function SequentialServiceNoticePopups({
                 className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#FF496D] px-5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#E63E60] focus:outline-none focus:ring-2 focus:ring-[#FF496D]/35 focus:ring-offset-2 sm:min-w-28"
               >
                 <Check className="h-4 w-4" aria-hidden="true" />
-                확인
-              </button>
+                {t("확인")}</button>
             </div>
           </div>
         </motion.div>

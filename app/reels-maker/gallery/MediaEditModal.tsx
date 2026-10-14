@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 /* eslint-disable @next/next/no-img-element */
 import { useEffect, useRef, useState } from 'react';
 import { Play, Pause, X, Check, Info } from 'lucide-react';
@@ -23,6 +25,7 @@ export default function MediaEditModal({
   onCancel,
   onConfirm,
 }: Props) {
+  const t = useUiText();
   const [edit, setEdit] = useState(media.edit);
   const [input, setInput] = useState(String(media.edit.duration));
   const [validation, setValidation] = useState<string | null>(null);
@@ -90,12 +93,11 @@ export default function MediaEditModal({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="길이 및 화면 조정"
+      aria-label={t("길이 및 화면 조정")}
       className="fixed inset-0 z-[90] flex flex-col bg-[#111827] p-3 text-white"
     >
       <p className="shrink-0 py-2 text-center text-sm">
-        이동하거나 확대하여 분홍색 테두리 안에 사용할 화면을 맞추세요
-      </p>
+        {t("이동하거나 확대하여 분홍색 테두리 안에 사용할 화면을 맞추세요")}</p>
       <div
         className="flex min-h-0 flex-1 items-center justify-center overflow-hidden"
         style={{ containerType: 'size' }}
@@ -108,7 +110,7 @@ export default function MediaEditModal({
           {image ? (
             <img
               src={media.item.url}
-              alt="선택한 사진"
+              alt={t("선택한 사진")}
               style={style}
               draggable={false}
             />
@@ -149,7 +151,7 @@ export default function MediaEditModal({
               className="mx-auto block p-2"
               disabled={busy}
               aria-label={
-                playing ? '편집 미리보기 일시정지' : '편집 미리보기 재생'
+                t(playing ? '편집 미리보기 일시정지' : '편집 미리보기 재생')
               }
               onClick={async () => {
                 if (!video.current) return;
@@ -162,7 +164,7 @@ export default function MediaEditModal({
                   await video.current.play();
                   setPlaying(true);
                 } catch {
-                  setValidation('미리보기를 재생하지 못했습니다.');
+                  setValidation(t('미리보기를 재생하지 못했습니다.'));
                 }
               }}
             >
@@ -183,23 +185,20 @@ export default function MediaEditModal({
           </>
         )}
         <label className="flex items-center justify-center gap-2 text-sm">
-          길이
-          <input
-            aria-label="길이(초)"
+          {t("길이")}<input
+            aria-label={t("길이(초)")}
             inputMode="decimal"
             value={input}
             onChange={(e) => changeDuration(e.target.value)}
             disabled={busy}
             className="w-24 rounded bg-white/10 p-2 text-center"
           />
-          초
-        </label>
+          {t("초")}</label>
         <p className="text-center text-xs text-white/60">
-          최대 {max.toFixed(1)}초 · 0.1초 단위
-        </p>
+          {t("최대 ")}{t(max.toFixed(1))}{t("초 · 0.1초 단위")}</p>
         {(validation || error) && (
           <p role="alert" className="text-center text-sm text-rose-300">
-            {validation || error}
+            {t(validation || error)}
           </p>
         )}
         <div className="mx-auto flex max-w-xl justify-between">
@@ -210,8 +209,7 @@ export default function MediaEditModal({
             className="flex gap-2 rounded bg-white/10 px-4 py-3"
           >
             <X />
-            취소
-          </button>
+            {t("취소")}</button>
           <button
             type="button"
             disabled={busy || Boolean(validation)}
@@ -222,7 +220,7 @@ export default function MediaEditModal({
             className="flex gap-2 rounded bg-rose-500 px-4 py-3 disabled:opacity-40"
           >
             <Check />
-            {busy ? '적용 중…' : '확인'}
+            {t(busy ? '적용 중…' : '확인')}
           </button>
         </div>
       </div>
@@ -232,7 +230,7 @@ export default function MediaEditModal({
           className="pointer-events-none absolute left-4 right-4 top-14 flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-100 px-4 py-3 text-sm font-medium text-rose-900 shadow-lg"
         >
           <Info aria-hidden="true" className="h-5 w-5 shrink-0 text-rose-600" />
-          <p>이 템플릿은 권장 길이에 맞춰 제작하는 것을 추천해요.</p>
+          <p>{t("이 템플릿은 권장 길이에 맞춰 제작하는 것을 추천해요.")}</p>
         </div>
       )}
     </div>

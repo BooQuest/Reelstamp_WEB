@@ -1,5 +1,7 @@
 // Instagram Embed 컴포넌트: 직접 iframe 방식
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import {
   type MouseEvent,
@@ -114,6 +116,7 @@ function InstagramEmbedFrame({
   showPlaybackFallback = true,
   onPlaybackFallbackVisibilityChange,
 }: InstagramEmbedFrameProps) {
+  const t = useUiText();
   const [embedState, setEmbedState] = useState<InstagramEmbedState>(() =>
     createLoadingState(url)
   );
@@ -317,7 +320,7 @@ function InstagramEmbedFrame({
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-gray-100 via-gray-50 to-gray-100">
           <div className="flex flex-col items-center gap-3">
             <div className="w-12 h-12 border-4 border-pink-200 border-t-pink-500 rounded-full animate-spin"></div>
-            <div className="text-gray-400 text-sm font-medium">로딩 중...</div>
+            <div className="text-gray-400 text-sm font-medium">{t("로딩 중...")}</div>
           </div>
         </div>
       )}
@@ -333,14 +336,14 @@ function InstagramEmbedFrame({
         allow="autoplay; encrypted-media"
         scrolling="no"
         onLoad={handleIframeLoad}
-        title="Instagram 릴스"
+        title={t("Instagram 릴스")}
       />
 
       {shouldInterceptPlaybackAttempt && (
         <button
           type="button"
           {...{ [INSTAGRAM_PLAYBACK_TRIGGER_ATTRIBUTE]: 'true' }}
-          aria-label="인스타그램 릴스 재생"
+          aria-label={t("인스타그램 릴스 재생")}
           onPointerDown={handlePlaybackPointerDown}
           onPointerMove={handlePlaybackPointerMove}
           onPointerCancel={handlePlaybackPointerCancel}

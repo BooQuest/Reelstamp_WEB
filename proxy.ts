@@ -1,3 +1,4 @@
+import { englishEnabled, LOCALE_COOKIE, resolveLocale } from '@/app/i18n/config';
 import { NextRequest, NextResponse } from 'next/server';
 import { refreshTokens } from '@/app/lib/auth/refresh';
 import { clearTokenCookies, saveTokenCookies, shouldRefreshAccessToken } from '@/app/lib/auth/token-cookies';
@@ -29,7 +30,7 @@ export async function proxy(request: NextRequest) {
   } catch (error) {
     if (errorStatus(error) !== 401) {
       // Preserve credentials; rendering will present a retryable error, not log the user out.
-      return new NextResponse('로그인 서버에 연결하지 못했습니다. 잠시 후 새로고침해 주세요.', {
+      return new NextResponse(resolveLocale(request.cookies.get(LOCALE_COOKIE)?.value, englishEnabled()) === 'en' ? 'Could not connect to the sign-in service. Please refresh shortly.' : '로그인 서버에 연결하지 못했습니다. 잠시 후 새로고침해 주세요.', {
         status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '5' },
       });
     }

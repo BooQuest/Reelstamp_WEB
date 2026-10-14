@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -18,6 +20,7 @@ interface AccountSettingsClientProps {
 }
 
 export default function AccountSettingsClient({ initialUser, initialEntitlements, initialCouponAvailability }: AccountSettingsClientProps) {
+  const t = useUiText();
   const router = useRouter();
   const { user, logout, refreshSubscription } = useAuth();
   const [registered, setRegistered] = useState<{ initial: EntitlementSummary | null; summary: EntitlementSummary } | null>(null);
@@ -31,17 +34,17 @@ export default function AccountSettingsClient({ initialUser, initialEntitlements
 
   const displayUser = user ?? initialUser;
   const isGuestUser = Boolean(displayUser.guest || displayUser.provider === 'GUEST');
-  const displayName = displayUser.nickname || displayUser.socialNickname || '릴스탬프 사용자';
-  const displayEmail = displayUser.email || (isGuestUser ? '가입 없이 이용 중' : '이메일 정보 없음');
+  const displayName = displayUser.nickname || displayUser.socialNickname || t('릴스탬프 사용자');
+  const displayEmail = displayUser.email || t(isGuestUser ? '가입 없이 이용 중' : '이메일 정보 없음');
 
   const handleLogout = async () => {
-    if (!window.confirm('현재 브라우저에서 로그아웃할까요?')) return;
+    if (!window.confirm(t('현재 브라우저에서 로그아웃할까요?'))) return;
     setIsLoggingOut(true);
     try {
       await logout();
       router.push('/login');
     } catch {
-      window.alert('로그아웃을 완료하지 못했습니다. 다시 시도해 주세요.');
+      window.alert(t('로그아웃을 완료하지 못했습니다. 다시 시도해 주세요.'));
     } finally {
       setIsLoggingOut(false);
     }
@@ -52,11 +55,11 @@ export default function AccountSettingsClient({ initialUser, initialEntitlements
       <div className="max-w-md mx-auto px-4 py-6">
         {/* Profile Info */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4">내 정보</h2>
+          <h2 className="text-lg font-bold text-gray-900 mb-4">{t("내 정보")}</h2>
 
           <div className="space-y-4">
             <div>
-              <label className="text-sm text-gray-500 mb-1 block">이름</label>
+              <label className="text-sm text-gray-500 mb-1 block">{t("이름")}</label>
               <div className="flex items-center gap-3 text-gray-900">
                 <User className="w-5 h-5 text-gray-400" />
                 <span>{displayName}</span>
@@ -64,7 +67,7 @@ export default function AccountSettingsClient({ initialUser, initialEntitlements
             </div>
 
             <div>
-              <label className="text-sm text-gray-500 mb-1 block">이메일</label>
+              <label className="text-sm text-gray-500 mb-1 block">{t("이메일")}</label>
               <div className="flex items-center gap-3 text-gray-900">
                 <Mail className="w-5 h-5 text-gray-400" />
                 <span>{displayEmail}</span>
@@ -87,12 +90,12 @@ export default function AccountSettingsClient({ initialUser, initialEntitlements
           >
             <LogOut className="w-5 h-5 text-gray-700" />
             <span className="font-semibold text-gray-900">
-              {isLoggingOut ? '로그아웃 중...' : '로그아웃'}
+              {t(isLoggingOut ? '로그아웃 중...' : '로그아웃')}
             </span>
           </button>
 
           <button className="w-full text-center py-2">
-            <span className="text-xs text-gray-400 hover:text-gray-600 transition-all">회원 탈퇴</span>
+            <span className="text-xs text-gray-400 hover:text-gray-600 transition-all">{t("회원 탈퇴")}</span>
           </button>
         </div>
       </div>
