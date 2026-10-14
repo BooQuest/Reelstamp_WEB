@@ -1,4 +1,6 @@
 'use client';
+import { useUiLocale, useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import {
   useEffect,
@@ -55,6 +57,8 @@ const normalizeCategory = (category: TemplateCategory): TemplateCategory => ({
 });
 
 export default function AllTemplatesClient() {
+  const { locale } = useUiLocale();
+  const t = useUiText();
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedCategoryId = searchParams.get('category');
@@ -141,7 +145,7 @@ export default function AllTemplatesClient() {
       setLoadError(null);
 
       try {
-        const response = await fetch('/api/templates/categories', {
+        const response = await fetch(`/api/templates/categories${locale === 'en' ? '?locale=en' : ''}`, {
           method: 'GET',
           cache: 'no-store',
         });
@@ -175,7 +179,7 @@ export default function AllTemplatesClient() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [locale]);
 
   const handleOpenCategory = (categoryId: string) => {
     router.push(`/all-templates?category=${encodeURIComponent(categoryId)}`);
@@ -205,9 +209,9 @@ export default function AllTemplatesClient() {
             disabled={isDisabled}
             className={`${options.mediaClassName} block text-left disabled:cursor-not-allowed`}
             aria-label={
-              isComingSoon
+              t(isComingSoon
                 ? `${template.title} 추가 예정 템플릿`
-                : `${template.title} 상세 보기`
+                : `${template.title} 상세 보기`)
             }
           >
             {!isComingSoon && (
@@ -234,14 +238,13 @@ export default function AllTemplatesClient() {
           </button>
           {isComingSoon ? (
             <span className="absolute right-2 top-2 z-20 flex h-9 items-center rounded-full bg-white/90 px-3 text-[11px] font-extrabold text-gray-900 shadow-sm ring-1 ring-black/10 sm:right-3 sm:top-3 sm:text-xs">
-              추가 예정
-            </span>
+              {t("추가 예정")}</span>
           ) : (
             <button
               type="button"
               onClick={() => toggleSave(template)}
               aria-pressed={isSaved}
-              aria-label={isSaved ? `${template.title} 저장 취소` : `${template.title} 저장`}
+              aria-label={t.format(isSaved ? '{v0} 저장 취소' : '{v0} 저장', {v0: template.title})}
               className="absolute right-2 top-2 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-black/35 text-white backdrop-blur transition hover:bg-black/50 sm:right-3 sm:top-3"
             >
               <Bookmark
@@ -280,23 +283,21 @@ export default function AllTemplatesClient() {
       <div className="max-w-6xl mx-auto px-3 py-3 sm:px-4 sm:py-10">
         {showSelectTemplateBanner && (
           <div className="mb-6 rounded-2xl border border-rose-200/60 bg-white px-4 py-3 text-sm sm:text-base text-rose-500 shadow-sm">
-            템플릿을 먼저 선택해주세요.
-          </div>
+            {t("템플릿을 먼저 선택해주세요.")}</div>
         )}
 
         {(linkError || (saveError && !activePreview)) && (
-          <p role="alert" className="mb-4 text-sm text-rose-500">{linkError || saveError}</p>
+          <p role="alert" className="mb-4 text-sm text-rose-500">{t(linkError || saveError)}</p>
         )}
 
         {isLoading && (
           <div className="py-20 text-center text-sm sm:text-base text-gray-500">
-            템플릿 카테고리를 불러오는 중입니다...
-          </div>
+            {t("템플릿 카테고리를 불러오는 중입니다...")}</div>
         )}
 
         {!isLoading && loadError && (
           <div className="py-20 text-center text-sm sm:text-base text-rose-500">
-            {loadError}
+            {t(loadError)}
           </div>
         )}
 
@@ -304,8 +305,7 @@ export default function AllTemplatesClient() {
           <div className="space-y-5 sm:space-y-12">
             {categories.length === 0 && (
               <div className="py-20 text-center text-sm sm:text-base text-gray-500">
-                등록된 템플릿 카테고리가 없습니다.
-              </div>
+                {t(locale === "en" ? "영어 템플릿을 준비하고 있습니다." : "등록된 템플릿 카테고리가 없습니다.")}</div>
             )}
 
             {categories.map((category) => (
@@ -325,8 +325,7 @@ export default function AllTemplatesClient() {
 
                 {category.templates.length === 0 ? (
                   <div className="rounded-lg border border-gray-200 px-4 py-8 text-sm text-gray-500">
-                    등록된 템플릿이 없습니다.
-                  </div>
+                    {t(locale === "en" ? "영어 템플릿을 준비하고 있습니다." : "등록된 템플릿이 없습니다.")}</div>
                 ) : (
                   <div className="flex gap-3 overflow-x-auto pb-2 sm:gap-5 sm:pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {category.templates.map((template) =>
@@ -354,25 +353,23 @@ export default function AllTemplatesClient() {
                 type="button"
                 onClick={() => router.push('/all-templates')}
                 className="flex h-9 w-9 flex-none items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50"
-                aria-label="카테고리 목록으로 돌아가기"
+                aria-label={t("카테고리 목록으로 돌아가기")}
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
               <h1 className="min-w-0 truncate text-[22px] font-extrabold leading-tight text-gray-950 sm:text-[28px]">
-                {selectedCategory?.title ?? '릴스 템플릿'}
+                {selectedCategory?.title ?? t('릴스 템플릿')}
               </h1>
             </div>
 
             {selectedCategoryId && !selectedCategory && (
               <div className="py-20 text-center text-sm sm:text-base text-gray-500">
-                카테고리를 찾을 수 없습니다.
-              </div>
+                {t("카테고리를 찾을 수 없습니다.")}</div>
             )}
 
             {(!selectedCategoryId || selectedCategory) && visibleTemplates.length === 0 && (
               <div className="py-20 text-center text-sm sm:text-base text-gray-500">
-                등록된 템플릿이 없습니다.
-              </div>
+                {t(locale === "en" ? "영어 템플릿을 준비하고 있습니다." : "등록된 템플릿이 없습니다.")}</div>
             )}
 
             {(!selectedCategoryId || selectedCategory) && visibleTemplates.length > 0 && (

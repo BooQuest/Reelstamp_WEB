@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { Captions } from 'lucide-react';
 
@@ -13,6 +15,7 @@ export default function CaptionEditDecisionModal({
   onEdit,
   onCancel,
 }: Props) {
+  const t = useUiText();
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
       <div
@@ -25,35 +28,29 @@ export default function CaptionEditDecisionModal({
           <Captions className="h-6 w-6" />
         </div>
         <h2 id="caption-edit-decision-title" className="text-xl font-bold">
-          자막을 편집할까요?
-        </h2>
+          {t("자막을 편집할까요?")}</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          필요하면 자막의 문구와 위치를 조정할 수 있습니다. 건너뛰면
-          현재 자막 그대로 릴스 제작을 시작합니다.
-        </p>
+          {t("필요하면 자막의 문구와 위치를 조정할 수 있습니다. 건너뛰면 현재 자막 그대로 릴스 제작을 시작합니다.")}</p>
         <div className="mt-6 grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={onSkip}
             className="h-12 rounded-full border border-slate-300 text-sm font-bold text-slate-700"
           >
-            편집 없이 완료
-          </button>
+            {t("편집 없이 완료")}</button>
           <button
             type="button"
             onClick={onEdit}
             className="h-12 rounded-full bg-[#FF4D6D] text-sm font-bold text-white"
           >
-            자막 편집하기
-          </button>
+            {t("자막 편집하기")}</button>
         </div>
         <button
           type="button"
           onClick={onCancel}
           className="mt-3 h-10 w-full text-sm font-bold text-slate-500"
         >
-          취소
-        </button>
+          {t("취소")}</button>
       </div>
     </div>
   );

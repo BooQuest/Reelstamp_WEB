@@ -1,4 +1,7 @@
 'use client';
+import LanguageSelector from '@/app/i18n/LanguageSelector';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 import {
   useEffect,
   useImperativeHandle,
@@ -50,6 +53,7 @@ type Props = {
   paused: boolean;
 };
 export default function GalleryMaker({ ref, ...props }: Props) {
+  const t = useUiText();
   const {
     cuts,
     clips,
@@ -185,8 +189,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           disabled={disabled}
           className="rounded-full bg-white/10 px-3 py-2 text-xs"
         >
-          가이드
-        </button>
+          {t("가이드")}</button>
         <button
           type="button"
           onClick={() => {
@@ -197,15 +200,15 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           disabled={!props.allDone || disabled}
           className="rounded-full bg-rose-500 px-4 py-2 text-sm disabled:opacity-40"
         >
-          완료
-        </button>
+          {t("완료")}</button>
+        <LanguageSelector />
       </div>
       <input
         ref={inputRef}
         type="file"
         accept="image/*,video/*"
         className="hidden"
-        aria-label="사진·영상 선택"
+        aria-label={t("사진·영상 선택")}
         onChange={onFileChange}
       />
       <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
@@ -220,16 +223,14 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           {empty ? (
             <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
               <p className="text-sm text-white/65">
-                이 컷에 사용할 사진 또는 영상을 선택해 주세요.
-              </p>
+                {t("이 컷에 사용할 사진 또는 영상을 선택해 주세요.")}</p>
               <button
                 type="button"
                 disabled={disabled}
                 onClick={() => openPicker(activeCutIndex)}
                 className="rounded-xl bg-rose-500 px-5 py-3 text-sm font-semibold disabled:opacity-40"
               >
-                사진·영상 불러오기
-              </button>
+                {t("사진·영상 불러오기")}</button>
             </div>
           ) : clip ? (
             <ClipPlayer
@@ -248,18 +249,17 @@ export default function GalleryMaker({ ref, ...props }: Props) {
             />
           ) : (
             <div className="p-6 text-center text-sm">
-              {props.fixedErrors[activeCutIndex] ||
+              {t(props.fixedErrors[activeCutIndex] ||
                 (cut?.isFixed
                   ? '고정 영상을 불러오는 중입니다…'
-                  : '영상을 불러오는 중입니다…')}
+                  : '영상을 불러오는 중입니다…'))}
               {props.fixedErrors[activeCutIndex] && (
                 <button
                   type="button"
                   onClick={() => props.onRetryFixed(activeCutIndex)}
                   className="mt-3 block w-full rounded bg-white/10 p-2"
                 >
-                  다시 불러오기
-                </button>
+                  {t("다시 불러오기")}</button>
               )}
             </div>
           )}
@@ -307,8 +307,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           )}
           {cut?.isFixed && (
             <p className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/60 p-2 text-center text-xs">
-              템플릿에 포함된 고정 컷입니다.
-            </p>
+              {t("템플릿에 포함된 고정 컷입니다.")}</p>
           )}
         </div>
       </div>
@@ -327,7 +326,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
       <div className="flex shrink-0 items-center justify-center gap-8 py-2">
         <button
           type="button"
-          aria-label={playing ? '미리보기 일시정지' : '미리보기 재생'}
+          aria-label={t(playing ? '미리보기 일시정지' : '미리보기 재생')}
           disabled={empty || !clip || disabled}
           onClick={async () => {
             if (playing) {
@@ -352,7 +351,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
         </button>
         <button
           type="button"
-          aria-label="실행 취소"
+          aria-label={t("실행 취소")}
           disabled={disabled || !history.canUndo}
           onClick={() => {
             pause();
@@ -365,7 +364,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
         </button>
         <button
           type="button"
-          aria-label="다시 실행"
+          aria-label={t("다시 실행")}
           disabled={disabled || !history.canRedo}
           onClick={() => {
             pause();
@@ -382,7 +381,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           role="alert"
           className="shrink-0 px-3 pb-2 text-center text-xs text-rose-300"
         >
-          {workspace.error || pickerError}
+          {t(workspace.error || pickerError)}
           {workspace.error && !workspace.conflict && (
             <button
               type="button"
@@ -391,18 +390,17 @@ export default function GalleryMaker({ ref, ...props }: Props) {
                 void workspace.retry().catch(() => {});
               }}
             >
-              저장 다시 시도
-            </button>
+              {t("저장 다시 시도")}</button>
           )}
         </p>
       )}
       {workspace.saveState !== 'saved' && (
         <p role="status" className="shrink-0 text-center text-xs">
-          {workspace.saveState === 'uploading'
+          {t(workspace.saveState === 'uploading'
             ? '원본 업로드 중… 편집을 계속할 수 있습니다.'
             : workspace.saveState === 'saving'
               ? '편집 내용 저장 중…'
-              : '서버에 저장되지 않은 변경사항이 있습니다.'}
+              : '서버에 저장되지 않은 변경사항이 있습니다.')}
         </p>
       )}
       <CutStrip
@@ -431,8 +429,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           className="flex flex-col items-center gap-1 p-2 disabled:opacity-30"
         >
           <Repeat />
-          교체
-        </button>
+          {t("교체")}</button>
         <button
           type="button"
           disabled={disabled || !clip || cut?.isFixed}
@@ -444,8 +441,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           className="flex flex-col items-center gap-1 p-2 disabled:opacity-30"
         >
           <Scissors />
-          길이 다듬기
-        </button>
+          {t("길이 다듬기")}</button>
         <button
           type="button"
           disabled={
@@ -464,8 +460,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           className="flex flex-col items-center gap-1 p-2 disabled:opacity-30"
         >
           <Pencil />
-          편집
-        </button>
+          {t("편집")}</button>
       </div>
 
       {workspace.editing &&

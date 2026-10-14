@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useRef, useState } from 'react';
 import { Ticket } from 'lucide-react';
@@ -11,6 +13,7 @@ export default function CouponRegistration({ initialAvailability, isGuest, onLog
   initialAvailability: CouponAvailability | null;
   isGuest: boolean; onLogin: () => void; onRegistered: (result: CouponResult) => void;
 }) {
+  const t = useUiText();
   const [override, setOverride] = useState<{ initial: CouponAvailability | null; value: CouponAvailability | null } | null>(null);
   const availability = override?.initial === initialAvailability ? override.value : initialAvailability;
   const [open, setOpen] = useState(false);
@@ -42,12 +45,12 @@ export default function CouponRegistration({ initialAvailability, isGuest, onLog
       aria-describedby={!enabled ? 'coupon-availability-notice' : undefined}
       className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center gap-3 hover:bg-gray-50 transition-all disabled:cursor-not-allowed disabled:opacity-50">
       <Ticket className="w-5 h-5 text-gray-700" />
-      <span className="font-semibold text-gray-900">{checking ? '확인 중...' : '쿠폰 등록'}</span>
+      <span className="font-semibold text-gray-900">{t(checking ? '확인 중...' : '쿠폰 등록')}</span>
     </button>
     {!enabled && <p id="coupon-availability-notice" role={availability ? undefined : 'status'} className="px-2 text-xs leading-5 text-gray-500">
-      {availability ? availability.message || '현재 쿠폰 등록을 이용할 수 없습니다.' : COUPON_AVAILABILITY_ERROR}
+      {t(availability ? availability.message || '현재 쿠폰 등록을 이용할 수 없습니다.' : COUPON_AVAILABILITY_ERROR)}
     </p>}
-    {enabled && isGuest && <p className="px-2 text-xs text-gray-500">정식 로그인 후 쿠폰을 등록할 수 있습니다.</p>}
+    {enabled && isGuest && <p className="px-2 text-xs text-gray-500">{t("정식 로그인 후 쿠폰을 등록할 수 있습니다.")}</p>}
     {open && availability && <CouponDialog availability={availability} onAvailabilityChange={updateAvailability}
       onClose={() => setOpen(false)} onRegistered={onRegistered} />}
   </>;

@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 /* eslint-disable @next/next/no-img-element */
 import { useEffect, useId, useRef, type PointerEvent } from 'react';
 import type { VideoMetadata } from '../types';
@@ -21,6 +23,7 @@ type Props = {
 export default function SegmentTimeline({
   start, duration, sourceUrl, metadata, disabled, onStartChange,
 }: Props) {
+  const t = useUiText();
   const hintId = useId();
   const thumbnails = useTimelineThumbnails(sourceUrl, metadata, start, duration);
   const maximum = maxSegmentStart(metadata.duration, duration);
@@ -57,7 +60,7 @@ export default function SegmentTimeline({
     <div className="w-full">
       <div
         role="slider"
-        aria-label="사용 구간 시작"
+        aria-label={t("사용 구간 시작")}
         aria-describedby={hintId}
         aria-orientation="horizontal"
         aria-valuemin={0}
@@ -99,7 +102,7 @@ export default function SegmentTimeline({
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
           {timelineTicks(start, duration, metadata.duration).map((time) => (
             <span key={time} className="absolute bottom-0 -translate-x-1/2 border-l border-white/60 bg-black/60 px-1 text-[10px] leading-5 text-white" style={{ left: `${position(time)}%` }}>
-              {time.toFixed(1)}s
+              {t(time.toFixed(1))}s
             </span>
           ))}
         </div>
@@ -111,11 +114,11 @@ export default function SegmentTimeline({
         />
       </div>
       <div className="mt-2 flex justify-between text-xs text-white/70">
-        <span>시작 {start.toFixed(1)}s</span>
-        <span>종료 {(start + duration).toFixed(1)}s</span>
+        <span>{t("시작 ")}{t(start.toFixed(1))}s</span>
+        <span>{t("종료 ")}{t((start + duration).toFixed(1))}s</span>
       </div>
       <p id={hintId} className="mt-1 text-center text-xs text-white/60">
-        {maximum === 0 ? '원본 전체 구간을 사용합니다' : '썸네일을 좌우로 밀어 사용할 구간을 선택하세요'}
+        {t(maximum === 0 ? '원본 전체 구간을 사용합니다' : '썸네일을 좌우로 밀어 사용할 구간을 선택하세요')}
       </p>
     </div>
   );

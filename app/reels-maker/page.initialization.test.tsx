@@ -1,4 +1,5 @@
 import { StrictMode } from 'react';
+import LocaleProvider from '@/app/i18n/LocaleProvider';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import ReelsMakerPage from './page';
@@ -7,7 +8,7 @@ import { releaseEditorSession } from './services/editSession';
 
 const navigation = vi.hoisted(() => ({
   params: new URLSearchParams('templateId=template'),
-  router: { push: vi.fn(), replace: vi.fn() },
+  router: { push: vi.fn(), replace: vi.fn(), refresh: vi.fn() },
   failHydration: false,
 }));
 vi.mock('next/navigation', () => ({
@@ -45,6 +46,7 @@ beforeEach(() => {
   sessionStorage.clear();
   installObjectUrls();
   fetcher = vi.fn(async (url: string) => {
+    if (/^\/api\/reels-maker\/sessions\/\d+\/template$/.test(url)) return jsonResponse({ success: true, data: { id: 'template', title: 'Template', cuts: [makeCut()] } });
     if (url.startsWith('/api/templates/')) return jsonResponse({ success: true, data: {
       id: url.split('/').at(-1), title: 'Template', cuts: [makeCut()],
     } });
@@ -152,6 +154,7 @@ it('preserves the project ID through save, reopen and discard of a later edit', 
       return jsonResponse({ success: true, data: { outcome: 'SAVED' } });
     }
     if (url.endsWith('/edit/discard')) return jsonResponse({ success: true, data: { outcome: 'DISCARDED' } });
+    if (url.endsWith('/template')) return original(url);
     if (url.startsWith('/api/reels-maker/')) return jsonResponse({ success: true, data: { ...saved(), newEdit: !isSaved } });
     return original(url);
   });
@@ -173,4 +176,40 @@ it('preserves the project ID through save, reopen and discard of a later edit', 
   await waitFor(() => expect(navigation.router.push).toHaveBeenCalledTimes(2));
   expect(creations()).toHaveLength(1);
   expect(fetcher.mock.calls.map(([url]) => url)).toContain('/api/reels-maker/sessions/10/edit/discard');
+});
+
+
+it('pins the creation locale while switching language during an in-flight request', async () => {
+  const pending = deferred<Response>();
+  const original = fetcher.getMockImplementation()!;
+  let creationBody: Record<string, string> | undefined;
+  fetcher.mockImplementation((url: string, init?: RequestInit) => {
+    if (url === '/api/reels-maker/sessions') {
+      creationBody = JSON.parse(String(init?.body));
+      return pending.promise;
+    }
+    return original(url);
+  });
+  render(<LocaleProvider initialLocale="ko" enabled>{page()}</LocaleProvider>);
+  await waitFor(() => expect(creations()).toHaveLength(1));
+  fireEvent.click(screen.getByRole('button', {name:'English'}));
+  expect(creationBody?.contentLocale).toBe('ko');
+  await act(async () => pending.resolve(jsonResponse({success:true,data:saved()})));
+  await waitFor(() => expect(screen.getByRole('button', {name:'Menu'})).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', {name:'한국어'}));
+  await screen.findByRole('button', {name:'메뉴'});
+  expect(creations()).toHaveLength(1);
+  expect(fetcher.mock.calls.filter(([url]) => url.includes('/edit'))).toHaveLength(0);
+});
+
+it('uses the private template route for an existing Korean project in English UI', async () => {
+  navigation.params = new URLSearchParams('templateId=template&sessionId=10');
+  render(<LocaleProvider initialLocale="en" enabled>{page()}</LocaleProvider>);
+  await screen.findByRole('button', {name:'Menu'});
+  fireEvent.click(screen.getByRole('button', {name:'한국어'}));
+  fireEvent.click(screen.getByRole('button', {name:'English'}));
+  expect(creations()).toHaveLength(0);
+  expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/10/edit'))).toHaveLength(1);
+  expect(fetcher.mock.calls.filter(([url]) => url.startsWith('/api/templates/'))).toHaveLength(0);
+  expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/10/template'))).toHaveLength(1);
 });

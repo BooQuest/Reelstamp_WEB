@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -16,14 +18,15 @@ interface ProfileClientProps {
 }
 
 export default function ProfileClient({ initialUser, initialStats }: ProfileClientProps) {
+  const t = useUiText();
   const router = useRouter();
   const { user, logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const displayUser = user ?? initialUser;
   const isGuestUser = Boolean(displayUser.guest || displayUser.provider === 'GUEST');
-  const displayName = displayUser.nickname || displayUser.socialNickname || '릴스탬프 사용자';
-  const displayEmail = displayUser.email || (isGuestUser ? '가입 없이 이용 중' : '이메일 정보 없음');
+  const displayName = displayUser.nickname || displayUser.socialNickname || t('릴스탬프 사용자');
+  const displayEmail = displayUser.email || t(isGuestUser ? '가입 없이 이용 중' : '이메일 정보 없음');
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -45,7 +48,7 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
               {displayUser.profileImageUrl ? (
                 <Image
                   src={displayUser.profileImageUrl}
-                  alt="프로필"
+                  alt={t("프로필")}
                   width={80}
                   height={80}
                   className="w-full h-full object-cover"
@@ -73,18 +76,18 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
             className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-center hover:bg-gray-50 transition-all"
           >
             <p className="text-3xl font-bold text-[#FF496D] mb-1">
-              {initialStats.completedReelsCount.toLocaleString('ko-KR')}
+              {t(initialStats.completedReelsCount.toLocaleString('ko-KR'))}
             </p>
-            <p className="text-sm text-gray-600">제작한 릴스</p>
+            <p className="text-sm text-gray-600">{t("제작한 릴스")}</p>
           </button>
           <button
             onClick={() => router.push('/saved-reels')}
             className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-center hover:bg-gray-50 transition-all"
           >
             <p className="text-3xl font-bold text-[#FF496D] mb-1">
-              {initialStats.savedTemplatesCount.toLocaleString('ko-KR')}
+              {t(initialStats.savedTemplatesCount.toLocaleString('ko-KR'))}
             </p>
-            <p className="text-sm text-gray-600">저장한 템플릿</p>
+            <p className="text-sm text-gray-600">{t("저장한 템플릿")}</p>
           </button>
         </div>
 
@@ -96,7 +99,7 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
               className="w-full bg-[#FF496D] rounded-2xl p-4 shadow-sm text-left hover:bg-[#E63E62] transition-all flex items-center gap-3"
             >
               <UserPlus className="w-5 h-5 flex-shrink-0 text-white" />
-              <span className="font-semibold text-white">회원가입하고 안전하게 보관하기</span>
+              <span className="font-semibold text-white">{t("회원가입하고 안전하게 보관하기")}</span>
             </button>
           )}
 
@@ -105,7 +108,7 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
             className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:bg-gray-50 transition-all flex items-center gap-3"
           >
             <Settings className="w-5 h-5 text-gray-500" />
-            <span className="font-semibold text-gray-900">계정 설정</span>
+            <span className="font-semibold text-gray-900">{t("계정 설정")}</span>
           </button>
 
           <button
@@ -113,7 +116,7 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
             className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:bg-gray-50 transition-all flex items-center gap-3"
           >
             <Crown className="w-5 h-5 flex-shrink-0 text-gray-500" />
-            <span className="font-semibold text-gray-900">내 이용권</span>
+            <span className="font-semibold text-gray-900">{t("내 이용권")}</span>
           </button>
 
           <button
@@ -121,7 +124,7 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
             className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:bg-gray-50 transition-all flex items-center gap-3"
           >
             <CreditCard className="w-5 h-5 text-gray-500" />
-            <span className="font-semibold text-gray-900">요금제</span>
+            <span className="font-semibold text-gray-900">{t("요금제")}</span>
           </button>
 
           <button
@@ -133,7 +136,7 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
             className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:bg-gray-50 transition-all flex items-center gap-3"
           >
             <MessageCircle className="w-5 h-5 text-gray-500" />
-            <span className="font-semibold text-gray-900">고객센터</span>
+            <span className="font-semibold text-gray-900">{t("고객센터")}</span>
           </button>
 
           <button
@@ -143,7 +146,7 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
           >
             <LogOut className="w-5 h-5 text-red-500" />
             <span className="font-semibold text-red-500">
-              {isLoggingOut ? '로그아웃 중...' : '로그아웃'}
+              {t(isLoggingOut ? '로그아웃 중...' : '로그아웃')}
             </span>
           </button>
         </div>

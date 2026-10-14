@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import React from 'react';
 import { motion } from 'framer-motion';
@@ -8,6 +10,7 @@ import { motion } from 'framer-motion';
  * 스크롤 시점에 애니메이션이 실행되도록 최적화되었습니다.
  */
 export default function ProblemSolutionSection() {
+  const t = useUiText();
   return (
     <section className="pt-16 sm:pt-20 lg:pt-24 pb-40 sm:pb-52 mb-20 sm:mb-32 bg-gradient-to-b from-white via-pink-50/30 to-white relative overflow-hidden">
       {/* 하단 화살표 그라데이션 디자인 */}
@@ -44,19 +47,18 @@ export default function ProblemSolutionSection() {
           viewport={{ once: true, margin: '-100px' }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
         >
-          <p className="text-xl sm:text-2xl text-gray-600 mb-3">열심히 만든 릴스, 왜 나만 안 터질까?</p>
+          <p className="text-xl sm:text-2xl text-gray-600 mb-3">{t("열심히 만든 릴스, 왜 나만 안 터질까?")}</p>
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 leading-tight">
-            답은 편집 기술이 아니라 <br className="sm:hidden" />
-            <span className="text-[#FF496D]">끝까지 보게 만드는 설계에</span> 있습니다
-          </h2>
+            {t("답은 편집 기술이 아니라 ")}<br className="sm:hidden" />
+            <span className="text-[#FF496D]">{t("끝까지 보게 만드는 설계에")}</span> {t(" 있습니다")}</h2>
         </motion.div>
 
         <div className="space-y-6 sm:space-y-8 max-w-3xl sm:max-w-4xl mx-auto">
           {/* 말풍선들 - whileInView를 통해 실제 보일 때만 애니메이션 실행 */}
-          <Bubble text="초반 3초, 시청자가 화면을" subText="넘기지 않게 만드는 후킹이 있나요?" label="이탈 방지" side="right" delay={0.1} />
-          <Bubble text="인기 릴스 수백 개를 넘겨봤지만," subText="정작 내 영상에 바로 써먹을 소스는 못 찾으셨나요?" label="레퍼런스 분석" side="left" delay={0.2} />
-          <Bubble text="어떤 장면을 먼저 보여줘야 할지 몰라" subText="편집 프로그램 앞에서 시간만 허비하고 계신가요?" label="구성능력" side="right" delay={0.3} />
-          <Bubble text="지금 내 분야에서 가장 뜨거운 트렌드를" subText="1분 만에 파악할 수 있나요?" label="트렌드 추적" side="left" delay={0.4} />
+          <Bubble text="초반 3초, 시청자가 화면을" subText="넘기지 않게 만드는 후킹이 있나요?" label={t("이탈 방지")} side="right" delay={0.1} />
+          <Bubble text="인기 릴스 수백 개를 넘겨봤지만," subText="정작 내 영상에 바로 써먹을 소스는 못 찾으셨나요?" label={t("레퍼런스 분석")} side="left" delay={0.2} />
+          <Bubble text="어떤 장면을 먼저 보여줘야 할지 몰라" subText="편집 프로그램 앞에서 시간만 허비하고 계신가요?" label={t("구성능력")} side="right" delay={0.3} />
+          <Bubble text="지금 내 분야에서 가장 뜨거운 트렌드를" subText="1분 만에 파악할 수 있나요?" label={t("트렌드 추적")} side="left" delay={0.4} />
         </div>
       </div>
     </section>
@@ -64,6 +66,7 @@ export default function ProblemSolutionSection() {
 }
 
 function Bubble({ text, subText, label, side, delay }: { text: string, subText: string, label: string, side: 'left' | 'right', delay: number }) {
+  const t = useUiText();
   return (
     <motion.div 
       className={`flex ${side === 'right' ? 'justify-end sm:pr-8' : 'justify-start sm:pl-4'}`}
@@ -74,10 +77,10 @@ function Bubble({ text, subText, label, side, delay }: { text: string, subText: 
     >
       <div className="relative bg-gray-100 rounded-2xl p-5 sm:p-6 w-[95%] sm:w-auto sm:max-w-[60%]">
         <div className="text-base sm:text-lg text-gray-900 leading-relaxed font-semibold">
-          <div>{text}</div>
-          <div className="flex justify-between items-center">
-            <span>{subText}</span>
-            <span className="text-base sm:text-lg text-gray-500 font-bold ml-4 whitespace-nowrap">{label}</span>
+          <div>{t(text)}</div>
+          <div className="flex flex-wrap justify-between items-center gap-2">
+            <span>{t(subText)}</span>
+            <span className="text-base sm:text-lg text-gray-500 font-bold ml-4 whitespace-nowrap">{t(label)}</span>
           </div>
         </div>
         <div className={`absolute -bottom-2 ${side === 'right' ? 'right-6' : 'left-6'} w-4 h-4 bg-gray-100 transform rotate-45`}></div>

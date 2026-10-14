@@ -1,5 +1,7 @@
 // 랭킹 카드 컴포넌트: 모바일/PC 공통 사용
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { Category, RankingItem } from '@/app/types/ranking';
 import InstagramEmbed from './InstagramEmbed';
@@ -20,6 +22,7 @@ export default function RankingCard({
   getRankBadgeStyle,
   getRankText,
 }: RankingCardProps) {
+  const t = useUiText();
   return (
     <div
       key={`${category}-${item.rank}`}
@@ -33,7 +36,7 @@ export default function RankingCard({
           )}`}
         >
           {(item.rank === 1 || item.rank === 2 || item.rank === 3) && <Crown className="w-4 h-4" />}
-          {getRankText(item.rank)}
+          {t(getRankText(item.rank))}
         </div>
         {item.title && (
           <p className="text-lg font-medium text-white truncate drop-shadow-lg">
@@ -53,7 +56,7 @@ export default function RankingCard({
         {/* 조회수 */}
         <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-black/70 via-black/60 to-black/50 backdrop-blur-md rounded-xl shadow-lg border border-white/10">
           <Eye className="w-4 h-4 text-white" />
-          <span className="text-sm font-bold text-white tracking-tight">{item.views}</span>
+          <span className="text-sm font-bold text-white tracking-tight">{t(item.views)}</span>
         </div>
       </div>
 

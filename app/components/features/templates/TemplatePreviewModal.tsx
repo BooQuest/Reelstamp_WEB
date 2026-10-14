@@ -1,4 +1,8 @@
 'use client';
+import LanguageSelector from '@/app/i18n/LanguageSelector';
+import { showAppToast } from '@/app/lib/ui/toast';
+import { useUiLocale, useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -25,6 +29,15 @@ type Props = TemplatePreviewSelection & {
 export default function TemplatePreviewModal({
   templates, initialTemplateId, returnUrl, savedSet, saveError, onToggleSave, onClose,
 }: Props) {
+  const t = useUiText();
+  const { locale } = useUiLocale();
+  const openedLocale = useRef(locale);
+  useEffect(() => {
+    if (openedLocale.current !== locale) {
+      onClose();
+      showAppToast({ message: t("언어가 변경되었습니다. 템플릿을 다시 선택해 주세요.") });
+    }
+  }, [locale, onClose, t]);
   const availableTemplates = useMemo(() => templates.filter(template => !isComingSoonTemplate(template)), [templates]);
   const [activeIndex, setActiveIndex] = useState(() => availableTemplates.findIndex(template => template.id === initialTemplateId));
   const [isSaving, setIsSaving] = useState(false);
@@ -71,7 +84,7 @@ export default function TemplatePreviewModal({
     }
   };
 
-  if (!activeTemplate) return null;
+  if (!activeTemplate || openedLocale.current !== locale) return null;
   const accessLoading = isAccessLoading(activeTemplate);
 
   return createPortal(
@@ -105,15 +118,16 @@ export default function TemplatePreviewModal({
         }
       }}
     >
-      <button ref={closeRef} type="button" onClick={onClose} aria-label="상세 닫기"
+      <div className="absolute right-20 top-6 z-[90]"><LanguageSelector /></div>
+      <button ref={closeRef} type="button" onClick={onClose} aria-label={t("상세 닫기")}
         className="absolute right-5 top-5 z-[90] flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:right-6 sm:top-6">
         <X className="h-5 w-5" aria-hidden="true" />
       </button>
       <div className="flex min-h-full w-full flex-col items-center justify-center px-4 py-16 sm:px-8 sm:py-20">
-        <p className="sr-only" aria-live="polite">{activeIndex + 1} / {availableTemplates.length} · 좌우로 넘겨보세요</p>
+        <p className="sr-only" aria-live="polite">{t(activeIndex + 1)} / {t(availableTemplates.length)} {t(" · 좌우로 넘겨보세요")}</p>
         <div
           className="relative left-1/2 flex h-[370px] w-screen max-w-none shrink-0 -translate-x-1/2 touch-pan-y select-none items-center justify-center overflow-hidden overscroll-x-none pb-2 sm:h-[470px] sm:pb-3 md:h-[490px] lg:h-[510px] self-start"
-          {...swipeHandlers} aria-label="템플릿 좌우 탐색">
+          {...swipeHandlers} aria-label={t("템플릿 좌우 탐색")}>
           {availableTemplates.map((template, index) => (
             <TemplatePreviewCard
               key={template.id}
@@ -129,21 +143,21 @@ export default function TemplatePreviewModal({
           ))}
           <button type="button" onClick={previous}
             className="absolute left-4 top-1/2 z-50 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform sm:left-8 disabled:invisible"
-            disabled={activeIndex === 0} aria-label="이전 템플릿">
+            disabled={activeIndex === 0} aria-label={t("이전 템플릿")}>
             <ChevronLeft className="h-5 w-5 text-white" aria-hidden="true" />
           </button>
           <button type="button" onClick={next}
             className="absolute right-4 top-1/2 z-50 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform sm:right-8 disabled:invisible"
-            disabled={activeIndex === availableTemplates.length - 1} aria-label="다음 템플릿">
+            disabled={activeIndex === availableTemplates.length - 1} aria-label={t("다음 템플릿")}>
             <ChevronRight className="h-5 w-5 text-white" aria-hidden="true" />
           </button>
         </div>
         <div className="mt-0 flex w-full flex-col items-center gap-3 sm:gap-4">
-          {saveError && <p role="alert" className="w-full max-w-md text-center text-sm font-semibold text-rose-300">{saveError}</p>}
-          {accessMessage && <p role="alert" className="w-full max-w-md text-center text-sm font-semibold text-rose-300">{accessMessage}</p>}
+          {saveError && <p role="alert" className="w-full max-w-md text-center text-sm font-semibold text-rose-300">{t(saveError)}</p>}
+          {accessMessage && <p role="alert" className="w-full max-w-md text-center text-sm font-semibold text-rose-300">{t(accessMessage)}</p>}
           <button type="button" disabled={accessLoading} onClick={() => create(activeTemplate)}
             className="w-full max-w-md py-4 text-base sm:text-lg font-semibold rounded-full bg-[#FF4D6D] hover:bg-[#FF5F7A] transition-colors shadow-lg disabled:cursor-not-allowed disabled:bg-white/20 disabled:text-white/50 disabled:shadow-none">
-            {accessLoading ? '권한 확인 중...' : '3분 만에 만들러 가기'}
+            {t(accessLoading ? '권한 확인 중...' : '3분 만에 만들러 가기')}
           </button>
         </div>
       </div>

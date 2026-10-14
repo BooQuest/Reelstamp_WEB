@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type {
@@ -88,6 +90,7 @@ function CaptionTextEditor({
   onTextChange,
   onEdit,
 }: CaptionTextEditorProps) {
+  const t = useUiText();
   const localRef = useRef<HTMLTextAreaElement | null>(null);
   const rowCount = Math.max(2, value.split('\n').length);
 
@@ -136,7 +139,7 @@ function CaptionTextEditor({
       }}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
-      placeholder="자막을 입력하세요"
+      placeholder={t("자막을 입력하세요")}
       className="box-border block w-full resize-none overflow-hidden border-0 bg-transparent p-0 placeholder:text-white/60 focus:outline-none"
       style={{
         minWidth: `${CAPTION_INPUT_MIN_WIDTH_PX}px`,
@@ -171,6 +174,7 @@ export default function CaptionOverlayStage({
   onCaptionPointerMove,
   onCaptionPointerEnd,
 }: Props) {
+  const t = useUiText();
   const pointerIntentRef = useRef<CaptionPointerIntent | null>(null);
   const suppressedClickCaptionIdRef = useRef<string | null>(null);
 
@@ -316,7 +320,7 @@ export default function CaptionOverlayStage({
                 className={`block whitespace-pre-wrap ${hasText ? '' : 'opacity-55'}`}
                 style={{ textAlign: style.styleVersion === 'CAPTION_RENDER_V2' ? style.textAlign || 'center' : 'center' }}
               >
-                {hasText ? caption.text : '자막을 입력하세요'}
+                {hasText ? caption.text : t('자막을 입력하세요')}
               </span>
             )}
             {isSelected && !isEditing && !readOnly && (
@@ -332,7 +336,7 @@ export default function CaptionOverlayStage({
                   height: `${CAPTION_RESIZE_HANDLE_SIZE_PX}px`,
                   fontSize: `${CAPTION_RESIZE_HANDLE_FONT_SIZE_PX}px`,
                 }}
-                aria-label="텍스트 편집"
+                aria-label={t("텍스트 편집")}
               >
                 <Pencil className="h-full w-full p-1" />
               </button>

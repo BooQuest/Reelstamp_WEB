@@ -1,3 +1,4 @@
+import { createUiText } from '@/app/i18n/text';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
@@ -83,3 +84,5 @@ describe('pass pricing after launch', () => {
     },
   );
 });
+
+vi.mock('@/app/i18n/server', () => ({ getUiText: async () => createUiText('ko'), getUiLocale: async () => 'ko' }));

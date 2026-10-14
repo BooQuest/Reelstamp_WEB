@@ -1,5 +1,8 @@
 'use client';
+import { useUiLocale, useUiText } from '@/app/i18n/LocaleProvider';
 
+
+import { ProjectContentContext } from './services/projectContentContext';
 import { SessionInitialization, type SessionInitializationMode } from './services/sessionInitialization';
 import PreparationView from './components/PreparationView';
 import { makerFetch as authFetch, loadEditorSession, releaseEditorSession } from '@/app/reels-maker/services/editSession';
@@ -182,6 +185,9 @@ const buildSessionErrorState = ({
 };
 
 function ReelsMakerInner() {
+  const t = useUiText();
+  const { locale } = useUiLocale();
+  const contentContext = useRef(new ProjectContentContext());
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, user } = useAuth();
@@ -224,6 +230,7 @@ function ReelsMakerInner() {
   const completionPreparationState = useRef('saved');
   const galleryMakerRef = useRef<GalleryMakerHandle>(null);
   const [sessionId, setSessionId] = useState<number | null>(null);
+  const contentRequest = contentContext.current.observe(templateId, requestedSessionId, sessionId, locale);
   const [sessionClipMap, setSessionClipMap] = useState<Record<number, number>>(
     {},
   );
@@ -502,7 +509,9 @@ function ReelsMakerInner() {
 
       try {
         const response = await authFetch(
-          `/api/templates/${encodeURIComponent(templateId)}`,
+          contentRequest.sessionId
+            ? `/api/reels-maker/sessions/${encodeURIComponent(contentRequest.sessionId)}/template`
+            : `/api/templates/${encodeURIComponent(templateId)}${contentRequest.locale === 'en' ? '?locale=en' : ''}`,
           {
             method: 'GET',
             cache: 'no-store',
@@ -524,7 +533,7 @@ function ReelsMakerInner() {
             payload?.message || '템플릿 정보를 불러오지 못했습니다.',
           );
         }
-        if (isComingSoonTemplate(data)) {
+        if (!contentRequest.sessionId && isComingSoonTemplate(data)) {
           throw new Error(TEMPLATE_NOT_AVAILABLE_MESSAGE);
         }
         const normalizedExampleReels: TemplateExampleReel[] = Array.isArray(
@@ -583,7 +592,7 @@ function ReelsMakerInner() {
     return () => {
       isMounted = false;
     };
-  }, [templateId, router]);
+  }, [templateId, router, contentRequest]);
 
   const createReelsSession = useCallback(async (mode: SessionInitializationMode = 'automatic') => {
     if (!templateId || !template || template.id !== templateId) return;
@@ -606,7 +615,7 @@ function ReelsMakerInner() {
     setSessionError(null);
     sessionHydratedRef.current = false;
     try {
-      const response = await loadEditorSession(templateId, attempt.sessionId);
+      const response = await loadEditorSession(templateId, attempt.sessionId, contentRequest.locale);
 
       const payload = (await response.json()) as
         | WebApiResponse<ReelsMakerSessionResponse>
@@ -726,6 +735,7 @@ function ReelsMakerInner() {
     }
   }, [
     cuts,
+    contentRequest,
     explicitCompletionReturnUrl,
     hydrateDraft,
     hydrateClips,
@@ -933,7 +943,7 @@ function ReelsMakerInner() {
       } catch { /* The server also returns the current job for duplicate completion requests. */ }
       completing.current = false;
       setStage('capture');
-      alert(COMPLETE_START_FAILED_USER_MESSAGE);
+      alert(t(COMPLETE_START_FAILED_USER_MESSAGE));
     }
   };
 
@@ -997,7 +1007,7 @@ function ReelsMakerInner() {
           releaseEditorSession(sessionId);
           setStage('capture');
           void createReelsSession('reload');
-          alert(PROCESSING_FAILED_USER_MESSAGE);
+          alert(t(PROCESSING_FAILED_USER_MESSAGE));
         } else if (!delayReported && Date.now() - startedAt > PROCESSING_STATUS_TIMEOUT_MS) {
           delayReported = true;
           console.error('[ReelsMakerProcessingTimeout]', {
@@ -1028,7 +1038,7 @@ function ReelsMakerInner() {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [sessionId, stage, gallerySession, createReelsSession]);
+  }, [sessionId, stage, gallerySession, createReelsSession, t]);
 
   useEffect(() => {
     if (!downloadToastMessage) return;
@@ -1045,7 +1055,7 @@ function ReelsMakerInner() {
   const requestExit = useCallback(
     (href: string) => {
       if (editorBusy) {
-        alert('편집 저장이 완료된 뒤 나가주세요.');
+        alert(t('편집 저장이 완료된 뒤 나가주세요.'));
         return;
       }
 
@@ -1053,7 +1063,7 @@ function ReelsMakerInner() {
       setPendingExitHref(href);
       setIsExitConfirmOpen(true);
     },
-    [editorBusy, resumeAutosave],
+    [editorBusy, resumeAutosave, t],
   );
 
   const { isSaving: isExitSaving, save: handleSaveAndExit,
@@ -1115,8 +1125,7 @@ function ReelsMakerInner() {
     return (
       <FullScreenState>
         <div className="max-w-sm text-center text-sm text-white/70">
-          템플릿 선택 화면으로 이동 중입니다...
-        </div>
+          {t("템플릿 선택 화면으로 이동 중입니다...")}</div>
       </FullScreenState>
     );
   }
@@ -1125,8 +1134,7 @@ function ReelsMakerInner() {
     return (
       <FullScreenState>
         <div className="max-w-sm text-center text-sm text-white/70">
-          템플릿 정보를 불러오는 중입니다...
-        </div>
+          {t("템플릿 정보를 불러오는 중입니다...")}</div>
       </FullScreenState>
     );
   }
@@ -1136,15 +1144,14 @@ function ReelsMakerInner() {
       <FullScreenState>
         <div className="max-w-sm text-center space-y-4">
           <p className="text-sm text-white/70">
-            {templateError || '템플릿 정보를 불러오지 못했습니다.'}
+            {t(templateError || '템플릿 정보를 불러오지 못했습니다.')}
           </p>
           <button
             type="button"
             onClick={() => router.replace('/all-templates')}
             className="rounded-full bg-[#FF4D6D] px-4 py-2 text-sm font-semibold shadow-lg"
           >
-            템플릿 다시 선택하기
-          </button>
+            {t("템플릿 다시 선택하기")}</button>
         </div>
       </FullScreenState>
     );
@@ -1154,8 +1161,7 @@ function ReelsMakerInner() {
     return (
       <FullScreenState>
         <div className="max-w-sm text-center text-sm text-white/70">
-          릴스 제작 세션을 준비하는 중입니다...
-        </div>
+          {t("릴스 제작 세션을 준비하는 중입니다...")}</div>
       </FullScreenState>
     );
   }
@@ -1165,7 +1171,7 @@ function ReelsMakerInner() {
       <FullScreenState>
         <div className="max-w-sm text-center space-y-4">
           <p className="text-sm leading-6 text-white/70">
-            {sessionError.message}
+            {t(sessionError.message)}
           </p>
           <div className="space-y-3">
             {sessionError.type === 'auth' ||
@@ -1185,32 +1191,28 @@ function ReelsMakerInner() {
                 }
                 className="w-full rounded-full bg-[#FF4D6D] px-4 py-3 text-sm font-semibold text-white shadow-lg"
               >
-                로그인하기
-              </button>
+                {t("로그인하기")}</button>
             ) : sessionError.type === 'paid-template' ? (
               <button
                 type="button"
                 onClick={() => router.push(TEMPLATE_PAYMENT_PATH)}
                 className="w-full rounded-full bg-[#FF4D6D] px-4 py-3 text-sm font-semibold text-white shadow-lg"
               >
-                결제 페이지로 이동
-              </button>
+                {t("결제 페이지로 이동")}</button>
             ) : (
               <button
                 type="button"
                 onClick={() => createReelsSession('retry')}
                 className="w-full rounded-full bg-[#FF4D6D] px-4 py-3 text-sm font-semibold text-white shadow-lg"
               >
-                다시 시도하기
-              </button>
+                {t("다시 시도하기")}</button>
             )}
             <button
               type="button"
               onClick={() => router.replace(completionReturnUrl)}
               className="w-full rounded-full border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white shadow-lg"
             >
-              나가기
-            </button>
+              {t("나가기")}</button>
           </div>
         </div>
       </FullScreenState>
@@ -1331,7 +1333,7 @@ function ReelsMakerInner() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                aria-label="뒤로가기"
+                aria-label={t("뒤로가기")}
                 disabled={editorBusy}
                 onClick={() => requestExit('/templates')}
                 className="p-1"
@@ -1341,7 +1343,7 @@ function ReelsMakerInner() {
               <div className="min-w-0 flex-1">
                 {isRegisteredUser ? (
                   <input
-                    aria-label="프로젝트 이름"
+                    aria-label={t("프로젝트 이름")}
                     value={projectName}
                     onChange={(e) =>
                       setProjectName(e.target.value.slice(0, 50))
@@ -1353,7 +1355,7 @@ function ReelsMakerInner() {
                     className="w-full bg-transparent text-sm font-semibold outline-none"
                   />
                 ) : (
-                  <span className="text-sm">릴스 제작</span>
+                  <span className="text-sm">{t("릴스 제작")}</span>
                 )}
                 {isRegisteredUser ? (
                   <button
@@ -1363,7 +1365,7 @@ function ReelsMakerInner() {
                     }}
                     className="block text-[10px] text-white/60"
                   >
-                    {galleryWorkspace.saveState === 'uploading'
+                    {t(galleryWorkspace.saveState === 'uploading'
                       ? '원본 업로드 중'
                       : galleryWorkspace.saveState === 'saving'
                         ? '편집 저장 중'
@@ -1375,17 +1377,16 @@ function ReelsMakerInner() {
                         ? '저장 실패 · 다시 시도'
                         : lastSavedAt
                           ? '자동 저장됨'
-                          : '자동 저장 준비 중'}
+                          : '자동 저장 준비 중')}
                   </button>
                 ) : (
                   <p className="text-[10px] text-amber-200">
-                    게스트 작업은 중간 저장되지 않습니다.
-                  </p>
+                    {t("게스트 작업은 중간 저장되지 않습니다.")}</p>
                 )}
               </div>
               <button
                 type="button"
-                aria-label="메뉴"
+                aria-label={t("메뉴")}
                 disabled={editorBusy}
                 onClick={() => setIsCaptureMenuOpen(true)}
                 className="p-1"

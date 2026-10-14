@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, LockKeyhole, X } from 'lucide-react';
@@ -14,6 +16,7 @@ type ActiveToast = {
 };
 
 export default function AppToast() {
+  const t = useUiText();
   const [toast, setToast] = useState<ActiveToast | null>(null);
   const [isExiting, setIsExiting] = useState(false);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -116,13 +119,13 @@ export default function AppToast() {
             <Icon className="h-[18px] w-[18px] text-white" strokeWidth={2.6} aria-hidden="true" />
           </span>
           <p className="min-w-0 flex-1 text-sm font-bold leading-5 tracking-normal text-white sm:text-base">
-            {toast.message}
+            {t(toast.message)}
           </p>
           <button
             type="button"
             onClick={dismissToast}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/55 transition-colors hover:bg-white/10 hover:text-white"
-            aria-label="알림 닫기"
+            aria-label={t("알림 닫기")}
           >
             <X className="h-4 w-4" />
           </button>

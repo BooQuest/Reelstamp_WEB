@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 import { useEffect, useState } from 'react';
 import type { CaptionStyle } from '../types';
 import { TEXT_COLORS, withGalleryStyle } from './captionStyle';
@@ -45,6 +47,7 @@ export default function CaptionToolbar({
   onDone,
   onDelete,
 }: Props) {
+  const t = useUiText();
   const [bottom, setBottom] = useState(0);
   const [tool, setTool] = useState<string>('글꼴');
   useEffect(() => {
@@ -72,7 +75,7 @@ export default function CaptionToolbar({
   return (
     <div
       role="toolbar"
-      aria-label="텍스트 도구"
+      aria-label={t("텍스트 도구")}
       data-caption-toolbar
       className="fixed inset-x-0 z-[85] mx-auto w-full max-w-2xl shrink-0 space-y-2 border-t border-white/20 bg-[#182335] p-3 text-xs text-white shadow-xl md:static"
       style={{ bottom }}
@@ -81,7 +84,7 @@ export default function CaptionToolbar({
       }}
     >
       <div className="flex items-center justify-between gap-1">
-        {[...Object.keys(TOOLS), '색상'].map((name) => (
+        {[...Object.keys(TOOLS), t('색상')].map((name) => (
           <button
             type="button"
             key={name}
@@ -89,19 +92,17 @@ export default function CaptionToolbar({
             onClick={() => setTool(name)}
             className="rounded px-2 py-2 aria-pressed:bg-white/15"
           >
-            {name}
+            {t(name)}
           </button>
         ))}
         <button type="button" onClick={onDelete} className="p-2 text-rose-300">
-          삭제
-        </button>
+          {t("삭제")}</button>
         <button
           type="button"
           onClick={onDone}
           className="rounded bg-rose-500 p-2"
         >
-          완료
-        </button>
+          {t("완료")}</button>
       </div>
       <div className="flex min-h-9 flex-wrap items-center justify-center gap-2">
         {tool === '색상'
@@ -109,7 +110,7 @@ export default function CaptionToolbar({
               <button
                 type="button"
                 key={color}
-                aria-label={`텍스트 색상 ${color}`}
+                aria-label={t.format("텍스트 색상 {v0}", {v0: color})}
                 aria-pressed={normalized.textColor === color}
                 onClick={() => change({ textColor: color })}
                 className="h-7 w-7 rounded-full border-2 border-white/50 aria-pressed:ring-2 aria-pressed:ring-rose-500"
@@ -127,7 +128,7 @@ export default function CaptionToolbar({
                 onClick={() => change(choice.changes)}
                 className="rounded bg-white/5 px-3 py-2 aria-pressed:ring-1 aria-pressed:ring-rose-500"
               >
-                {choice.label}
+                {t(choice.label)}
               </button>
             ))}
       </div>

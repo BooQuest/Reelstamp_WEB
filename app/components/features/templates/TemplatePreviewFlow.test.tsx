@@ -205,7 +205,7 @@ describe('template list preview flow', () => {
 describe('saved template preview flow', () => {
   it('opens from the details button, keeps saved order, and returns creation to the saved list', async () => {
     render(<SavedReelsClient />);
-    const buttons = await screen.findAllByRole('button', { name: '상세 보기', exact: true });
+    const buttons = await screen.findAllByRole('button', { name: '상세 보기' });
     fireEvent.click(buttons[0]);
     expect(dialog()).toHaveAccessibleName('템플릿 c');
     expect(state.router.push).not.toHaveBeenCalled();

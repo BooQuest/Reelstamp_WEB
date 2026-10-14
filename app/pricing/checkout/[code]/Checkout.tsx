@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { authFetch } from '@/app/lib/auth/browser-session';
 import { useRef, useState } from 'react';
@@ -14,6 +16,7 @@ export default function Checkout({
   product: PassProduct;
   userId: number;
 }) {
+  const t = useUiText();
   const router = useRouter();
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
@@ -76,18 +79,17 @@ export default function Checkout({
   }
   return (
     <main className="mx-auto max-w-lg px-4 py-12">
-      <h1 className="mb-6 text-2xl font-bold">구매 확인</h1>
+      <h1 className="mb-6 text-2xl font-bold">{t("구매 확인")}</h1>
       <form
         onSubmit={purchase}
         className="space-y-6 rounded-3xl border border-gray-200 bg-white p-7"
       >
-        <h2 className="text-xl font-bold">{product.name}</h2>
-        <p>이용기간 {durationLabel(product)}</p>
+        <h2 className="text-xl font-bold">{t(product.name)}</h2>
+        <p>{t("이용기간 ")}{t(durationLabel(product))}</p>
         <PassPrice product={product} />
-        <p className="text-sm text-gray-600">1회 결제 · 자동갱신 없음</p>
+        <p className="text-sm text-gray-600">{t("1회 결제 · 자동갱신 없음")}</p>
         <label className="block text-sm">
-          휴대전화번호
-          <input
+          {t("휴대전화번호")}<input
             type="tel"
             autoComplete="tel"
             required
@@ -101,27 +103,25 @@ export default function Checkout({
         </label>
         {error && (
           <p role="alert" className="text-sm text-red-700">
-            {error}
+            {t(error)}
           </p>
         )}
         {stale ? (
           <Link href="/pricing" className="block text-[#D93256]">
-            변경된 이용권 확인하기
-          </Link>
+            {t("변경된 이용권 확인하기")}</Link>
         ) : (
           <button
             disabled={busy}
             className="w-full rounded-xl bg-[#FF496D] p-3 font-semibold text-white disabled:opacity-50"
           >
-            {busy ? '결제 요청 확인 중…' : `${product.name} 구매하기`}
+            {t(busy ? '결제 요청 확인 중…' : `${product.name} 구매하기`)}
           </button>
         )}
         <Link
           href="/plan/payments"
           className="block text-center text-sm text-gray-600"
         >
-          결제 내역 확인
-        </Link>
+          {t("결제 내역 확인")}</Link>
       </form>
     </main>
   );

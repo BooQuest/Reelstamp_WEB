@@ -1,4 +1,6 @@
 'use client';
+import { useUiLocale, useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import {
   useCallback,
@@ -94,6 +96,8 @@ const getCardStatusLabel = (card: TodayTrendCard) => {
 };
 
 export default function TemplatesClient() {
+  const { locale } = useUiLocale();
+  const t = useUiText();
   const router = useRouter();
   const { isAuthenticated, user, subscription, isLoadingSubscription } = useAuth();
   const [activeIndex, setActiveIndex] = useState(0);
@@ -324,11 +328,13 @@ export default function TemplatesClient() {
 
     const loadTodayTrends = async () => {
       setIsLoading(true);
+      setCards([]);
+      setActiveIndex(0);
       setLoadError(null);
       setRequestError(null);
 
       try {
-        const response = await fetch('/api/templates/today-trends', {
+        const response = await fetch(`/api/templates/today-trends${locale === 'en' ? '?locale=en' : ''}`, {
           method: 'GET',
           cache: 'no-store',
         });
@@ -360,7 +366,7 @@ export default function TemplatesClient() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     return () => {
@@ -427,8 +433,8 @@ export default function TemplatesClient() {
     <div className="min-h-[calc(100vh-80px)] max-w-full overflow-x-hidden bg-black text-white">
       <div className="mx-auto max-w-6xl px-4 sm:px-8 pt-6 pb-8 sm:pt-10 sm:pb-12">
         <div className="flex flex-col items-center text-center gap-2 mb-3 sm:mb-5">
-          <p className="text-sm text-white/60 tracking-[0.3em] uppercase">맞춤형 릴스 추천</p>
-          <h2 className="text-2xl sm:text-3xl font-bold">오늘의 릴스 트렌드</h2>
+          <p className="text-sm text-white/60 tracking-[0.3em] uppercase">{t("맞춤형 릴스 추천")}</p>
+          <h2 className="text-2xl sm:text-3xl font-bold">{t("오늘의 릴스 트렌드")}</h2>
         </div>
 
         <div
@@ -438,13 +444,13 @@ export default function TemplatesClient() {
           onPointerCancel={handleCarouselPointerCancel}
         >
           {isLoading && (
-            <div className="text-sm sm:text-base text-white/70">템플릿을 불러오는 중입니다...</div>
+            <div className="text-sm sm:text-base text-white/70">{t("템플릿을 불러오는 중입니다...")}</div>
           )}
           {!isLoading && loadError && (
-            <div className="text-sm sm:text-base text-rose-300">{loadError}</div>
+            <div className="text-sm sm:text-base text-rose-300">{t(loadError)}</div>
           )}
           {!isLoading && !loadError && recommendations.length === 0 && (
-            <div className="text-sm sm:text-base text-white/70">추천 릴스가 없습니다.</div>
+            <div className="text-sm sm:text-base text-white/70">{t(locale === "en" ? "영어 템플릿을 준비하고 있습니다." : "추천 릴스가 없습니다.")}</div>
           )}
           {!isLoading && !loadError && recommendations.map((card, index) => {
             const isActive = index === activeIndex;
@@ -472,7 +478,7 @@ export default function TemplatesClient() {
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/80" />
 
                 <div className="pointer-events-none absolute top-4 left-4 flex h-12 min-w-[98px] items-center justify-center rounded-full bg-[#FF4D6D] px-5 text-base font-extrabold leading-none shadow-lg sm:h-14 sm:min-w-[112px] sm:text-lg">
-                  추천 {index + 1}
+                  {t("추천 ")}{t(index + 1)}
                 </div>
                 <TemplateAccessBadge
                   accessType={resolveTemplateAccessType(card)}
@@ -493,7 +499,7 @@ export default function TemplatesClient() {
                   </button>
                 ) : (
                   <div className="pointer-events-none absolute top-4 right-4 z-40 min-h-10 rounded-full bg-white/20 backdrop-blur px-4 flex items-center justify-center text-xs font-extrabold text-white shadow-lg">
-                    {statusLabel}
+                    {t(statusLabel)}
                   </div>
                 )}
 
@@ -515,7 +521,7 @@ export default function TemplatesClient() {
                     ))}
                     {!isAvailable && card.requestCount > 0 && (
                       <span className="px-3 py-1 text-xs font-semibold rounded-full bg-[#FF4D6D]/90 text-white">
-                        요청 {card.requestCount}
+                        {t("요청 ")}{t(card.requestCount)}
                       </span>
                     )}
                   </div>
@@ -529,7 +535,7 @@ export default function TemplatesClient() {
               onClick={handlePrev}
               onPointerDown={(event) => event.stopPropagation()}
               onPointerUp={(event) => event.stopPropagation()}
-              aria-label="이전 추천"
+              aria-label={t("이전 추천")}
               className="absolute left-4 top-1/2 z-50 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform sm:left-8"
             >
               <ChevronLeft className="w-5 h-5 text-white" />
@@ -541,7 +547,7 @@ export default function TemplatesClient() {
               onClick={handleNext}
               onPointerDown={(event) => event.stopPropagation()}
               onPointerUp={(event) => event.stopPropagation()}
-              aria-label="다음 추천"
+              aria-label={t("다음 추천")}
               className="absolute right-4 top-1/2 z-50 -translate-y-1/2 w-11 h-11 rounded-full bg-[#FF4D6D] shadow-lg flex items-center justify-center hover:scale-105 transition-transform sm:right-8"
             >
               <ChevronRight className="w-5 h-5 text-white" />
@@ -552,7 +558,7 @@ export default function TemplatesClient() {
         <div className="mt-0 flex flex-col items-center gap-3 sm:gap-4">
           {requestError && (
             <p className="w-full max-w-md text-center text-sm font-semibold text-rose-300">
-              {requestError}
+              {t(requestError)}
             </p>
           )}
           <button
@@ -561,14 +567,13 @@ export default function TemplatesClient() {
             className="w-full max-w-md py-4 text-base sm:text-lg font-semibold rounded-full bg-[#FF4D6D] hover:bg-[#FF5F7A] transition-colors shadow-lg disabled:cursor-not-allowed disabled:bg-white/20 disabled:text-white/50 disabled:shadow-none"
             disabled={isPrimaryButtonDisabled}
           >
-            {primaryButtonText}
+            {t(primaryButtonText)}
           </button>
           <Link
             href="/all-templates"
             className="w-full max-w-md py-4 text-base sm:text-lg font-semibold rounded-full bg-[#2B2B2B] text-white/90 hover:bg-[#3A3A3A] transition-colors text-center"
           >
-            다른 템플릿 보러가기
-          </Link>
+            {t("다른 템플릿 보러가기")}</Link>
         </div>
       </div>
     </div>

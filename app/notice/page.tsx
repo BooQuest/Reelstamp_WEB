@@ -1,11 +1,18 @@
+
+import UiMessage from '@/app/i18n/UiMessage';
+
+import { getUiText } from '@/app/i18n/server';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Bell } from 'lucide-react';
 
-export const metadata: Metadata = {
-  title: '공지사항 - 릴스탬프',
-  description: '릴스탬프 서비스 이용과 템플릿 요청, 개발 대응 안내',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getUiText();
+  return {
+  title: t('공지사항 - 릴스탬프'),
+  description: t('릴스탬프 서비스 이용과 템플릿 요청, 개발 대응 안내'),
+  };
+}
 
 const notices = [
   {
@@ -27,15 +34,14 @@ const notices = [
     title: '문의 및 개발 이슈 안내',
     description: (
       <>
-        오류 제보와 기능 문의는{' '}
-        <strong className="font-bold text-gray-950">마이페이지 &gt; 고객센터</strong>를
-        이용해주세요. 최대한 빠르게 확인하겠습니다.
-      </>
+        <UiMessage source="오류 제보와 기능 문의는" />{' '}
+        <strong className="font-bold text-gray-950"><UiMessage source="마이페이지 > 고객센터" /></strong><UiMessage source="를 이용해주세요. 최대한 빠르게 확인하겠습니다." /></>
     ),
   },
 ] satisfies Array<{ title: string; description: ReactNode }>;
 
-export default function NoticePage() {
+export default async function NoticePage() {
+  const t = await getUiText();
   return (
     <div className="min-h-[calc(100vh-80px)] bg-white">
       <section className="border-b border-gray-100 bg-gradient-to-b from-[#FFF5F8] to-white">
@@ -43,13 +49,11 @@ export default function NoticePage() {
           <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-lg bg-[#FF496D]/10 text-[#FF496D]">
             <Bell className="h-5 w-5" aria-hidden="true" />
           </div>
-          <p className="mb-3 text-sm font-semibold text-[#FF496D]">릴스탬프 공지</p>
+          <p className="mb-3 text-sm font-semibold text-[#FF496D]">{t("릴스탬프 공지")}</p>
           <h1 className="text-3xl font-bold leading-tight text-gray-950 sm:text-4xl">
-            공지사항
-          </h1>
+            {t("공지사항")}</h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-gray-600 sm:text-lg">
-            릴스탬프를 더 편안하게 이용하실 수 있도록 서비스 운영과 이용 안내를 전해드립니다.
-          </p>
+            {t("릴스탬프를 더 편안하게 이용하실 수 있도록 서비스 운영과 이용 안내를 전해드립니다.")}</p>
         </div>
       </section>
 
@@ -62,14 +66,14 @@ export default function NoticePage() {
             >
               <div className="flex items-start gap-4">
                 <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#FF496D]/10 text-base font-extrabold text-[#FF496D]">
-                  {index + 1}
+                  {t(index + 1)}
                 </div>
                 <div className="min-w-0 flex-1">
                   <h2 className="pt-1.5 text-lg font-bold leading-7 text-gray-950 [word-break:keep-all] sm:text-xl">
-                    {notice.title}
+                    {t(notice.title)}
                   </h2>
                   <p className="mt-3 text-[15px] leading-7 text-gray-600 [word-break:keep-all] sm:text-base">
-                    {notice.description}
+                    {t(notice.description)}
                   </p>
                 </div>
               </div>

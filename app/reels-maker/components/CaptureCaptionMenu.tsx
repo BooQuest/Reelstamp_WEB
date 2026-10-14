@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Plus, Trash2, Type } from 'lucide-react';
@@ -35,6 +37,7 @@ export default function CaptureCaptionMenu({
   onDeleteCaption,
   onCaptionScaleChange,
 }: Props) {
+  const t = useUiText();
   const [openCutIndex, setOpenCutIndex] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const isOpen = openCutIndex === activeCutIndex;
@@ -80,8 +83,7 @@ export default function CaptureCaptionMenu({
         aria-expanded={isOpen}
       >
         <Type className="h-3.5 w-3.5" />
-        자막 편집
-        <ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? 'rotate-180' : ''}`} />
+        {t("자막 편집")}<ChevronDown className={`h-3.5 w-3.5 transition ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
@@ -96,7 +98,7 @@ export default function CaptureCaptionMenu({
             className={menuItemClass}
           >
             <Plus className="h-4 w-4 shrink-0" />
-            자막 추가 {overlayCaptionCount}/{maxCaptions}
+            {t("자막 추가 ")}{t(overlayCaptionCount)}/{t(maxCaptions)}
           </button>
           <button
             type="button"
@@ -105,7 +107,7 @@ export default function CaptureCaptionMenu({
             className={menuItemClass}
           >
             <Type className="h-4 w-4 shrink-0" />
-            텍스트 박스 {isBoxed ? 'ON' : 'OFF'}
+            {t("텍스트 박스 ")}{t(isBoxed ? 'ON' : 'OFF')}
           </button>
           <div
             className={`rounded-xl px-3 py-2 text-xs font-semibold text-white ${
@@ -115,10 +117,9 @@ export default function CaptureCaptionMenu({
             <div className="mb-1.5 flex items-center justify-between gap-3">
               <span className="flex items-center gap-2">
                 <Type className="h-4 w-4 shrink-0" />
-                자막 크기
-              </span>
+                {t("자막 크기")}</span>
               <span className="tabular-nums text-white/70">
-                {captionScalePercent}%
+                {t(captionScalePercent)}%
               </span>
             </div>
             <input
@@ -128,7 +129,7 @@ export default function CaptureCaptionMenu({
               step={0.1}
               value={captionScale}
               disabled={isSizeDisabled}
-              aria-label="자막 크기"
+              aria-label={t("자막 크기")}
               aria-valuetext={`${captionScalePercent}%`}
               onChange={(event) => {
                 const nextScale = Number(event.target.value);
@@ -146,8 +147,7 @@ export default function CaptureCaptionMenu({
             className={menuItemClass}
           >
             <Trash2 className="h-4 w-4 shrink-0" />
-            선택 자막 삭제
-          </button>
+            {t("선택 자막 삭제")}</button>
         </div>
       )}
     </div>

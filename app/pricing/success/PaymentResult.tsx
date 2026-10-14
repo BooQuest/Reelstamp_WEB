@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { authFetch } from '@/app/lib/auth/browser-session';
 import { useEffect, useEffectEvent, useState } from 'react';
@@ -7,6 +9,7 @@ import Link from 'next/link';
 import { ORDER_STATUS, type PassOrder } from '@/app/lib/passes/catalog';
 import { formatWon } from '@/app/lib/passes/display';
 export default function PaymentResult({ orderId }: { orderId: string }) {
+  const t = useUiText();
   const { refreshSubscription } = useAuth();
   const refreshAccess = useEffectEvent(() => {
     void refreshSubscription();
@@ -60,24 +63,20 @@ export default function PaymentResult({ orderId }: { orderId: string }) {
     <main className="mx-auto max-w-lg px-4 py-16">
       <section className="space-y-5 rounded-3xl border bg-white p-8 text-center">
         <h1 className="text-2xl font-bold" aria-live="polite">
-          {title}
+          {t(title)}
         </h1>
         {order && (
           <p>
-            {order.productName} · {formatWon(order.price)}
+            {t(order.productName)} · {t(formatWon(order.price))}
           </p>
         )}
         {order?.status === 'WAITING_DEPOSIT' && (
           <p className="text-sm text-gray-600">
-            PayApp에서 안내한 계좌와 기한을 확인해 주세요. 입금 확인 후 이용권이
-            시작됩니다.
-          </p>
+            {t("PayApp에서 안내한 계좌와 기한을 확인해 주세요. 입금 확인 후 이용권이 시작됩니다.")}</p>
         )}
         {(delayed || order?.status === 'REVIEW') && (
           <p className="text-sm text-gray-600">
-            결제 결과를 확인 중입니다. 중복 결제하지 말고 잠시 후 다시 확인해
-            주세요.
-          </p>
+            {t("결제 결과를 확인 중입니다. 중복 결제하지 말고 잠시 후 다시 확인해 주세요.")}</p>
         )}
         <button
           onClick={() => {
@@ -86,14 +85,11 @@ export default function PaymentResult({ orderId }: { orderId: string }) {
           }}
           className="rounded-xl border px-5 py-3"
         >
-          다시 확인
-        </button>
+          {t("다시 확인")}</button>
         <Link href="/plan" className="block font-semibold text-[#D93256]">
-          내 이용권 확인
-        </Link>
+          {t("내 이용권 확인")}</Link>
         <Link href="/plan/payments" className="block text-sm text-gray-600">
-          결제 내역 보기
-        </Link>
+          {t("결제 내역 보기")}</Link>
       </section>
     </main>
   );

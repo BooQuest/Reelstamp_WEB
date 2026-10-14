@@ -1,11 +1,14 @@
 // 공통 푸터 컴포넌트: 사이트 하단에 표시되는 공통 정보 영역
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 
 export default function Footer() {
+  const t = useUiText();
   const pathname = usePathname();
 
   if (pathname === '/reels-maker') {
@@ -66,7 +69,7 @@ export default function Footer() {
         {/* 모바일: 하단 - Copyright 중앙 */}
         <div className="flex md:hidden justify-center pb-2">
           <p className="text-xs text-gray-500">
-            © {new Date().getFullYear()} Reelstamp. All rights reserved.
+            © {t(new Date().getFullYear())} Reelstamp. All rights reserved.
           </p>
         </div>
 
@@ -86,7 +89,7 @@ export default function Footer() {
           {/* 가운데: Copyright */}
           <div className="flex-1 text-center">
             <p className="text-xs text-gray-500">
-              © {new Date().getFullYear()} Reelstamp. All rights reserved.
+              © {t(new Date().getFullYear())} Reelstamp. All rights reserved.
             </p>
           </div>
 

@@ -7,6 +7,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { StrictMode } from 'react';
+import LocaleProvider from '@/app/i18n/LocaleProvider';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ReelsMakerPage from './page';
 import {
@@ -28,7 +29,7 @@ import { makeStream } from './test/fixtures';
 
 const navigation = vi.hoisted(() => ({
   params: new URLSearchParams('templateId=template'),
-  router: { push: vi.fn(), replace: vi.fn() },
+  router: { push: vi.fn(), replace: vi.fn(), refresh: vi.fn() },
   auth: {
     isAuthenticated: true,
     user: { id: 1, role: 'USER', guest: true, provider: 'GUEST' },
@@ -130,7 +131,7 @@ beforeEach(() => {
   fetchMock = vi
     .fn()
     .mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === '/api/templates/template')
+      if (url === '/api/templates/template' || /^\/api\/reels-maker\/sessions\/\d+\/template$/.test(url))
         return jsonResponse({
           success: true,
           data: { id: 'template', title: '테스트 템플릿', cuts: templateCuts, ...templateBgm },
@@ -262,8 +263,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function openMaker() {
-  const view = render(<ReelsMakerPage />);
+async function openMaker(localised = false) {
+  const view = render(localised ? <LocaleProvider initialLocale="ko" enabled><ReelsMakerPage /></LocaleProvider> : <ReelsMakerPage />);
   fireEvent.click(
     await screen.findByRole('button', { name: '저장 없이 계속하기' }),
   );
@@ -521,6 +522,23 @@ describe('gallery-only maker integration', () => {
       fetchMock.mock.calls.filter(([url]) => url.endsWith('/presign')),
     ).toHaveLength(uploads);
     expect(FakeMediaRecorder.instances).toHaveLength(0);
+  });
+  it('preserves media and undo history across language switches', async () => {
+    await openMaker(true);
+    await applyFile();
+    await waitFor(() => expect(screen.getByRole('button', {name:'실행 취소'})).toBeEnabled());
+    const preview = screen.getByLabelText('컷 영상 미리보기');
+    const uploads = fetchMock.mock.calls.filter(([url]) => url.endsWith('/presign')).length;
+    fireEvent.click(screen.getByRole('button', {name:'English'}));
+    expect(screen.getByRole('button', {name:'Undo'})).toBeEnabled();
+    expect(preview.isConnected).toBe(true);
+    fireEvent.click(screen.getByRole('button', {name:'Undo'}));
+    await waitFor(() => expect(session.clips[0].status).toBe('PENDING'));
+    fireEvent.click(screen.getByRole('button', {name:'한국어'}));
+    fireEvent.click(screen.getByRole('button', {name:'다시 실행'}));
+    await screen.findByLabelText('컷 영상 미리보기');
+    expect(fetchMock.mock.calls.filter(([url]) => url.endsWith('/presign'))).toHaveLength(uploads);
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/reels-maker/sessions')).toHaveLength(1);
   });
   it('cancels a replacement editor without changing the current cut or generating a video', async () => {
     await openMaker(); await applyFile();

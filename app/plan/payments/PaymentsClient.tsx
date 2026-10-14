@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import Link from 'next/link';
 import { useTransition } from 'react';
@@ -9,6 +11,7 @@ import QueryFeedback from '@/app/components/features/passes/QueryFeedback';
 import type { PaymentRecord, QueryState } from '@/app/lib/passes/display';
 
 export default function PaymentsClient({ state }: { state: QueryState<PaymentRecord[]> }) {
+  const t = useUiText();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const retry = () => startTransition(() => router.refresh());
@@ -20,9 +23,8 @@ export default function PaymentsClient({ state }: { state: QueryState<PaymentRec
           href="/plan"
           className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-[#D93256]"
         >
-          <ArrowLeft aria-hidden="true" className="h-4 w-4" />내 이용권
-        </Link>
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">결제 내역</h1>
+          <ArrowLeft aria-hidden="true" className="h-4 w-4" />{t("내 이용권")}</Link>
+        <h1 className="mb-6 text-2xl font-bold text-gray-900">{t("결제 내역")}</h1>
         {isPending || state.status === 'loading' ? (
           <QueryFeedback status="loading" subject="결제 내역" />
         ) : state.status === 'error' ? (

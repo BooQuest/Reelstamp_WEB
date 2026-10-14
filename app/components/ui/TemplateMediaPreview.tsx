@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import Image from 'next/image';
 import { Play } from 'lucide-react';
@@ -29,6 +31,7 @@ export default function TemplateMediaPreview({
   preferEmbed = false,
   onPlaybackFallbackVisibilityChange,
 }: TemplateMediaPreviewProps) {
+  const t = useUiText();
   const thumbnailSrc = thumbnailUrl?.trim();
   const embedSrc = embedUrl?.trim();
 

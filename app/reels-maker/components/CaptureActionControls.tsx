@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -32,6 +34,7 @@ export default function CaptureActionControls({
   onRequestRetake,
   onSwitchCamera,
 }: Props) {
+  const t = useUiText();
   const isRecording = recordingStatus === 'recording';
   const centerButtonLabel = isRecording
     ? '촬영 종료'
@@ -59,8 +62,8 @@ export default function CaptureActionControls({
           onClick={onOpenGallery}
           disabled={isGalleryDisabled}
           className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/25 bg-black/45 text-white shadow-xl backdrop-blur transition hover:scale-105 hover:bg-black/60 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:scale-100"
-          aria-label="갤러리"
-          title="갤러리"
+          aria-label={t("갤러리")}
+          title={t("갤러리")}
         >
           {galleryPreviewUrl ? (
             <>
@@ -88,8 +91,8 @@ export default function CaptureActionControls({
               ? 'bg-white text-[#111827]'
               : 'border-4 border-white/20 bg-white/10 text-white'
           }`}
-          aria-label={centerButtonLabel}
-          title={centerButtonLabel}
+          aria-label={t(centerButtonLabel)}
+          title={t(centerButtonLabel)}
         >
           {isRecording ? (
             <span className="h-8 w-8 rounded-lg bg-[#FF4D6D]" />
@@ -107,8 +110,8 @@ export default function CaptureActionControls({
           onClick={onSwitchCamera}
           disabled={isSwitchCameraDisabled}
           className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-white/25 bg-black/45 text-white shadow-xl backdrop-blur transition hover:scale-105 hover:bg-black/60 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:scale-100"
-          aria-label="전면/후면 카메라 전환"
-          title="전면/후면 카메라 전환"
+          aria-label={t("전면/후면 카메라 전환")}
+          title={t("전면/후면 카메라 전환")}
         >
           <SwitchCamera className="h-7 w-7" />
         </button>
