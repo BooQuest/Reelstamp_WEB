@@ -1,5 +1,4 @@
 'use client';
-import LanguageSelector from '@/app/i18n/LanguageSelector';
 import { useUiText } from '@/app/i18n/LocaleProvider';
 
 
@@ -63,8 +62,7 @@ export default function FinalPreview({
   return (
     <div className="min-h-[100dvh] bg-black text-white">
       <div className="max-w-md mx-auto px-4 pt-4 pb-10 space-y-6">
-        <header className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 items-center">
-          <LanguageSelector />
+        <header className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-center">
           <h1 className="text-center text-lg font-semibold">{t("릴스 제작 완료")}</h1>
           <button
             type="button"

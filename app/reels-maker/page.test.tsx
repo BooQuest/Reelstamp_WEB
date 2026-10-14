@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import { StrictMode } from 'react';
 import LocaleProvider from '@/app/i18n/LocaleProvider';
+import LanguageSelector from '@/app/i18n/LanguageSelector';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ReelsMakerPage from './page';
 import {
@@ -264,7 +265,7 @@ afterEach(() => {
 });
 
 async function openMaker(localised = false) {
-  const view = render(localised ? <LocaleProvider initialLocale="ko" enabled><ReelsMakerPage /></LocaleProvider> : <ReelsMakerPage />);
+  const view = render(localised ? <LocaleProvider initialLocale="ko" enabled><LanguageSelector /><ReelsMakerPage /></LocaleProvider> : <ReelsMakerPage />);
   fireEvent.click(
     await screen.findByRole('button', { name: '저장 없이 계속하기' }),
   );

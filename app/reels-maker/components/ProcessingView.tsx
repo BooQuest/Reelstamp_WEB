@@ -1,12 +1,10 @@
 'use client';
-import LanguageSelector from '@/app/i18n/LanguageSelector';
 
 import { useUiText } from '@/app/i18n/LocaleProvider';
 export default function ProcessingView({ delayed = false, onExit }: { delayed?: boolean; onExit?: () => void }) {
   const t = useUiText();
   return (
     <div className="min-h-[100dvh] bg-black text-white flex items-center justify-center px-4">
-      <div className="absolute right-4 top-4"><LanguageSelector /></div>
       <div className="max-w-sm w-full text-center space-y-6">
         <div className="w-24 h-24 rounded-full border-4 border-white/10 border-t-[#FF4D6D] animate-spin mx-auto" />
         <div>

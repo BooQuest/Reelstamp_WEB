@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import LocaleProvider from '@/app/i18n/LocaleProvider';
+import LanguageSelector from '@/app/i18n/LanguageSelector';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import ReelsMakerPage from './page';
@@ -190,7 +191,7 @@ it('pins the creation locale while switching language during an in-flight reques
     }
     return original(url);
   });
-  render(<LocaleProvider initialLocale="ko" enabled>{page()}</LocaleProvider>);
+  render(<LocaleProvider initialLocale="ko" enabled><LanguageSelector />{page()}</LocaleProvider>);
   await waitFor(() => expect(creations()).toHaveLength(1));
   fireEvent.click(screen.getByRole('button', {name:'English'}));
   expect(creationBody?.contentLocale).toBe('ko');
@@ -204,7 +205,7 @@ it('pins the creation locale while switching language during an in-flight reques
 
 it('uses the private template route for an existing Korean project in English UI', async () => {
   navigation.params = new URLSearchParams('templateId=template&sessionId=10');
-  render(<LocaleProvider initialLocale="en" enabled>{page()}</LocaleProvider>);
+  render(<LocaleProvider initialLocale="en" enabled><LanguageSelector />{page()}</LocaleProvider>);
   await screen.findByRole('button', {name:'Menu'});
   fireEvent.click(screen.getByRole('button', {name:'한국어'}));
   fireEvent.click(screen.getByRole('button', {name:'English'}));

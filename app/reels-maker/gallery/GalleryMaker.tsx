@@ -1,5 +1,4 @@
 'use client';
-import LanguageSelector from '@/app/i18n/LanguageSelector';
 import { useUiText } from '@/app/i18n/LocaleProvider';
 
 import {
@@ -201,7 +200,6 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           className="rounded-full bg-rose-500 px-4 py-2 text-sm disabled:opacity-40"
         >
           {t("완료")}</button>
-        <LanguageSelector />
       </div>
       <input
         ref={inputRef}

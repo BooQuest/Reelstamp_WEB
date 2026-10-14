@@ -1,5 +1,4 @@
 'use client';
-import LanguageSelector from '@/app/i18n/LanguageSelector';
 import { showAppToast } from '@/app/lib/ui/toast';
 import { useUiLocale, useUiText } from '@/app/i18n/LocaleProvider';
 
@@ -118,7 +117,6 @@ export default function TemplatePreviewModal({
         }
       }}
     >
-      <div className="absolute right-20 top-6 z-[90]"><LanguageSelector /></div>
       <button ref={closeRef} type="button" onClick={onClose} aria-label={t("상세 닫기")}
         className="absolute right-5 top-5 z-[90] flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:right-6 sm:top-6">
         <X className="h-5 w-5" aria-hidden="true" />

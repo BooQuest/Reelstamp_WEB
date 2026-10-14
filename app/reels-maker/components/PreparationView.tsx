@@ -1,5 +1,4 @@
 'use client';
-import LanguageSelector from '@/app/i18n/LanguageSelector';
 
 import { useUiText } from '@/app/i18n/LocaleProvider';
 import type { SaveState } from '../gallery/sourceSync';
@@ -23,7 +22,6 @@ export default function PreparationView({
       className="fixed inset-0 z-[150] flex items-center justify-center bg-black text-white"
       role="status"
     >
-      <div className="absolute right-4 top-4"><LanguageSelector /></div>
       <div className="space-y-4 p-6 text-center">
         <p>
           {t(error ||
