@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 /* eslint-disable @next/next/no-img-element */
 import {
   useEffect,
@@ -43,6 +45,7 @@ export function cropStyle(crop?: CropRegion) {
     : undefined;
 }
 export default function ClipPlayer(props: Props) {
+  const t = useUiText();
   const { clip, thumbnail } = props;
   const video = useRef<HTMLVideoElement>(null);
   const current = useRef(props);
@@ -141,8 +144,8 @@ export default function ClipPlayer(props: Props) {
           <img
             key={`${clip.url}:${attempt}`}
             src={clip.url}
-            alt={thumbnail ? '' : props['aria-label'] || '컷 사진 미리보기'}
-            aria-label={thumbnail ? undefined : '컷 사진 미리보기'}
+            alt={t(thumbnail ? '' : props['aria-label'] || '컷 사진 미리보기')}
+            aria-label={t(thumbnail ? undefined : '컷 사진 미리보기')}
             style={mediaStyle}
             className="h-full w-full object-contain"
             onLoad={loaded}
@@ -157,7 +160,7 @@ export default function ClipPlayer(props: Props) {
             muted={thumbnail}
             preload={thumbnail ? 'metadata' : 'auto'}
             aria-label={
-              thumbnail ? undefined : props['aria-label'] || '컷 영상 미리보기'
+              t(thumbnail ? undefined : props['aria-label'] || '컷 영상 미리보기')
             }
             style={mediaStyle}
             className="h-full w-full object-contain"
@@ -189,7 +192,7 @@ export default function ClipPlayer(props: Props) {
           role="alert"
           className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 p-4 text-sm"
         >
-          <p>미리보기를 불러오지 못했습니다. 편집 내용은 유지됩니다.</p>
+          <p>{t("미리보기를 불러오지 못했습니다. 편집 내용은 유지됩니다.")}</p>
           <button
             type="button"
             className="mt-3 rounded bg-white/20 p-2"
@@ -199,14 +202,12 @@ export default function ClipPlayer(props: Props) {
               setAttempt((a) => a + 1);
             }}
           >
-            다시 불러오기
-          </button>
+            {t("다시 불러오기")}</button>
         </div>
       )}
       {!thumbnail && !ready && !failure && (
         <p className="pointer-events-none absolute inset-x-0 top-3 text-center text-xs">
-          미리보기 준비 중…
-        </p>
+          {t("미리보기 준비 중…")}</p>
       )}
     </div>
   );

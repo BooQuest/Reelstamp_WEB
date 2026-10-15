@@ -2,7 +2,7 @@ import 'server-only';
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import { errorStatus } from '@/app/lib/auth/server-errors';
+import { AuthRequestError, errorStatus } from '@/app/lib/auth/server-errors';
 import { API_CONFIG } from '@/app/lib/constants/api';
 export function equalSecret(
   actual: string | null | undefined,
@@ -40,11 +40,11 @@ export async function internalPassRequest(path: string, body: unknown) {
 }
 export function passApiError(error: unknown) {
   const status = errorStatus(error) ?? 503;
+  const data = axios.isAxiosError(error) || error instanceof AuthRequestError ? error.response?.data : undefined;
   const message =
-    axios.isAxiosError(error) &&
-    typeof error.response?.data?.message === 'string'
-      ? error.response.data.message
+    typeof data?.message === 'string'
+      ? data.message
       : '요청을 확인할 수 없습니다. 잠시 후 다시 확인해 주세요.';
-  const errorCode = axios.isAxiosError(error) ? error.response?.data?.errorCode : undefined;
+  const errorCode = data?.errorCode;
   return NextResponse.json({ success: false, message, errorCode }, { status });
 }

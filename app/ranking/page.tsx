@@ -1,5 +1,7 @@
 // 랭킹 페이지: 릴스 랭킹 서비스 - Supabase에서 실시간 랭킹 데이터를 가져와 표시
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
@@ -17,6 +19,7 @@ const TodayCreatorSection = dynamic(() => import('@/app/components/features/Toda
 type TabType = 'trend' | 'creator';
 
 export default function RankingPage() {
+  const t = useUiText();
   const [activeTab, setActiveTab] = useState<TabType>('trend');
   const [selectedCategory, setSelectedCategory] = useState<Category>('trend');
 
@@ -198,8 +201,7 @@ export default function RankingPage() {
                 }`}
                 style={activeTab === 'trend' ? { marginBottom: '-2px', zIndex: 10 } : { zIndex: 1 }}
               >
-                오늘의 트렌드
-              </button>
+                {t("오늘의 트렌드")}</button>
               <button
                 onClick={() => handleTabChange('creator')}
                 className={`px-4 sm:px-6 md:px-8 py-4 text-base sm:text-lg font-bold transition-all relative rounded-t-xl whitespace-nowrap ${
@@ -209,8 +211,7 @@ export default function RankingPage() {
                 }`}
                 style={activeTab === 'creator' ? { marginBottom: '-2px', zIndex: 10 } : { zIndex: 1 }}
               >
-                오늘의 크리에이터
-              </button>
+                {t("오늘의 크리에이터")}</button>
             </div>
           </div>
 
@@ -231,7 +232,7 @@ export default function RankingPage() {
                       : 'bg-white border-2 border-gray-300 text-gray-700 hover:border-gray-400'
                   }`}
                 >
-                  {name}
+                  {t(name)}
                 </button>
               );
             })}
@@ -250,15 +251,15 @@ export default function RankingPage() {
                 {/* 에러 상태 */}
                 {categoryError && (
                   <div className="px-4 sm:px-6 lg:px-8 py-12 text-center">
-                    <p className="text-red-500 mb-2">랭킹 데이터를 불러오는 중 오류가 발생했습니다.</p>
-                    <p className="text-sm text-gray-500">잠시 후 다시 시도해주세요.</p>
+                    <p className="text-red-500 mb-2">{t("랭킹 데이터를 불러오는 중 오류가 발생했습니다.")}</p>
+                    <p className="text-sm text-gray-500">{t("잠시 후 다시 시도해주세요.")}</p>
                   </div>
                 )}
 
                 {/* 데이터가 없을 때 (로딩 중이 아닐 때) */}
                 {!categoryLoading && !categoryError && categoryData.length === 0 && (
                   <div className="px-4 sm:px-6 lg:px-8 py-12 text-center">
-                    <p className="text-gray-500">아직 랭킹 데이터가 없습니다.</p>
+                    <p className="text-gray-500">{t("아직 랭킹 데이터가 없습니다.")}</p>
                   </div>
                 )}
 
@@ -350,14 +351,14 @@ export default function RankingPage() {
             {/* 에러 상태 */}
             {todayCreatorError && (
               <div className="px-4 sm:px-6 lg:px-8 py-12 text-center">
-                <p className="text-red-500">오늘의 크리에이터 데이터를 불러오는 중 오류가 발생했습니다.</p>
+                <p className="text-red-500">{t("오늘의 크리에이터 데이터를 불러오는 중 오류가 발생했습니다.")}</p>
               </div>
             )}
 
             {/* 데이터 없음 */}
             {!isTodayCreatorLoading && !todayCreatorError && !todayCreatorData && (
               <div className="px-4 sm:px-6 lg:px-8 py-12 text-center">
-                <p className="text-gray-500">오늘의 크리에이터 데이터가 없습니다.</p>
+                <p className="text-gray-500">{t("오늘의 크리에이터 데이터가 없습니다.")}</p>
               </div>
             )}
 

@@ -43,3 +43,12 @@ describe('database catalog', () => {
   it('rejects duplicate codes', () =>
     expect(() => parseProducts([product, product])).toThrow());
 });
+
+ describe('localised access periods', () => {
+  it.each([
+    [1, 'DAY', '1 day'], [7, 'DAY', '7 days'], [1, 'MONTH', '1 month'],
+    [3, 'MONTH', '3 months'], [1, 'YEAR', '1 year'], [2, 'YEAR', '2 years'],
+  ] as const)('formats %s %s as %s', (durationValue, durationUnit, expected) => {
+    expect(durationLabel({ durationValue, durationUnit }, 'en')).toBe(expected);
+  });
+ });

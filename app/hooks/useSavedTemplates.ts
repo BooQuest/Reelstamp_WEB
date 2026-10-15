@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useUiLocale } from '@/app/i18n/LocaleProvider';
+import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import type { WebApiResponse } from '@/app/lib/api/auth';
@@ -36,6 +37,8 @@ const getErrorMessage = (error: unknown, fallback: string) =>
 
 export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
   const router = useRouter();
+  const { locale } = useUiLocale();
+  const requestVersion = useRef(0);
   const { isAuthenticated } = useAuth();
   const [savedTemplates, setSavedTemplates] = useState<TemplateSummary[]>([]);
   const [savedIds, setSavedIds] = useState<string[]>([]);
@@ -63,11 +66,14 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
       return;
     }
 
+    const version = ++requestVersion.current;
+    setSavedTemplates([]);
+    setSavedIds([]);
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch('/api/templates/saved', {
+      const response = await fetch(`/api/templates/saved${locale === 'en' ? '?locale=en' : ''}`, {
         method: 'GET',
         cache: 'no-store',
       });
@@ -77,18 +83,22 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
         throw new Error(payload?.message || '저장된 템플릿을 불러오지 못했습니다.');
       }
 
+      if (version !== requestVersion.current) return;
       const templates = normalizeTemplates(payload.data?.templates ?? []);
       setSavedTemplates(templates);
       setSavedIds(templates.map((template) => template.id));
     } catch (err: unknown) {
+      if (version !== requestVersion.current) return;
       setError(getErrorMessage(err, '저장된 템플릿을 불러오지 못했습니다.'));
     } finally {
-      setIsLoading(false);
+      if (version === requestVersion.current) setIsLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, locale]);
 
   useEffect(() => {
     refresh();
+    const pending = requestVersion;
+    return () => { pending.current++; };
   }, [refresh]);
 
   const toggleSave = useCallback(
@@ -98,6 +108,7 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
         return;
       }
 
+      const version = requestVersion.current;
       try {
         setError(null);
         const templateId = template.id;
@@ -110,6 +121,7 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
           throw new Error(payload?.message || '저장 처리에 실패했습니다.');
         }
 
+        if (version !== requestVersion.current) return;
         const saved = payload.data?.saved ?? false;
         if (saved) {
           if ('title' in template) {
@@ -136,6 +148,7 @@ export function useSavedTemplates(options: UseSavedTemplatesOptions = {}) {
           setSavedIds((prev) => prev.filter((id) => id !== templateId));
         }
       } catch (err: unknown) {
+        if (version !== requestVersion.current) return;
         setError(getErrorMessage(err, '저장 처리에 실패했습니다.'));
       }
     },

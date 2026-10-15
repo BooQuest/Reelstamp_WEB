@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import React from 'react';
 import { motion } from 'framer-motion';
@@ -8,6 +10,7 @@ import { motion } from 'framer-motion';
  * 페이지 진입 시 가장 먼저 보이는 영역으로 즉시 로드됩니다.
  */
 export default function HeroSection() {
+  const t = useUiText();
   return (
     <section className="relative bg-white overflow-hidden py-20 sm:py-20 md:py-28 lg:py-40 xl:py-48 sm:min-h-[calc(100vh-80px)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -76,9 +79,9 @@ export default function HeroSection() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: 'easeOut' }}
             >
-              <span className="text-gray-900">당신의 릴스 성공 공식, </span>
+              <span className="text-gray-900">{t("당신의 릴스 성공 공식, ")}</span>
               <br className="sm:hidden" />
-              <span className="text-[#FF496D]">릴스탬프</span>
+              <span className="text-[#FF496D]">{t("릴스탬프")}</span>
             </motion.h1>
 
             <motion.div 
@@ -88,11 +91,9 @@ export default function HeroSection() {
               transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
             >
               <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-gray-700">
-                밤새 고민하던 릴스 대본과 영상,
-              </p>
+                {t("밤새 고민하던 릴스 대본과 영상,")}</p>
               <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-gray-700">
-                이제 검증된 알고리즘 공식으로 1분 만에 끝내세요!
-              </p>
+                {t("이제 검증된 알고리즘 공식으로 1분 만에 끝내세요!")}</p>
             </motion.div>
 
             <motion.button
@@ -108,14 +109,13 @@ export default function HeroSection() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.4, ease: 'easeOut' }}
             >
-              <span className="whitespace-nowrap">지금 무료로 시작하기</span>
+              <span className="whitespace-nowrap">{t("지금 무료로 시작하기")}</span>
               <svg className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
             </motion.button>
             <p id="hero-script-retired" className="mt-3 text-sm text-gray-600">
-              구형 AI 대본 제작 기능이 종료되었습니다.
-            </p>
+              {t("구형 AI 대본 제작 기능이 종료되었습니다.")}</p>
           </div>
         </div>
       </div>

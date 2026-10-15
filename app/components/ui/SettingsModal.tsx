@@ -1,7 +1,9 @@
+'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
 
 import { authFetch } from '@/app/lib/auth/browser-session';
 // Settings 모달 컴포넌트: 계정 설정 팝업
-'use client';
+
 
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -18,6 +20,7 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+  const t = useUiText();
   const router = useRouter();
   const { user, logout, subscription, isLoadingSubscription, refreshSubscription } = useAuth();
   const [mounted, setMounted] = useState(false);
@@ -104,17 +107,17 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       const data = await response.json();
 
       if (data.success) {
-        alert('구독 해지 예약이 완료되었습니다.');
+        alert(t('구독 해지 예약이 완료되었습니다.'));
         setShowCancelConfirm(false);
         setIsManageOpen(false);
         // 전역 구독 정보 갱신
         await refreshSubscription();
       } else {
-        alert(data.message || '해지 요청 중 오류가 발생했습니다.');
+        alert(t(data.message || '해지 요청 중 오류가 발생했습니다.'));
       }
     } catch (error) {
       console.error('Cancel Error:', error);
-      alert('서버와 통신 중 오류가 발생했습니다.');
+      alert(t('서버와 통신 중 오류가 발생했습니다.'));
     } finally {
       setIsCancelling(false);
     }
@@ -140,13 +143,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         router.push('/');
       } else {
         // 에러 메시지 표시
-        alert(result.message || '계정 삭제 중 오류가 발생했습니다.');
+        alert(t(result.message || '계정 삭제 중 오류가 발생했습니다.'));
         setIsDeleting(false);
         setShowDeleteConfirm(false);
       }
     } catch (error) {
       console.error('계정 삭제 실패:', error);
-      alert('계정 삭제 중 오류가 발생했습니다.');
+      alert(t('계정 삭제 중 오류가 발생했습니다.'));
       setIsDeleting(false);
       setShowDeleteConfirm(false);
     }
@@ -201,7 +204,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <button
                       onClick={onClose}
                       className="p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-lg hover:bg-gray-100"
-                      aria-label="닫기"
+                      aria-label={t("닫기")}
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -228,7 +231,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <div className="mb-6 sm:mb-8">
                       <div className="flex items-center justify-between gap-3 mb-4">
                         <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-                          {planName}
+                          {t(planName)}
                         </h2>
                         <div className="relative">
                           <button 
@@ -269,8 +272,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     className="w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
                                   >
                                     <RefreshCw className="w-4 h-4 text-gray-400" />
-                                    Plan 변경
-                                  </button>
+                                    {t("Plan 변경")}</button>
                                   {!isCanceled && (
                                     <button
                                       onClick={() => {
@@ -280,8 +282,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                       className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
                                     >
                                       <Trash2 className="w-4 h-4" />
-                                      구독 취소
-                                    </button>
+                                      {t("구독 취소")}</button>
                                   )}
                                 </motion.div>
                               </>
@@ -293,17 +294,15 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       {isFreePlan ? (
                         <>
                           <p className="text-gray-600 mb-6">
-                            현재 무료 플랜을 사용 중입니다.
-                          </p>
+                            {t("현재 무료 플랜을 사용 중입니다.")}</p>
                           <div className="bg-gradient-to-r from-[#EB48B1]/10 to-[#F59A39]/10 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6">
                             <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">
-                              Reelstamp Plus로 업그레이드하세요!
-                            </h3>
+                              {t("Reelstamp Plus로 업그레이드하세요!")}</h3>
                             <ul className="space-y-2 sm:space-y-3">
                               {planBenefits.map((benefit, index) => (
                                 <li key={index} className="flex items-start gap-3">
                                   <benefit.icon className="w-4 h-4 sm:w-5 sm:h-5 text-[#EB48B1] flex-shrink-0 mt-0.5" />
-                                  <span className="text-sm sm:text-base text-gray-700">{benefit.text}</span>
+                                  <span className="text-sm sm:text-base text-gray-700">{t(benefit.text)}</span>
                                 </li>
                               ))}
                             </ul>
@@ -312,23 +311,22 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       ) : (
                         <>
                           {isLoadingSubscription ? (
-                            <p className="text-gray-600 mb-6">구독 정보를 불러오는 중...</p>
+                            <p className="text-gray-600 mb-6">{t("구독 정보를 불러오는 중...")}</p>
                           ) : subInfo ? (
                             <div className="mb-6">
                               {isCanceled ? (
                                 <p className="text-[#8B2635] font-medium mb-1">
-                                  구독 해지 예약됨
-                                </p>
+                                  {t("구독 해지 예약됨")}</p>
                               ) : null}
                               <p className="text-gray-600">
-                                {isCanceled 
+                                {t(isCanceled
                                   ? `${formatDate(subInfo.validUntil)}까지 서비스를 이용하실 수 있습니다.`
-                                  : `다음 결제일은 ${formatDate(subInfo.nextBillingDate)}입니다.`
+                                  : `다음 결제일은 ${formatDate(subInfo.nextBillingDate)}입니다.`)
                                 }
                               </p>
                             </div>
                           ) : (
-                            <p className="text-gray-600 mb-6">{planName}을(를) 사용 중입니다.</p>
+                            <p className="text-gray-600 mb-6">{t(planName)}{t("을(를) 사용 중입니다.")}</p>
                           )}
                          
                         </>
@@ -344,8 +342,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           </h2>
                           {showSubscriptionWarning && !isFreePlan && !isCanceled && (
                             <p className="text-sm text-[#8B2635] font-medium mb-3">
-                              * 현재 활성화된 구독이 있습니다. [Manage] 메뉴에서 먼저 구독을 해지한 후에 계정 삭제가 가능합니다.
-                            </p>
+                              {t("* 현재 활성화된 구독이 있습니다. [Manage] 메뉴에서 먼저 구독을 해지한 후에 계정 삭제가 가능합니다.")}</p>
                           )}
                         </div>
                         {!showDeleteConfirm ? (
@@ -387,7 +384,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 }
                               }}
                             >
-                              {isDeleting ? '처리 중...' : '확인'}
+                              {t(isDeleting ? '처리 중...' : '확인')}
                             </button>
                             <button
                               onClick={() => {
@@ -397,8 +394,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               disabled={isDeleting}
                               className="px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              취소
-                            </button>
+                              {t("취소")}</button>
                           </div>
                         )}
                       </div>
@@ -428,10 +424,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.9, opacity: 0 }}
                 >
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">구독을 취소하시겠습니까?</h3>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">{t("구독을 취소하시겠습니까?")}</h3>
                   <p className="text-gray-600 mb-6 text-sm leading-relaxed">
-                    구독을 해지하셔도 <span className="font-bold text-gray-900">{subInfo?.validUntil ? formatDate(subInfo.validUntil) : '만료일'}</span>까지는 혜택을 계속 누리실 수 있습니다. 이후에는 자동으로 해지됩니다.
-                  </p>
+                    {t("구독을 해지하셔도 ")}<span className="font-bold text-gray-900">{t(subInfo?.validUntil ? formatDate(subInfo.validUntil) : '만료일')}</span>{t("까지는 혜택을 계속 누리실 수 있습니다. 이후에는 자동으로 해지됩니다.")}</p>
                   
                   <div className="flex gap-3">
                     <button
@@ -439,8 +434,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       disabled={isCancelling}
                       className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50"
                     >
-                      유지하기
-                    </button>
+                      {t("유지하기")}</button>
                     <button
                       onClick={handleCancelSubscription}
                       disabled={isCancelling}
@@ -449,9 +443,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       {isCancelling ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
-                          처리 중
-                        </>
-                      ) : '해지 확인'}
+                          {t("처리 중")}</>
+                      ) : t('해지 확인')}
                     </button>
                   </div>
                 </motion.div>

@@ -1,4 +1,6 @@
 'use client';
+import { useUiLocale, useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import React, { useState } from 'react';
 import Image from 'next/image';
@@ -35,15 +37,17 @@ const steps = [
  * 4단계 릴스 메이커 섹션: 구체적인 작업 단계를 설명합니다.
  */
 export default function StepReelsMakerSection() {
+  const t = useUiText();
+  const { locale } = useUiLocale();
   const [activeStep, setActiveStep] = useState(0);
 
   return (
     <section className="py-16 sm:py-20 lg:py-24 bg-[#F8F9FA]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12 sm:mb-16">
-          <p className="text-xl sm:text-2xl text-gray-600 mb-3 font-medium">조회수가 터지는 릴스, 이렇게 설계됩니다</p>
+          <p className="text-xl sm:text-2xl text-gray-600 mb-3 font-medium">{t("조회수가 터지는 릴스, 이렇게 설계됩니다")}</p>
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-[#373A46] tracking-tight">
-            따라만 하면 완성되는 <span className="text-[#FF496D]">4단계 릴스 메이커</span>
+            {t("따라만 하면 완성되는 ")}<span className="text-[#FF496D]">{t("4단계 릴스 메이커")}</span>
           </h2>
         </div>
 
@@ -54,7 +58,7 @@ export default function StepReelsMakerSection() {
               <StepCard 
                 key={item.step}
                 step={item.step}
-                title={item.title}
+                title={t(item.title)}
                 content={item.content}
                 active={activeStep === index}
                 onClick={() => setActiveStep(index)}
@@ -73,13 +77,17 @@ export default function StepReelsMakerSection() {
                 transition={{ duration: 0.4, ease: "easeOut" }}
                 className="relative w-full h-full"
               >
-                <Image
+                {locale === 'en' ? <div className="flex h-full flex-col justify-center gap-6 p-8 text-gray-900">
+                  <span className="text-5xl font-bold text-rose-500">{steps[activeStep].step}</span>
+                  <h3 className="text-2xl font-bold">{t(steps[activeStep].title)}</h3>
+                  <p className="text-lg leading-relaxed">{t(steps[activeStep].content)}</p>
+                </div> :                 <Image
                   src={steps[activeStep].image}
-                  alt={steps[activeStep].title}
+                  alt={t(steps[activeStep].title)}
                   fill
                   className="object-cover object-top"
                   priority
-                />
+                /> }
               </motion.div>
             </AnimatePresence>
           </div>
@@ -98,6 +106,7 @@ interface StepCardProps {
 }
 
 function StepCard({ step, title, content, active, onClick }: StepCardProps) {
+  const t = useUiText();
   return (
     <motion.div
       onClick={onClick}
@@ -110,11 +119,11 @@ function StepCard({ step, title, content, active, onClick }: StepCardProps) {
     >
       <div className="flex items-start gap-5">
         <span className={`text-xl font-black ${active ? 'text-[#FF496D]' : 'text-gray-300'}`}>
-          {step}
+          {t(step)}
         </span>
         <div className="flex-1">
           <h3 className={`text-xl sm:text-2xl font-bold mb-3 transition-colors ${active ? 'text-[#373A46]' : 'text-gray-400'}`}>
-            {title}
+            {t(title)}
           </h3>
           <AnimatePresence initial={false}>
             {active && (
@@ -126,7 +135,7 @@ function StepCard({ step, title, content, active, onClick }: StepCardProps) {
                 className="overflow-hidden"
               >
                 <p className="text-base sm:text-lg text-gray-600 leading-relaxed">
-                  {content}
+                  {t(content)}
                 </p>
               </motion.div>
             )}

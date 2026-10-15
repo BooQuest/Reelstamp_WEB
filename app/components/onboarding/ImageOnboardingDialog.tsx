@@ -1,4 +1,6 @@
 'use client';
+import { useUiLocale, useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
@@ -22,6 +24,8 @@ export default function ImageOnboardingDialog({ type, onComplete }: {
   type: OnboardingType;
   onComplete: (type: OnboardingType) => void;
 }) {
+  const t = useUiText();
+  const { locale } = useUiLocale();
   const [index, setIndex] = useState(0);
   const [keyboardNavigation, setKeyboardNavigation] = useState(false);
   const confirmRef = useRef<HTMLButtonElement>(null);
@@ -74,22 +78,29 @@ export default function ImageOnboardingDialog({ type, onComplete }: {
         }
       }}>
       <div className={styles.card}>
-        <h2 id="onboarding-title" className="sr-only">{slide.title}</h2>
-        <p id="onboarding-description" className="sr-only">{slide.description} ({index + 1}/{slides.length})</p>
-        <div className={styles.scroller}><div className={styles.artwork}>
-          <Image key={slide.file} src={`/images/onboarding/${slide.file}`} alt={slide.title}
+        <h2 id="onboarding-title" className="sr-only">{t(slide.title)}</h2>
+        <p id="onboarding-description" className="sr-only">{t(slide.description)} ({t(index + 1)}/{t(slides.length)})</p>
+        <div className={styles.scroller}><div className={locale === 'en' ? styles.englishArtwork : styles.artwork}>
+          {locale === 'en' ? <section className="flex min-h-[360px] flex-col justify-center gap-6 bg-gradient-to-br from-rose-50 to-white p-8 text-gray-900">
+            <p className="text-sm font-semibold text-rose-500">{index + 1} / {slides.length}</p>
+            <h3 className="text-3xl font-bold leading-tight">{t(slide.title)}</h3>
+            <p className="text-lg leading-relaxed">{t(slide.description)}</p>
+            <button ref={closeRef} type="button" onClick={advance} className="self-start rounded-lg border px-4 py-2">{t(index === slides.length - 1 ? '안내 확인 후 닫기' : '다음 안내')}</button>
+          </section> : <>
+          <Image key={slide.file} src={`/images/onboarding/${slide.file}`} alt={t(slide.title)}
             width={941} height={1672} sizes="(max-width: 480px) 100vw, 480px"
             priority className={styles.image} />
           <button ref={closeRef} type="button" className={styles.close}
-            aria-label={index === slides.length - 1 ? '안내 확인 후 닫기' : '다음 안내'}
+            aria-label={t(index === slides.length - 1 ? '안내 확인 후 닫기' : '다음 안내')}
             onClick={advance} />
-          {type === 'entrance' && <div className={styles.dots} aria-label={`총 2장 중 ${index + 1}번째 안내`}>
+          </>}
+          {type === 'entrance' && <div className={styles.dots} aria-label={t.format("총 2장 중 {v0}번째 안내", {v0: index + 1})}>
             {slides.map((item, i) => <span key={item.file} className={i === index ? styles.activeDot : styles.dot} />)}
           </div>}
         </div></div>
         <div className={styles.footer}>
           <button ref={confirmRef} type="button" className={styles.confirm}
-            onClick={advance}>확인</button>
+            onClick={advance}>{t("확인")}</button>
         </div>
       </div>
     </div>, document.body,

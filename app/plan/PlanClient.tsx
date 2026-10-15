@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -15,6 +17,7 @@ export default function PlanClient({
   children?: React.ReactNode;
   hasPasses?: boolean;
 }) {
+  const t = useUiText();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const retry = () => startTransition(() => router.refresh());
@@ -22,7 +25,7 @@ export default function PlanClient({
   return (
     <div className="min-h-[calc(100vh-80px)] bg-gradient-to-b from-pink-50 to-white px-4 py-8 pb-24 sm:py-12">
       <div className="mx-auto max-w-2xl">
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">내 이용권</h1>
+        <h1 className="mb-6 text-2xl font-bold text-gray-900">{t("내 이용권")}</h1>
         {children}
         {isPending || state.status === 'loading' ? (
           <QueryFeedback status="loading" subject="이용권 정보" />

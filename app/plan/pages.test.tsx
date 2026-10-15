@@ -1,3 +1,4 @@
+import { createUiText } from '@/app/i18n/text';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -136,3 +137,5 @@ describe('authenticated pass pages', () => {
     expect(screen.getByRole('status')).toHaveTextContent('결제 내역을 불러오는 중');
   });
 });
+
+vi.mock('@/app/i18n/server', () => ({ getUiText: async () => createUiText('ko'), getUiLocale: async () => 'ko' }));

@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import React from 'react';
 import PlanCard from '@/app/components/ui/PlanCard';
@@ -9,6 +11,7 @@ import { freePlanFeatures, basicPlanFeatures, proPlanFeatures, masterPlanFeature
  * 플랜 섹션: 서비스 요금제와 혜택을 보여줍니다.
  */
 export default function PricingSection() {
+  const t = useUiText();
   const { isAuthenticated, subscription, isLoadingSubscription } = useAuth();
 
   // 현재 구독 중인 플랜 확인
@@ -19,10 +22,9 @@ export default function PricingSection() {
     <section className="py-16 sm:py-20 lg:py-24 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12 sm:mb-16">
-          <p className="text-xl sm:text-2xl text-gray-600 mb-3">성장을 위한 가장 확실한 투자</p>
+          <p className="text-xl sm:text-2xl text-gray-600 mb-3">{t("성장을 위한 가장 확실한 투자")}</p>
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">
-            <span className="text-[#FF496D]">오픈 특가!</span> 조회수가 터지는 습관, 릴스탬프 플랜
-          </h2>
+            <span className="text-[#FF496D]">{t("오픈 특가!")}</span> {t(" 조회수가 터지는 습관, 릴스탬프 플랜")}</h2>
         </div>
 
         <div className="flex flex-col lg:flex-row justify-center items-stretch gap-6 lg:gap-8">
@@ -35,7 +37,7 @@ export default function PricingSection() {
           />
           <PlanCard
             planName="Basic" price="₩4,900" features={basicPlanFeatures}
-            discountInfo={{ percentage: '75%', originalPrice: '19,900원' }}
+            discountInfo={{ percentage: '75%', originalPrice: t('19,900원') }}
             eventBenefit={basicPlanEventBenefit} buttonType="button" 
             buttonText="준비 중"
             buttonDisabled={true}
@@ -45,7 +47,7 @@ export default function PricingSection() {
           />
           <PlanCard
             planName="Pro" price="₩9,900" features={proPlanFeatures}
-            discountInfo={{ percentage: '80%', originalPrice: '49,900원' }}
+            discountInfo={{ percentage: '80%', originalPrice: t('49,900원') }}
             isPopular buttonType="button" 
             buttonText="준비 중"
             buttonDisabled={true}
@@ -55,7 +57,7 @@ export default function PricingSection() {
           />
           <PlanCard
             planName="Master" price="₩49,900" features={masterPlanFeatures}
-            discountInfo={{ percentage: '75%', originalPrice: '199,900원' }}
+            discountInfo={{ percentage: '75%', originalPrice: t('199,900원') }}
             buttonType="button" 
             buttonText="준비 중"
             buttonDisabled={true}

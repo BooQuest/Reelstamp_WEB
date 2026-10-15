@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pause, Play } from 'lucide-react';
@@ -21,6 +23,7 @@ export default function CapturedClipPreview({
   clipUrl,
   posterUrl,
 }: CapturedClipPreviewProps) {
+  const t = useUiText();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -87,7 +90,7 @@ export default function CapturedClipPreview({
         className={`absolute left-1/2 top-1/2 z-[21] flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/40 bg-black/55 text-white shadow-xl backdrop-blur transition ${
           isPlaying ? 'opacity-0 hover:opacity-100 focus-visible:opacity-100' : 'opacity-100'
         }`}
-        aria-label={isPlaying ? '촬영 컷 미리보기 일시정지' : '촬영 컷 미리보기 재생'}
+        aria-label={t(isPlaying ? '촬영 컷 미리보기 일시정지' : '촬영 컷 미리보기 재생')}
       >
         {isPlaying ? <Pause className="h-7 w-7" /> : <Play className="ml-0.5 h-7 w-7" />}
       </button>

@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Play } from 'lucide-react';
@@ -14,6 +16,7 @@ export default function FixedClipVideo({
   posterUrl,
   className,
 }: FixedClipVideoProps) {
+  const t = useUiText();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasEnded, setHasEnded] = useState(false);
@@ -122,7 +125,7 @@ export default function FixedClipVideo({
             void handlePlay();
           }}
           className="absolute left-1/2 top-1/2 z-20 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center text-white transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-          aria-label="고정 영상 재생"
+          aria-label={t("고정 영상 재생")}
         >
           <Play
             className="h-16 w-16 fill-white text-white drop-shadow-[0_4px_14px_rgba(0,0,0,0.55)]"

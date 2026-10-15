@@ -1,3 +1,4 @@
+import { passPurchaseLocale } from '@/app/lib/passes/locale';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/app/lib/api/auth';
 import { getMutableServerApiClient } from '@/app/lib/api/server-client';
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
         { message: '로그인이 필요합니다.' },
         { status: 401 },
       );
-    const { code, version, phone, idempotencyKey } = await request.json();
+    const { code, version, phone, idempotencyKey, locale } = await request.json();
     const userid = process.env.PAYAPP_USERID,
       linkkey = process.env.PAYAPP_LINKKEY;
     const base = process.env.NEXT_PUBLIC_BASE_URL;
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
       version,
       phone,
       idempotencyKey,
+      locale: passPurchaseLocale(locale),
     });
     if (!data.success) throw new Error('Order unavailable');
     let order: PassOrder = data.data.order;

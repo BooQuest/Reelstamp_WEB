@@ -1,3 +1,6 @@
+'use client';
+
+import { useUiText } from '@/app/i18n/LocaleProvider';
 type Props = {
   title?: string;
   description?: string;
@@ -13,12 +16,13 @@ export default function RetakeConfirmModal({
   onCancel,
   onConfirm,
 }: Props) {
+  const t = useUiText();
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-[24px] bg-[#1E2A3B] p-6 text-white shadow-2xl">
-        <h3 className="mb-2 text-lg font-semibold">{title}</h3>
+        <h3 className="mb-2 text-lg font-semibold">{t(title)}</h3>
         <p className="mb-5 text-sm leading-6 text-white/70">
-          {description}
+          {t(description)}
         </p>
         <div className="flex gap-3">
           <button
@@ -26,14 +30,13 @@ export default function RetakeConfirmModal({
             onClick={onCancel}
             className="flex-1 rounded-xl bg-white/10 py-2 text-sm"
           >
-            취소
-          </button>
+            {t("취소")}</button>
           <button
             type="button"
             onClick={onConfirm}
             className="flex-1 rounded-xl bg-[#FF4D6D] py-2 text-sm font-semibold"
           >
-            {confirmLabel}
+            {t(confirmLabel)}
           </button>
         </div>
       </div>

@@ -105,6 +105,7 @@ export type ReelsMakerSessionClip = {
 };
 
 export type ReelsMakerSessionResponse = {
+  contentLocale?: 'ko' | 'en';
   displayStatus?: 'CAPTURE' | 'PROCESSING' | 'COMPLETED';
   newEdit?: boolean;
   mediaAssets?: MediaAsset[];

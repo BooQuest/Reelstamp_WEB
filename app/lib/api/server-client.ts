@@ -1,4 +1,6 @@
 import 'server-only';
+import { englishEnabled, LOCALE_COOKIE, resolveLocale } from '@/app/i18n/config';
+import { publicErrorMessage } from '@/app/i18n/errors';
 import axios, { type AxiosInstance } from 'axios';
 import { cookies, headers } from 'next/headers';
 import { API_CONFIG } from '@/app/lib/constants/api';
@@ -18,6 +20,7 @@ export async function getMutableServerApiClient(): Promise<AxiosInstance> {
 
 async function createClient(mutable: boolean): Promise<AxiosInstance> {
   const store = await cookies();
+  const uiLocale = resolveLocale(store.get(LOCALE_COOKIE)?.value, englishEnabled());
   const requestHeaders = mutable ? await headers() : null;
   const expectedUser = requestHeaders?.get('x-reelstamp-user');
   const editToken = requestHeaders?.get('x-reelstamp-edit-token');
@@ -51,7 +54,14 @@ async function createClient(mutable: boolean): Promise<AxiosInstance> {
     if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`;
     return config;
   });
-  client.interceptors.response.use(response => response, async error => {
+  client.interceptors.response.use(response => {
+    if (response.data?.data) {
+      const data = response.data.data;
+      if (data.errorMessage) data.errorMessage = publicErrorMessage({ errorCode: data.errorCode }, uiLocale);
+      if (data.mediaError) data.mediaError = publicErrorMessage({message: '완성된 영상을 불러오지 못했습니다. 다시 시도해 주세요.'}, uiLocale);
+    }
+    return response;
+  }, async error => {
     const request = error.config;
     const code = error.response?.data?.errorCode;
     if (mutable && refreshToken && request && !request._authRetry && error.response?.status === 401 &&
@@ -59,6 +69,9 @@ async function createClient(mutable: boolean): Promise<AxiosInstance> {
       request._authRetry = true;
       await refresh();
       return client(request);
+    }
+    if (error.response?.data) {
+      error.response.data.message = publicErrorMessage(error.response.data, uiLocale);
     }
     throw error;
   });

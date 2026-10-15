@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useRef } from 'react';
 import InstagramEmbed from '@/app/components/ui/InstagramEmbed';
@@ -24,6 +26,7 @@ interface TodayCreatorSectionProps {
 }
 
 export default function TodayCreatorSection({ analysisReel, topVideos }: TodayCreatorSectionProps) {
+  const t = useUiText();
   // 모바일 가로 스크롤 컨테이너 ref
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -71,14 +74,14 @@ export default function TodayCreatorSection({ analysisReel, topVideos }: TodayCr
                 <div className="px-5 pt-5 pb-4 shrink-0 relative z-10">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-500 mb-1">오늘의 크리에이터</p>
+                      <p className="text-xs font-medium text-gray-500 mb-1">{t("오늘의 크리에이터")}</p>
                       <p className="text-xl font-extrabold text-gray-900 leading-tight truncate">{analysisReel.title}</p>
                     </div>
                     {analysisReel.followers && (
                       <div className="shrink-0 px-3 py-2 bg-white/80 backdrop-blur-sm rounded-lg border border-gray-200/60 shadow-sm">
                         <div className="text-right">
-                          <p className="text-xs text-gray-500 mb-0.5">팔로워</p>
-                          <p className="text-sm font-bold text-gray-900">{analysisReel.followers}</p>
+                          <p className="text-xs text-gray-500 mb-0.5">{t("팔로워")}</p>
+                          <p className="text-sm font-bold text-gray-900">{t(analysisReel.followers)}</p>
                         </div>
                       </div>
                     )}
@@ -105,8 +108,8 @@ export default function TodayCreatorSection({ analysisReel, topVideos }: TodayCr
             <div className="flex items-center gap-3 mb-3">
               <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
               <div className="flex flex-col items-center">
-                <h3 className="text-lg font-bold text-gray-900">조회수 Top 3</h3>
-                <p className="text-xs text-gray-500">이 크리에이터의 인기 영상</p>
+                <h3 className="text-lg font-bold text-gray-900">{t("조회수 Top 3")}</h3>
+                <p className="text-xs text-gray-500">{t("이 크리에이터의 인기 영상")}</p>
               </div>
               <div className="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
             </div>
@@ -154,7 +157,7 @@ export default function TodayCreatorSection({ analysisReel, topVideos }: TodayCr
                             className={`px-4 py-2 rounded-full text-sm font-bold flex items-center gap-1.5 shadow-md flex-shrink-0 ${getRankBadgeStyle(rank)}`}
                           >
                             <Crown className="w-4 h-4" />
-                            {`${rank}위`}
+                            {t.format("{v0}위", {v0: rank})}
                           </div>
                           {video.title && (
                             <p className="text-base font-medium text-white truncate drop-shadow-lg">
@@ -198,14 +201,14 @@ export default function TodayCreatorSection({ analysisReel, topVideos }: TodayCr
                 <div className="px-7 pt-7 pb-5 shrink-0 relative z-10">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-500 mb-1.5">오늘의 크리에이터</p>
+                      <p className="text-xs font-medium text-gray-500 mb-1.5">{t("오늘의 크리에이터")}</p>
                       <p className="text-2xl font-extrabold text-gray-900 leading-tight truncate">{analysisReel.title}</p>
                     </div>
                     {analysisReel.followers && (
                       <div className="shrink-0 px-4 py-2.5 bg-white/80 backdrop-blur-sm rounded-lg border border-gray-200/60 shadow-sm">
                         <div className="text-right">
-                          <p className="text-xs text-gray-500 mb-0.5">팔로워</p>
-                          <p className="text-sm font-bold text-gray-900">{analysisReel.followers}</p>
+                          <p className="text-xs text-gray-500 mb-0.5">{t("팔로워")}</p>
+                          <p className="text-sm font-bold text-gray-900">{t(analysisReel.followers)}</p>
                         </div>
                       </div>
                     )}
@@ -231,8 +234,8 @@ export default function TodayCreatorSection({ analysisReel, topVideos }: TodayCr
           <div className="flex-[2.7]">
             {/* 섹션 헤더 */}
             <div className="mb-5">
-              <h3 className="text-lg font-bold text-gray-900 mb-1">조회수 Top 3</h3>
-              <p className="text-sm text-gray-500">이 크리에이터의 인기 영상</p>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">{t("조회수 Top 3")}</h3>
+              <p className="text-sm text-gray-500">{t("이 크리에이터의 인기 영상")}</p>
             </div>
             
             {/* Top 3 영상 그리드 */}
@@ -261,7 +264,7 @@ export default function TodayCreatorSection({ analysisReel, topVideos }: TodayCr
                           className={`px-4 py-2 rounded-full text-sm font-bold flex items-center gap-1.5 shadow-md flex-shrink-0 ${getRankBadgeStyle(rank)}`}
                         >
                           <Crown className="w-4 h-4" />
-                          {`${rank}위`}
+                          {t.format("{v0}위", {v0: rank})}
                         </div>
                         {video.title && (
                           <p className="text-lg font-medium text-white truncate drop-shadow-lg">

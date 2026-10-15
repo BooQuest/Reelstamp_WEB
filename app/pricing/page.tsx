@@ -1,3 +1,5 @@
+
+import { getUiText } from '@/app/i18n/server';
 import { getPassProducts, getPassAvailability } from '@/app/lib/passes/server';
 import Link from 'next/link';
 import PassCatalog from '@/app/components/features/passes/PassCatalog';
@@ -5,6 +7,7 @@ import PassCatalog from '@/app/components/features/passes/PassCatalog';
 export const dynamic = 'force-dynamic';
 
 export default async function PricingPage() {
+  const t = await getUiText();
   const [products, availability] = await Promise.all([
     getPassProducts(),
     getPassAvailability(),
@@ -17,14 +20,12 @@ export default async function PricingPage() {
             REELSTAMP PASS
           </p>
           <h1 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">
-            릴스탬프 이용권
-          </h1>
+            {t("릴스탬프 이용권")}</h1>
           <Link
             href="/plan"
             className="mt-6 inline-block text-sm font-semibold text-[#D93256] underline underline-offset-4"
           >
-            내 이용권 · 결제 내역
-          </Link>
+            {t("내 이용권 · 결제 내역")}</Link>
         </div>
         <div className="overflow-hidden rounded-[28px]">
           <PassCatalog

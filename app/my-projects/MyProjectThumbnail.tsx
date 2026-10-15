@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import Image from 'next/image';
 import ClipPlayer from '../reels-maker/components/ClipPlayer';
@@ -27,6 +29,7 @@ export default function MyProjectThumbnail({
   templateThumbnailUrl,
   alt,
 }: MyProjectThumbnailProps) {
+  const t = useUiText();
   const [failedProjectSrc, setFailedProjectSrc] = useState<string | null>(null);
   const projectSrc = projectThumbnailUrl?.trim() || '';
   const templateSrc = templateThumbnailUrl?.trim() || '';
@@ -84,7 +87,6 @@ export default function MyProjectThumbnail({
 
   return (
     <div className="flex h-full items-center justify-center text-sm text-white/35">
-      썸네일 없음
-    </div>
+      {t("썸네일 없음")}</div>
   );
 }

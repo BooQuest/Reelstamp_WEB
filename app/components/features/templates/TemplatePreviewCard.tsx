@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { Bookmark } from 'lucide-react';
 import type { TemplateSummary } from '@/app/hooks/useSavedTemplates';
@@ -21,6 +23,7 @@ export default function TemplatePreviewCard({
   template, offset, titleId, isSaved, isSaving, isPlaybackFallbackVisible,
   onSave, onPlaybackFallbackVisibilityChange,
 }: Props) {
+  const t = useUiText();
   const isActive = offset === 0;
   const distance = Math.abs(offset);
   const offsetY = offset > 0 ? 8 + (distance - 1) * 8 : 22 + (distance - 1) * 12;
@@ -58,7 +61,7 @@ export default function TemplatePreviewCard({
         className="pointer-events-none absolute left-4 top-4 z-40"
       />
       <button type="button" onClick={onSave} disabled={isSaving}
-        aria-pressed={isSaved} aria-label={isSaved ? `${template.title} 저장 취소` : `${template.title} 저장`}
+        aria-pressed={isSaved} aria-label={t.format(isSaved ? '{v0} 저장 취소' : '{v0} 저장', {v0: template.title})}
         className="absolute top-4 right-4 z-40 w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center hover:bg-white/30 transition-colors disabled:opacity-50">
         <Bookmark className={isSaved ? 'text-[#FF4D6D]' : 'text-white'} fill={isSaved ? '#FF4D6D' : 'none'} aria-hidden="true" />
       </button>

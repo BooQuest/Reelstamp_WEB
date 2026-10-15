@@ -1,5 +1,7 @@
 // 로딩 오버레이 컴포넌트: 전체 화면 로딩 표시
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
@@ -11,6 +13,7 @@ interface LoadingOverlayProps {
 }
 
 export default function LoadingOverlay({ isVisible, text = '신청 중...', progress }: LoadingOverlayProps) {
+  const t = useUiText();
   return (
     <AnimatePresence>
       {isVisible && (
@@ -80,7 +83,7 @@ export default function LoadingOverlay({ isVisible, text = '신청 중...', prog
                   </span>
                 </div>
                 {progress !== undefined && (
-                  <p className="text-xs font-semibold text-gray-600">{Math.round(progress)}%</p>
+                  <p className="text-xs font-semibold text-gray-600">{t(Math.round(progress))}%</p>
                 )}
               </div>
             </motion.div>

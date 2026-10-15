@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { authFetch } from '@/app/lib/auth/browser-session';
 
@@ -59,6 +61,7 @@ export default function InstagramShareButton({
   onShared,
   variant = 'primary',
 }: InstagramShareButtonProps) {
+  const t = useUiText();
   const [modalType, setModalType] = useState<InstagramShareModalType | null>(null);
   const [isSharing, setIsSharing] = useState(false);
   const modalCopy = modalType ? INSTAGRAM_SHARE_MODAL_COPY[modalType] : null;
@@ -130,7 +133,7 @@ export default function InstagramShareButton({
         ) : (
           <Instagram className="w-5 h-5" />
         )}
-        {isSharing ? '공유 준비 중...' : '인스타그램에 공유'}
+        {t(isSharing ? '공유 준비 중...' : '인스타그램에 공유')}
       </button>
 
       {modalCopy && (
@@ -144,27 +147,26 @@ export default function InstagramShareButton({
               type="button"
               onClick={() => setModalType(null)}
               className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/80"
-              aria-label="닫기"
+              aria-label={t("닫기")}
             >
               <X className="h-4 w-4" />
             </button>
             <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-[#FF4D6D]/20 text-[#FF8AA0]">
               <Share2 className="h-5 w-5" />
             </div>
-            <h2 className="pr-10 text-lg font-bold">{modalCopy.title}</h2>
+            <h2 className="pr-10 text-lg font-bold">{t(modalCopy.title)}</h2>
             <p className="mt-3 text-sm leading-6 text-white/75">
-              {modalCopy.description}
+              {t(modalCopy.description)}
             </p>
             <p className="mt-2 text-sm leading-6 text-white/60">
-              {modalCopy.detail}
+              {t(modalCopy.detail)}
             </p>
             <button
               type="button"
               onClick={() => setModalType(null)}
               className="mt-6 w-full rounded-full bg-[#FF4D6D] py-3 text-sm font-semibold text-white shadow-lg"
             >
-              확인
-            </button>
+              {t("확인")}</button>
           </div>
         </div>
       )}

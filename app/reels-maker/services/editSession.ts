@@ -29,12 +29,12 @@ export function makerFetch(path: string, init?: RequestInit) {
   return authFetch(path, { ...init, headers });
 }
 
-export async function loadEditorSession(templateId: string, requestedId: string | null) {
+export async function loadEditorSession(templateId: string, requestedId: string | null, contentLocale: 'ko' | 'en' = 'ko') {
   if (!requestedId) {
     const token = crypto.randomUUID();
     const response = await authFetch('/api/reels-maker/sessions', {
       method: 'POST', headers: { 'Content-Type': 'application/json', [HEADER]: token },
-      body: JSON.stringify({ templateId }),
+      body: JSON.stringify({ templateId, contentLocale }),
     });
     const payload = await response.clone().json().catch(() => null);
     if (response.ok && payload?.success && payload.data?.sessionId) remember(payload.data.sessionId, token);

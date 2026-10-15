@@ -1,3 +1,4 @@
+export type WadizReward = 'PASS_7D' | 'PASS_1M' | 'PASS_3M' | 'PASS_1Y';
 export type CouponType = 'WADIZ' | 'GENERAL';
 export interface CouponAvailability {
   wadizEnabled: boolean;
@@ -9,9 +10,12 @@ export type CouponRequest =
   | { couponType: 'GENERAL'; code: string };
 
 export interface EntitlementGrant {
+  displayProductName?: string;
+  displayLocale?: 'ko' | 'en';
   id: string;
   source: 'PURCHASE' | 'COUPON' | 'LEGACY';
   couponType?: CouponType | null;
+  reward?: string | null;
   productName: string;
   durationValue: number;
   durationUnit: 'DAY' | 'MONTH' | 'YEAR';
@@ -41,6 +45,6 @@ interface CouponResultBase {
 }
 
 export type CouponResult = CouponResultBase & (
-  | { couponType: 'WADIZ'; reward: 'PASS_7D' | 'PASS_1M' | 'PASS_3M' | 'PASS_1Y'; benefit: string }
+  | { couponType: 'WADIZ'; reward: WadizReward; benefit: string }
   | { couponType: 'GENERAL'; reward: null; benefit: null }
 );

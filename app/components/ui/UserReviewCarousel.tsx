@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,6 +20,7 @@ interface Review {
 
 // 사용자 리뷰 캐러셀 컴포넌트
 export default function UserReviewCarousel() {
+  const t = useUiText();
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const reviews: Review[] = [
@@ -77,7 +80,7 @@ export default function UserReviewCarousel() {
         <button
           onClick={prevReview}
           className="hidden sm:flex flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors items-center justify-center"
-          aria-label="이전 리뷰"
+          aria-label={t("이전 리뷰")}
         >
           <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
         </button>
@@ -98,7 +101,7 @@ export default function UserReviewCarousel() {
             <button
               onClick={prevReview}
               className="sm:hidden absolute left-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white/90 transition-colors flex items-center justify-center shadow-sm"
-              aria-label="이전 리뷰"
+              aria-label={t("이전 리뷰")}
             >
               <ChevronLeft className="w-4 h-4 text-gray-600" />
             </button>
@@ -107,7 +110,7 @@ export default function UserReviewCarousel() {
             <button
               onClick={nextReview}
               className="sm:hidden absolute right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-white/80 backdrop-blur-sm hover:bg-white/90 transition-colors flex items-center justify-center shadow-sm"
-              aria-label="다음 리뷰"
+              aria-label={t("다음 리뷰")}
             >
               <ChevronRight className="w-4 h-4 text-gray-600" />
             </button>
@@ -119,7 +122,7 @@ export default function UserReviewCarousel() {
                   {currentReview.profileImage ? (
                     <Image
                       src={currentReview.profileImage}
-                      alt={currentReview.name}
+                      alt={t(currentReview.name)}
                       width={96}
                       height={96}
                       className="w-full h-full object-cover"
@@ -134,7 +137,7 @@ export default function UserReviewCarousel() {
               <div className="flex-1 sm:hidden flex flex-col justify-center items-start w-full self-center">
                 {/* 이름과 조회수를 같은 줄에 배치 */}
                 <div className="flex items-center justify-between w-full gap-2">
-                  <h3 className="text-lg font-bold text-gray-700 text-left">{currentReview.name}</h3>
+                  <h3 className="text-lg font-bold text-gray-700 text-left">{t(currentReview.name)}</h3>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     {currentReview.youtubeViews && (
                       <div className="flex items-center gap-1.5">
@@ -145,7 +148,7 @@ export default function UserReviewCarousel() {
                           height={28} 
                           className="w-4 h-4"
                         />
-                        <span className="text-base font-semibold text-gray-900">{currentReview.youtubeViews}</span>
+                        <span className="text-base font-semibold text-gray-900">{t(currentReview.youtubeViews)}</span>
                       </div>
                     )}
                     {currentReview.instagramViews && (
@@ -157,13 +160,13 @@ export default function UserReviewCarousel() {
                           height={28} 
                           className="w-4 h-4"
                         />
-                        <span className="text-base font-semibold text-gray-900">{currentReview.instagramViews}</span>
+                        <span className="text-base font-semibold text-gray-900">{t(currentReview.instagramViews)}</span>
                       </div>
                     )}
                   </div>
                 </div>
                 {/* 아이디는 아래 줄 */}
-                <p className="text-sm text-gray-500 text-left mt-1">{currentReview.handle}</p>
+                <p className="text-sm text-gray-500 text-left mt-1">{t(currentReview.handle)}</p>
               </div>
             </div>
 
@@ -172,8 +175,8 @@ export default function UserReviewCarousel() {
               {/* PC: 첫 번째 줄: 이름, 핸들, 그리고 오른쪽 끝에 조회수 정보 */}
               <div className="hidden sm:flex flex-row items-center w-full justify-between">
                 <div className="flex items-center gap-3">
-                  <h3 className="text-xl font-bold text-gray-900">{currentReview.name}</h3>
-                  <p className="text-base text-gray-500">{currentReview.handle}</p>
+                  <h3 className="text-xl font-bold text-gray-900">{t(currentReview.name)}</h3>
+                  <p className="text-base text-gray-500">{t(currentReview.handle)}</p>
                 </div>
                 {/* 조회수 정보 - 오른쪽 끝 정렬 */}
                 <div className="flex items-center gap-4 flex-shrink-0">
@@ -186,7 +189,7 @@ export default function UserReviewCarousel() {
                         height={28} 
                         className="w-5 h-5"
                       />
-                      <span className="text-base font-semibold text-gray-900">{currentReview.youtubeViews}</span>
+                      <span className="text-base font-semibold text-gray-900">{t(currentReview.youtubeViews)}</span>
                     </div>
                   )}
                   {currentReview.instagramViews && (
@@ -198,7 +201,7 @@ export default function UserReviewCarousel() {
                         height={28} 
                         className="w-5 h-5"
                       />
-                      <span className="text-base font-semibold text-gray-900">{currentReview.instagramViews}</span>
+                      <span className="text-base font-semibold text-gray-900">{t(currentReview.instagramViews)}</span>
                     </div>
                   )}
                 </div>
@@ -207,12 +210,12 @@ export default function UserReviewCarousel() {
               <p className="text-base sm:text-xl text-gray-700 mt-2 sm:mt-4">
                 {currentReview.highlightedNumber ? (
                   <>
-                    {currentReview.text.split(currentReview.highlightedNumber)[0]}
-                    <span className="text-[#FF496D]">{currentReview.highlightedNumber}</span>
-                    {currentReview.text.split(currentReview.highlightedNumber)[1]}
+                    {t(currentReview.text.split(currentReview.highlightedNumber)[0])}
+                    <span className="text-[#FF496D]">{t(currentReview.highlightedNumber)}</span>
+                    {t(currentReview.text.split(currentReview.highlightedNumber)[1])}
                   </>
                 ) : (
-                  currentReview.text
+                  t(currentReview.text)
                 )}
               </p>
 
@@ -230,7 +233,7 @@ export default function UserReviewCarousel() {
                         ? 'bg-[#FF496D]'
                         : 'bg-gray-300'
                     }`}
-                    aria-label={`리뷰 ${idx + 1}로 이동`}
+                    aria-label={t.format("리뷰 {v0}로 이동", {v0: idx + 1})}
                   />
                 ))}
               </div>
@@ -243,7 +246,7 @@ export default function UserReviewCarousel() {
         <button
           onClick={nextReview}
           className="hidden sm:flex flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors items-center justify-center"
-          aria-label="다음 리뷰"
+          aria-label={t("다음 리뷰")}
         >
           <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
         </button>
@@ -263,7 +266,7 @@ export default function UserReviewCarousel() {
                 ? 'bg-[#FF496D]'
                 : 'bg-gray-300'
             }`}
-            aria-label={`리뷰 ${idx + 1}로 이동`}
+            aria-label={t.format("리뷰 {v0}로 이동", {v0: idx + 1})}
           />
         ))}
       </div>

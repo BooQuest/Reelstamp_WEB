@@ -1,0 +1,59 @@
+{
+  "source": {
+    "id": "test-only-template",
+    "title": "한국어 제목",
+    "subtitle": "설명",
+    "tags": [
+      "태그"
+    ],
+    "cuts": [
+      {
+        "id": 1,
+        "order": 1,
+        "durationSeconds": 3,
+        "captureType": "VIDEO",
+        "title": "컷",
+        "guideText": "{product} 촬영",
+        "defaultCaption": "자막"
+      }
+    ],
+    "categories": [
+      {
+        "id": "test-only-category",
+        "title": "분류"
+      }
+    ],
+    "examples": []
+  },
+  "translation": {
+    "id": "test-only-template",
+    "locale": "en",
+    "sourceHash": "5a5d5dc2e83ad45e270aad25bb362b4a7ef2dbfd36bbb021671a3ad89c370392",
+    "title": "A creator’s Reel",
+    "subtitle": "Description",
+    "tags": [
+      "tag"
+    ],
+    "cuts": [
+      {
+        "id": 1,
+        "order": 1,
+        "title": "Shot",
+        "guideText": "Film {product}",
+        "defaultCaption": "Caption"
+      }
+    ],
+    "categories": [
+      {
+        "id": "test-only-category",
+        "title": "Category"
+      }
+    ],
+    "examples": [],
+    "review": {
+      "translation": false,
+      "assets": false
+    },
+    "properNameExceptions": []
+  }
+}

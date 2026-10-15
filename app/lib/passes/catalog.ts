@@ -1,6 +1,9 @@
+import type { Locale } from '@/app/i18n/config';
 export interface PassProduct {
   plan: string;
   name: string;
+  description?: string | null;
+  locale?: Locale;
   regularPrice: number | null;
   salePrice: number;
   durationValue: number;
@@ -11,6 +14,8 @@ export interface PassProduct {
 export interface PassOrder {
   orderId: string;
   productName: string;
+  displayProductName?: string;
+  displayLocale?: Locale;
   price: number;
   durationValue: number;
   durationUnit: PassProduct['durationUnit'];
@@ -21,10 +26,15 @@ export interface PassOrder {
 }
 export function durationLabel(
   product: Pick<PassProduct, 'durationValue' | 'durationUnit'>,
+  locale: Locale = 'ko',
 ) {
+  if (locale === 'en') {
+    const unit = { DAY: 'day', MONTH: 'month', YEAR: 'year' }[product.durationUnit];
+    return `${product.durationValue} ${unit}${product.durationValue === 1 ? '' : 's'}`;
+  }
   return `${product.durationValue}${{ DAY: '일', MONTH: '개월', YEAR: '년' }[product.durationUnit]}`;
 }
-export function parseProducts(value: unknown): PassProduct[] {
+export function parseProducts(value: unknown, locale: Locale = 'ko'): PassProduct[] {
   if (!Array.isArray(value)) throw new Error('Invalid catalog');
   const codes = new Set<string>();
   for (const item of value) {
@@ -51,6 +61,7 @@ export function parseProducts(value: unknown): PassProduct[] {
       ({
         plan,
         name,
+        description,
         price,
         salePrice,
         durationValue,
@@ -61,6 +72,8 @@ export function parseProducts(value: unknown): PassProduct[] {
         ({
           plan,
           name,
+          description: typeof description === 'string' ? description : null,
+          locale,
           regularPrice:
             Number.isSafeInteger(price?.regularPrice) && price.regularPrice > 0
               ? price.regularPrice

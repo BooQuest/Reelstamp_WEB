@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
@@ -15,6 +17,7 @@ export default function CouponDialog({ availability, onAvailabilityChange, onClo
   onClose: () => void;
   onRegistered: (result: CouponResult) => void;
 }) {
+  const t = useUiText();
   const dialog = useRef<HTMLDialogElement>(null);
   const submitting = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -105,12 +108,12 @@ export default function CouponDialog({ availability, onAvailabilityChange, onClo
       }}
       className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-2xl border-0 bg-white p-6 text-gray-900 shadow-2xl backdrop:bg-black/50 backdrop:backdrop-blur-sm sm:p-8"
     >
-      <button type="button" onClick={onClose} disabled={pending} aria-label="닫기"
+      <button type="button" onClick={onClose} disabled={pending} aria-label={t("닫기")}
         className="absolute right-3 top-3 rounded-full p-2 text-gray-400 hover:bg-gray-100 disabled:opacity-50">
         <X className="h-5 w-5" />
       </button>
       <h2 id="coupon-title" ref={heading} tabIndex={-1} className="mb-4 pr-6 text-2xl font-bold outline-none">
-        {result ? '쿠폰 등록 완료 🎉' : '쿠폰 등록'}
+        {t(result ? '쿠폰 등록 완료 🎉' : '쿠폰 등록')}
       </h2>
       {!result && <CouponTabs value={type} availability={availability} disabled={pending} onChange={(next) => {
         if (submitting.current || !isCouponEnabled(availability, next)) return;

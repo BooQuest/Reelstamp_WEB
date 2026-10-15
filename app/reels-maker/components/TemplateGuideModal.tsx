@@ -1,4 +1,6 @@
 'use client';
+import { useUiText } from '@/app/i18n/LocaleProvider';
+
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -53,6 +55,7 @@ export default function TemplateGuideModal({
   onPrimaryAction,
   onSelectReel,
 }: Props) {
+  const t = useUiText();
   const activeCutIndex = typeof step === 'number' ? step : null;
   const activeCut = activeCutIndex === null ? null : cuts[activeCutIndex] ?? null;
   const currentReel = exampleReels[currentReelIndex] ?? null;
@@ -132,11 +135,11 @@ export default function TemplateGuideModal({
   const title =
     step === 'overview'
       ? templateTitle
-      : '이 컷의 포인트';
+      : t('이 컷의 포인트');
   const body =
     step === 'overview'
-      ? getTrimmedText(templateOverview) || FALLBACK_OVERVIEW
-      : getTrimmedText(activeCut?.guideText) || FALLBACK_CUT_GUIDE;
+      ? getTrimmedText(templateOverview) || t(FALLBACK_OVERVIEW)
+      : getTrimmedText(activeCut?.guideText) || t(FALLBACK_CUT_GUIDE);
 
   const primaryLabel = activeCut?.isFixed ? '컷 확인하기' : '갤러리 불러오기';
 
@@ -160,7 +163,7 @@ export default function TemplateGuideModal({
             type="button"
             onClick={handlePreviousGuideStep}
             className="absolute left-2 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-black/55 text-white shadow-lg transition-transform hover:scale-105"
-            aria-label="이전 가이드"
+            aria-label={t("이전 가이드")}
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
@@ -170,7 +173,7 @@ export default function TemplateGuideModal({
             type="button"
             onClick={handleNextGuideStep}
             className="absolute right-2 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-black/55 text-white shadow-lg transition-transform hover:scale-105"
-            aria-label="다음 가이드"
+            aria-label={t("다음 가이드")}
           >
             <ChevronRight className="h-5 w-5" />
           </button>
@@ -184,13 +187,12 @@ export default function TemplateGuideModal({
       <div className="relative flex max-h-[calc(100dvh-32px)] w-full max-w-sm flex-col overflow-hidden rounded-[28px] bg-[#1E2A3B] text-white shadow-2xl">
         <div className="relative h-[52px] shrink-0 px-4 pt-4">
           <h2 className="pointer-events-none absolute inset-x-0 top-5 min-w-0 text-center text-lg font-semibold">
-            템플릿 가이드
-          </h2>
+            {t("템플릿 가이드")}</h2>
           <button
             type="button"
             onClick={onClose}
             className="absolute right-4 top-4 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/55 text-white"
-            aria-label="템플릿 가이드 닫기"
+            aria-label={t("템플릿 가이드 닫기")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -212,8 +214,7 @@ export default function TemplateGuideModal({
               }`}
               aria-current={step === 'overview'}
             >
-              전체
-            </button>
+              {t("전체")}</button>
             {cuts.map((cut, index) => {
               const isActive = step === index;
               return (
@@ -232,10 +233,10 @@ export default function TemplateGuideModal({
                         ? 'bg-[#FF4D6D] text-white shadow-lg shadow-[#FF4D6D]/25'
                         : 'bg-[#111A29] text-white/90 hover:text-white'
                     }`}
-                    aria-label={`컷${index + 1}`}
+                    aria-label={t.format("컷{v0}", {v0: index + 1})}
                     aria-current={isActive}
                   >
-                    {index + 1}
+                    {t(index + 1)}
                   </button>
                 </div>
               );
@@ -263,7 +264,7 @@ export default function TemplateGuideModal({
                     />
                     <img
                       src={cutMedia.src}
-                      alt="컷 예시"
+                      alt={t("컷 예시")}
                       className={`pointer-events-none absolute inset-0 z-10 h-full w-full object-contain transition-opacity duration-200 ${
                         loadedMediaBySrc[cutMedia.src] ? 'opacity-100' : 'opacity-0'
                       }`}
@@ -293,7 +294,7 @@ export default function TemplateGuideModal({
                   <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-white/15">
                     <Play className="h-5 w-5" />
                   </div>
-                  <p className="text-xs font-semibold">예시 준비중</p>
+                  <p className="text-xs font-semibold">{t("예시 준비중")}</p>
                 </div>
               )}
             </div>
@@ -310,7 +311,7 @@ export default function TemplateGuideModal({
                   className={`h-2 rounded-full transition-all ${
                     index === currentReelIndex ? 'w-5 bg-[#FF4D6D]' : 'w-2 bg-white/35'
                   }`}
-                  aria-label={`${index + 1}번 릴스로 이동`}
+                  aria-label={t.format("{v0}번 릴스로 이동", {v0: index + 1})}
                   aria-current={index === currentReelIndex}
                 />
               ))}
@@ -326,7 +327,7 @@ export default function TemplateGuideModal({
             onClick={onPrimaryAction}
             className="h-12 w-full rounded-full bg-[#FF4D6D] px-4 text-sm font-semibold text-white shadow-lg transition hover:brightness-105"
           >
-            {primaryLabel}
+            {t(primaryLabel)}
           </button>
         </div>}
       </div>
