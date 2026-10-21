@@ -381,6 +381,8 @@ export default function AllTemplatesClient() {
                       'relative aspect-[3/4] w-full overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5 sm:rounded-[28px]',
                     titleClassName:
                       'mt-3 block w-full truncate text-center text-sm font-semibold text-gray-900 sm:text-base',
+                    // TODO: Remove this override once this template's functionality is ready. Keep its stored tags intact.
+                    showComingSoonTags: template.id !== 'tpl-work-clothes-vs-weekend-1',
                   })
                 )}
               </div>
