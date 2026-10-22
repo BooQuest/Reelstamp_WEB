@@ -30,6 +30,7 @@ afterEach(() => {
 
 function setup(overrides: Partial<React.ComponentProps<typeof FinalPreview>> = {}) {
   const props = {
+    templateId: 'template',
     sessionId: 10, finalVideoUrl: 'https://media.test/final.mp4', finalVideoMimeType: 'video/mp4',
     finalPosterUrl: null, templateTitle: '테스트', downloadToastMessage: null, isPreviewOpen: false,
     onOpenPreview: vi.fn(), onClosePreview: vi.fn(), onDownload: vi.fn(), onDone: vi.fn(), onShared: vi.fn(),

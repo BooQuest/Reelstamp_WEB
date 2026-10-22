@@ -7,10 +7,12 @@ import { authFetch } from '@/app/lib/auth/browser-session';
 import { useState } from 'react';
 import { Instagram, Loader2, Share2, X } from 'lucide-react';
 import { isLikelyMobileDevice } from './utils/device';
+import { trackReelsEvent } from '@/app/lib/analytics';
 
 type InstagramShareModalType = 'desktop' | 'unsupported' | 'error';
 
 type InstagramShareButtonProps = {
+  templateId: string;
   sessionId: number | null;
   finalVideoUrl: string | null;
   finalVideoMimeType: string;
@@ -54,6 +56,7 @@ const guessShareVideoExtension = (mimeType: string, url: string) => {
 };
 
 export default function InstagramShareButton({
+  templateId,
   sessionId,
   finalVideoUrl,
   finalVideoMimeType,
@@ -68,6 +71,7 @@ export default function InstagramShareButton({
 
   const handleShare = async () => {
     if (!finalVideoUrl || isSharing) return;
+    trackReelsEvent('instagram_share_click', { template_id: templateId });
 
     if (!isLikelyMobileDevice()) {
       setModalType('desktop');

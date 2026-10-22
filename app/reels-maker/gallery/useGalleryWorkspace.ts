@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { trackReelsEvent } from '@/app/lib/analytics';
 import type {
   CaptionItem,
   ClipInfo,
@@ -60,6 +61,11 @@ export default function useGalleryWorkspace(options: Options) {
   const initialized = useRef<number | null>(null);
   const syncOptions = () => ({
     sessionId: sessionId!,
+    onUploaded: (kind: MediaSource['kind']) => {
+      if (session?.templateId) {
+        trackReelsEvent('media_upload', { template_id: session.templateId, media_type: kind });
+      }
+    },
     serialize: (
       task: (version: number) => Promise<ReelsMakerSessionResponse>,
     ) => latest.current.serialize(task),

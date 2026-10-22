@@ -32,6 +32,7 @@ import {
   type TemplateAccessType,
 } from '@/app/lib/templates/access';
 import { showAppToast } from '@/app/lib/ui/toast';
+import { trackReelsEvent } from '@/app/lib/analytics';
 
 type TodayTrendCardStatus = 'AVAILABLE' | 'REQUESTABLE' | 'REQUESTED' | 'COMING_SOON';
 
@@ -230,6 +231,7 @@ export default function TemplatesClient() {
     }
 
     if (isAvailableCard(activeCard) && activeCard.templateId) {
+      trackReelsEvent('template_start', { template_id: activeCard.templateId, template_name: activeCard.title });
       const destination = buildReelsMakerHref(activeCard.templateId);
       if (isPaidTemplate(activeCard) && !canUseTemplate({
         template: activeCard,

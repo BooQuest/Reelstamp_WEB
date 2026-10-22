@@ -6,8 +6,10 @@ import { DURATION_MODE_FORCED, RECOMMENDED_AUTO_STOP_SECONDS } from '../constant
 import { createConfiguredRecorder } from '../utils/media/recorder';
 import { getErrorMessage } from '../utils/errors';
 import useCameraStream from './useCameraStream';
+import { trackReelsEvent } from '@/app/lib/analytics';
 
 type Options = {
+  templateId: string;
   cuts: MakerCut[];
   activeCutIndex: number;
   sessionId: number | null;
@@ -21,7 +23,7 @@ type Options = {
   logVideoDebug: VideoDebugLogger;
 };
 
-export default function useCameraCapture({ cuts, activeCutIndex, sessionId, sessionClipMap,
+export default function useCameraCapture({ templateId, cuts, activeCutIndex, sessionId, sessionClipMap,
   previewActive, switchDisabled, shouldConfirmRetake, onRequestReplacement, onSubmit, onUploadError, logVideoDebug }: Options) {
   const camera = useCameraStream(previewActive, logVideoDebug);
   const { stream, setupCamera, reportError: setCameraError } = camera;
@@ -176,6 +178,7 @@ export default function useCameraCapture({ cuts, activeCutIndex, sessionId, sess
     };
 
     recorder.start();
+    trackReelsEvent('direct_camera', { template_id: templateId });
     setRecordingStatus('recording');
     setRecordingElapsedSeconds(0);
 

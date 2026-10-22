@@ -33,6 +33,7 @@ type Options = {
   ) => Promise<ReelsMakerSessionResponse>;
   onSession: (session: ReelsMakerSessionResponse) => void;
   onState: (state: SaveState, error: string | null) => void;
+  onUploaded?: (kind: MediaSource['kind']) => void;
 };
 
 /** One owner for original uploads and latest-state persistence. Never publishes media to the UI. */
@@ -142,6 +143,9 @@ export class SourceSync {
         this.uploadedAssets.set(key, asset);
         item.asset = asset;
         item.source.asset = asset;
+        if (!this.disposed && !item.controller.signal.aborted) {
+          this.options.onUploaded?.(item.source.kind);
+        }
         return asset;
       });
     item.pending = pending;
