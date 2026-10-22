@@ -5,7 +5,7 @@ import { getUiLocale, getUiText } from "@/app/i18n/server";
 import { englishEnabled } from "@/app/i18n/config";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Praise } from "next/font/google";
-import { GoogleAnalytics } from "@next/third-parties/google";
+import GoogleTag from "@/app/components/analytics/GoogleTag";
 import "./globals.css";
 import Header from "@/app/components/ui/Header";
 import Footer from "@/app/components/ui/Footer";
@@ -53,8 +53,6 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
-  
   // 서버에서 유저 정보 미리 가져오기 (하이드레이션 패턴)
   const initialUser = await getCurrentUser();
   const locale = await getUiLocale();
@@ -62,6 +60,7 @@ export default async function RootLayout({
   return (
     <html lang={locale} className="h-full">
       <head>
+        <GoogleTag />
         {/* Pretendard 폰트 CDN */}
         <link rel="preconnect" href="https://cdn.jsdelivr.net" />
         <link
@@ -93,11 +92,6 @@ export default async function RootLayout({
           </AuthProvider>
         </QueryProvider>
         </LocaleProvider>
-
-        {/* Google Analytics 4 */}
-        {gaMeasurementId && (
-          <GoogleAnalytics gaId={gaMeasurementId} />
-        )}
 
         {/* Instagram Embed Script - beforeInteractive로 빠른 로딩 */}
         

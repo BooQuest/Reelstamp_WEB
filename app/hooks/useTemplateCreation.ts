@@ -17,6 +17,7 @@ import {
   TEMPLATE_PAYMENT_PATH,
 } from '@/app/lib/templates/access';
 import { showAppToast } from '@/app/lib/ui/toast';
+import { trackReelsEvent } from '@/app/lib/analytics';
 
 export function useTemplateCreation(returnUrl: string) {
   const router = useRouter();
@@ -40,6 +41,8 @@ export function useTemplateCreation(returnUrl: string) {
       return;
     }
     if (isAccessLoading(template)) return;
+
+    trackReelsEvent('template_start', { template_id: template.id, template_name: template.title });
 
     const destination = `/reels-maker?templateId=${encodeURIComponent(template.id)}&returnUrl=${encodeURIComponent(returnUrl)}`;
     if (isPaidTemplate(template) && !canUseTemplate({ template, isAuthenticated, user, subscription })) {

@@ -6,6 +6,7 @@ import { deferred, FakeMediaRecorder, makeCut, makeStream } from '../test/fixtur
 
 const log = vi.fn();
 const makeOptions = () => ({
+  templateId: 'template',
   cuts: [makeCut()], activeCutIndex: 0, sessionId: 10, sessionClipMap: { 1: 101 },
   previewActive: true, switchDisabled: false, shouldConfirmRetake: false,
   onRequestReplacement: vi.fn(), onSubmit: vi.fn().mockResolvedValue(undefined),
@@ -14,6 +15,7 @@ const makeOptions = () => ({
 let streams: MediaStream[];
 let getUserMedia: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  vi.stubGlobal('gtag', vi.fn());
   streams = [];
   getUserMedia = vi.fn().mockImplementation(async () => { const stream = makeStream(); streams.push(stream); return stream; });
   Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia, enumerateDevices: async () => [] } });
@@ -30,6 +32,9 @@ describe('camera capture', () => {
     await waitFor(() => expect(result.current.stream).not.toBeNull());
     await act(async () => { await result.current.startRecording(); });
     expect(result.current.recordingStatus).toBe('recording');
+    expect(window.gtag).toHaveBeenCalledExactlyOnceWith('event', 'direct_camera', {
+      template_id: 'template', send_to: 'G-8YXS25H07Z',
+    });
     await act(async () => { result.current.stopRecording(); });
     expect(props.onSubmit).toHaveBeenCalledWith(0, expect.objectContaining({ duration: 3, mimeType: 'video/webm', blob: expect.any(Blob) }), 'recording');
     expect(result.current.recordingStatus).toBe('done');
@@ -55,6 +60,7 @@ describe('camera capture', () => {
     await act(async () => { await result.current.startRecording(); });
     expect(props.onRequestReplacement).toHaveBeenCalledWith(0);
     expect(FakeMediaRecorder.instances).toHaveLength(0);
+    expect(window.gtag).not.toHaveBeenCalled();
     await act(async () => { await result.current.startRecording({ replaceExisting: true }); });
     expect(result.current.recordingStatus).toBe('recording');
   });

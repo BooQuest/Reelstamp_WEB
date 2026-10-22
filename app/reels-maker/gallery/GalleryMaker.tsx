@@ -1,5 +1,6 @@
 'use client';
 import { useUiText } from '@/app/i18n/LocaleProvider';
+import { trackReelsEvent } from '@/app/lib/analytics';
 
 import {
   useEffect,
@@ -53,6 +54,12 @@ type Props = {
 };
 export default function GalleryMaker({ ref, ...props }: Props) {
   const t = useUiText();
+  const trackedEntry = useRef<number | null>(null);
+  useEffect(() => {
+    if (trackedEntry.current === props.session.sessionId) return;
+    trackedEntry.current = props.session.sessionId;
+    trackReelsEvent('edit_start', { template_id: props.session.templateId });
+  }, [props.session.sessionId, props.session.templateId]);
   const {
     cuts,
     clips,

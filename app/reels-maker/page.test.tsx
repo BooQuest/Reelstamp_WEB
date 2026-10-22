@@ -80,6 +80,7 @@ let templateCuts: ReturnType<typeof makeCut>[];
 let getUserMedia: ReturnType<typeof vi.fn>;
 let pickerClick: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
+  vi.stubGlobal('gtag', vi.fn());
   navigation.auth.user.guest = true;
   navigation.auth.user.provider = 'GUEST';
   navigation.router.replace.mockReset();
@@ -332,6 +333,13 @@ describe('gallery-only maker integration', () => {
         screen.queryByRole('dialog', { name: '자막을 편집할까요?' }),
       ).not.toBeInTheDocument();
       await screen.findByText('릴스 제작 완료');
+      const calls = vi.mocked(window.gtag!).mock.calls;
+      expect(calls.filter(([, name]) => name === 'edit_start')).toHaveLength(1);
+      expect(calls.filter(([, name]) => name === 'media_upload')).toEqual([
+        ['event', 'media_upload', { template_id: 'template', media_type: type.startsWith('image/') ? 'image' : 'video', send_to: 'G-8YXS25H07Z' }],
+      ]);
+      expect(calls.filter(([, name]) => name === 'edit_complete')).toHaveLength(1);
+      expect(calls.some(([, name]) => name === 'direct_camera')).toBe(false);
     },
   );
   it('applies and allows undo during a blocked upload, then waits in preparation before completing', async () => {
@@ -701,6 +709,7 @@ it('reopens a failed production for editing without creating another project', a
   await screen.findByRole('button', { name: '완료' });
   expect(fetchMock.mock.calls.filter(([url]) => url === '/api/reels-maker/sessions')).toHaveLength(1);
   expect(alert).toHaveBeenCalled();
+  expect(vi.mocked(window.gtag!).mock.calls.some(([, name]) => name === 'edit_complete')).toBe(false);
 });
 
 
@@ -720,6 +729,11 @@ describe('BGM on completed projects', () => {
     expect(screen.getByRole('button', { name: 'BGM과 함께 업로드' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '영상 다운로드' }));
     expect(downloadClick).toHaveBeenCalledOnce();
+    expect(window.gtag).toHaveBeenCalledWith('event', 'download_click', { template_id: 'template', send_to: 'G-8YXS25H07Z' });
+    fireEvent.click(screen.getByRole('button', { name: '인스타그램에 공유' }));
+    expect(vi.mocked(window.gtag!).mock.calls.filter(([, name]) => name === 'instagram_share_click')).toEqual([
+      ['event', 'instagram_share_click', { template_id: 'template', send_to: 'G-8YXS25H07Z' }],
+    ]);
     expect(screen.getByText('다운로드 완료!')).toBeInTheDocument();
     expect(open).not.toHaveBeenCalled();
   });
@@ -732,5 +746,6 @@ describe('BGM on completed projects', () => {
     expect(screen.getByText('추천 BGM · Feeling Good')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'BGM과 함께 업로드' })).toBeEnabled();
     expect(fetchMock.mock.calls.some(([url, init]) => url === '/api/reels-maker/sessions' && init?.method === 'POST')).toBe(false);
+    expect(window.gtag).not.toHaveBeenCalled();
   });
 });

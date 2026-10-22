@@ -11,6 +11,7 @@ import { isBgmGuideDismissed } from '../utils/bgmGuidePreference';
 import BgmUploadGuide from './BgmUploadGuide';
 
 type Props = {
+  templateId: string;
   sessionId: number | null;
   finalVideoUrl: string | null;
   finalVideoMimeType: string;
@@ -29,6 +30,7 @@ type Props = {
 };
 
 export default function FinalPreview({
+  templateId,
   sessionId,
   finalVideoUrl,
   finalVideoMimeType,
@@ -125,6 +127,7 @@ export default function FinalPreview({
               <Music2 className="h-5 w-5" aria-hidden="true" />{t("BGM과 함께 업로드")}</button>
           )}
           <InstagramShareButton
+            templateId={templateId}
             sessionId={sessionId}
             finalVideoUrl={finalVideoUrl}
             finalVideoMimeType={finalVideoMimeType}

@@ -1,5 +1,6 @@
 'use client';
 import { useUiLocale, useUiText } from '@/app/i18n/LocaleProvider';
+import { trackReelsEvent } from '@/app/lib/analytics';
 
 
 import { ProjectContentContext } from './services/projectContentContext';
@@ -226,6 +227,7 @@ function ReelsMakerInner() {
   const [preparing, setPreparing] = useState(false);
   const [preparationError, setPreparationError] = useState<string | null>(null);
   const completing = useRef(false);
+  const trackedCompletions = useRef(new Set<string>());
   const completionStartedAt = useRef<number | null>(null);
   const completionPreparationState = useRef('saved');
   const galleryMakerRef = useRef<GalleryMakerHandle>(null);
@@ -992,6 +994,11 @@ function ReelsMakerInner() {
         if (isCancelled) return;
         if (data.status === 'COMPLETED' && data.finalVideoUrl) {
           finished = true;
+          const completionKey = `${sessionId}:${data.processingJobId ?? data.finalVideoUrl}`;
+          if (templateId && !trackedCompletions.current.has(completionKey)) {
+            trackedCompletions.current.add(completionKey);
+            trackReelsEvent('edit_complete', { template_id: templateId });
+          }
           setFinalVideoUrl(data.finalVideoUrl || null);
           setFinalVideoMimeType('video/mp4');
           completing.current = false;
@@ -1038,7 +1045,7 @@ function ReelsMakerInner() {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [sessionId, stage, gallerySession, createReelsSession, t]);
+  }, [sessionId, stage, gallerySession, createReelsSession, t, templateId]);
 
   useEffect(() => {
     if (!downloadToastMessage) return;
@@ -1100,7 +1107,8 @@ function ReelsMakerInner() {
   }, [deleteSelectedCaption, resolvedSelectedCaptionId, stage]);
 
   const handleDownload = () => {
-    if (!finalVideoUrl) return;
+    if (!finalVideoUrl || !sessionId || !templateId) return;
+    trackReelsEvent('download_click', { template_id: templateId });
     const anchor = document.createElement('a');
     const downloadUrl = `/api/reels-maker/download?sessionId=${sessionId}`;
     anchor.href = downloadUrl;
@@ -1281,6 +1289,7 @@ function ReelsMakerInner() {
   if (stage === 'preview') {
     return (
       <FinalPreview
+        templateId={template.id}
         sessionId={sessionId}
         finalVideoUrl={finalVideoUrl}
         finalVideoMimeType={finalVideoMimeType}

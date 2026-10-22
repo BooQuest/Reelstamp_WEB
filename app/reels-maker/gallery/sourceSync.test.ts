@@ -42,11 +42,13 @@ const edit = {
 function setup() {
   const states = vi.fn();
   const onSession = vi.fn();
+  const onUploaded = vi.fn();
   const sync = new SourceSync({
     sessionId: 1,
     serialize: (task) => task(1),
     onState: states,
     onSession,
+    onUploaded,
   });
   sync.seed(empty, session);
   const source: MediaSource = {
@@ -56,7 +58,7 @@ function setup() {
     url: 'blob:a',
     file: new File(['x'], 'a.mp4'),
   };
-  return { sync, source, states, onSession };
+  return { sync, source, states, onSession, onUploaded };
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -82,7 +84,7 @@ describe('source synchronization', () => {
   it('coalesces edits while uploading and uploads a reused original only once', async () => {
     const upload = deferred<MediaAsset>();
     vi.mocked(uploadOriginal).mockReturnValue(upload.promise);
-    const { sync, source } = setup();
+    const { sync, source, onUploaded } = setup();
     sync.prepare(source, { width: 100, height: 100, duration: 5 });
     for (const id of ['first', 'latest']) {
       sync.register({ id, clipId: 1, source, edit });
@@ -100,6 +102,7 @@ describe('source synchronization', () => {
     sync.schedule(snapshot('again'));
     await sync.flush();
     expect(uploadOriginal).toHaveBeenCalledTimes(1);
+    expect(onUploaded).toHaveBeenCalledExactlyOnceWith('video');
     sync.dispose();
   });
   it('serializes a newer selection after an old response without changing its selection', async () => {
@@ -122,18 +125,20 @@ describe('source synchronization', () => {
   });
   it('retries failed uploads but stops writes on a version conflict', async () => {
     vi.mocked(uploadOriginal).mockRejectedValueOnce(new Error('offline'));
-    const { sync, source, states } = setup();
+    const { sync, source, states, onUploaded } = setup();
     sync.prepare(source, { width: 100, height: 100, duration: 5 });
     sync.register({ id: 'a', clipId: 1, source, edit });
     sync.schedule(snapshot('a'));
     await expect(sync.flush()).rejects.toThrow('offline');
     expect(states).toHaveBeenCalledWith('error', 'offline');
+    expect(onUploaded).not.toHaveBeenCalled();
     vi.mocked(applyEditorState).mockRejectedValueOnce(
       new EditorConflict('conflict'),
     );
     await expect(sync.flush()).rejects.toThrow('conflict');
     await expect(sync.flush()).rejects.toBeInstanceOf(EditorConflict);
     expect(applyEditorState).toHaveBeenCalledTimes(1);
+    expect(onUploaded).toHaveBeenCalledExactlyOnceWith('video');
     sync.dispose();
   });
   it('limits uploads to one at a time and aborts work no longer referenced', async () => {
@@ -155,7 +160,7 @@ describe('source synchronization', () => {
 it('does not register or apply revisions after an upload resolves during discard', async () => {
   const upload = deferred<MediaAsset>();
   vi.mocked(uploadOriginal).mockReturnValue(upload.promise);
-  const { sync, source, onSession } = setup();
+  const { sync, source, onSession, onUploaded } = setup();
   sync.prepare(source, { width: 100, height: 100, duration: 5 });
   sync.register({ id: 'discarded', clipId: 1, source, edit });
   sync.schedule(snapshot('discarded'));
@@ -166,4 +171,5 @@ it('does not register or apply revisions after an upload resolves during discard
   expect(editorRequest).not.toHaveBeenCalled();
   expect(applyEditorState).not.toHaveBeenCalled();
   expect(onSession).not.toHaveBeenCalled();
+  expect(onUploaded).not.toHaveBeenCalled();
 });

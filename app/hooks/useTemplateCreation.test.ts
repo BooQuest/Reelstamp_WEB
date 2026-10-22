@@ -15,11 +15,12 @@ const paid: TemplateSummary = { id: 'a/b', title: 'Paid', subtitle: '', tags: []
 const destination = '/reels-maker?templateId=a%2Fb&returnUrl=%2Fsaved-reels';
 
 beforeEach(() => {
+  window.gtag = vi.fn();
   vi.useFakeTimers();
   state.beta = false;
   state.auth = { isAuthenticated: true, user: { role: 'USER', guest: false }, subscription: { passActive: true }, isLoadingSubscription: false };
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.clearAllMocks(); delete window.gtag; });
 
 it.each([
   { authenticated: false, guest: false, accessType: 'FREE' as const, path: `/login?returnUrl=${encodeURIComponent(destination)}` },
@@ -35,6 +36,9 @@ it.each([
   act(() => result.current.create({ ...paid, accessType }));
   act(() => vi.advanceTimersByTime(800));
   expect(state.push).toHaveBeenCalledExactlyOnceWith(path);
+  expect(window.gtag).toHaveBeenCalledExactlyOnceWith('event', 'template_start', {
+    template_id: paid.id, template_name: paid.title, send_to: 'G-8YXS25H07Z',
+  });
 });
 
 it('does not proceed while checking a paid pass, or when a template is coming soon', () => {
@@ -45,6 +49,7 @@ it('does not proceed while checking a paid pass, or when a template is coming so
   act(() => result.current.create({ ...paid, status: 'COMING_SOON' }));
   act(() => vi.runAllTimers());
   expect(state.push).not.toHaveBeenCalled();
+  expect(window.gtag).not.toHaveBeenCalled();
 });
 
 it('cancels a pending login redirect when the preview closes', () => {
