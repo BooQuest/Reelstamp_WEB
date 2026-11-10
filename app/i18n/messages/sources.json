@@ -1042,5 +1042,10 @@
   "전체 이용기간: {date}까지": "billing.m84a532b454b8",
   "{date}까지": "billing.m92ec021d6213",
   "{date} (한국 시간)": "billing.m31e25838f514",
-  "{years} {months}": "billing.m1594656a64e3"
+  "{years} {months}": "billing.m1594656a64e3",
+  "추가": "editor.captionAdd",
+  "텍스트 추가": "editor.captionAddLabel",
+  "스타일": "editor.captionStyleTab",
+  "정렬": "editor.captionAlignTab",
+  "배경": "editor.captionBackgroundTab"
 }

@@ -77,14 +77,14 @@ export default function CaptionToolbar({
       role="toolbar"
       aria-label={t("텍스트 도구")}
       data-caption-toolbar
-      className="fixed inset-x-0 z-[85] mx-auto w-full max-w-2xl shrink-0 space-y-2 border-t border-white/20 bg-[#182335] p-3 text-xs text-white shadow-xl md:static"
+      className="fixed inset-x-0 z-[85] mx-auto w-full max-w-2xl shrink-0 space-y-2 border-t border-white/20 bg-[#182335] p-3 text-xs text-white shadow-xl"
       style={{ bottom }}
       onPointerDown={(e) => {
         if ((e.target as HTMLElement).closest('button')) e.preventDefault();
       }}
     >
       <div className="flex items-center justify-between gap-1">
-        {[...Object.keys(TOOLS), t('색상')].map((name) => (
+        {[...Object.keys(TOOLS), '색상'].map((name) => (
           <button
             type="button"
             key={name}

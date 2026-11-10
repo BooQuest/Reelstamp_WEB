@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:localisation": "node --test scripts/localisation/template-tool.test.mjs"
+    "test:localisation": "node --test scripts/localisation/template-tool.test.mjs",
+    "test:captions:browser": "node scripts/caption-browser/run.mjs"
   },
   "dependencies": {
     "@next/third-parties": "^16.1.1",
@@ -27,6 +28,7 @@
     "react-dom": "19.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -38,6 +40,7 @@
     "jsdom": "^26.1.0",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vite": "7.3.5",
     "vitest": "^3.2.4"
   }
 }

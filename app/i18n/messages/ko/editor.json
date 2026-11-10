@@ -304,5 +304,10 @@
   "mf0f857d7c537": "썸네일을 생성하지 못했습니다.",
   "m75a285383b51": "썸네일 캔버스를 준비하지 못했습니다.",
   "m1ff1ab5e4893": "포스터 생성 실패",
-  "ma013b99c5310": "영상 코덱을 지원하지 않습니다."
+  "ma013b99c5310": "영상 코덱을 지원하지 않습니다.",
+  "captionAdd": "추가",
+  "captionAddLabel": "텍스트 추가",
+  "captionStyleTab": "스타일",
+  "captionAlignTab": "정렬",
+  "captionBackgroundTab": "배경"
 }

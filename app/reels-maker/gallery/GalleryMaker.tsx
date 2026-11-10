@@ -12,7 +12,7 @@ import {
   type Ref,
 } from 'react';
 import {
-  Pencil,
+  Plus,
   Play,
   Pause,
   Redo2,
@@ -302,7 +302,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
                     !caption.editingCaptionId &&
                     captionPointers.current.size === 0
                   )
-                    history.commitAfterRender();
+                    history.commitAfterRender(() => !actionsRef.current.caption.editingCaptionId);
                 }}
                 onResizePointerDown={caption.handleResizeHandlePointerDown}
                 onResizePointerMove={caption.handleResizeHandlePointerMove}
@@ -462,10 +462,11 @@ export default function GalleryMaker({ ref, ...props }: Props) {
             history.begin();
             caption.addCaptionToActiveClip();
           }}
+          aria-label={t("텍스트 추가")}
           className="flex flex-col items-center gap-1 p-2 disabled:opacity-30"
         >
-          <Pencil />
-          {t("편집")}</button>
+          <Plus />
+          {t("텍스트 추가")}</button>
       </div>
 
       {workspace.editing &&

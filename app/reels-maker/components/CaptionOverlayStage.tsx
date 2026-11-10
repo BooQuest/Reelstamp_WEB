@@ -1,8 +1,8 @@
 'use client';
 import { useUiText } from '@/app/i18n/LocaleProvider';
 
-
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useRef } from 'react';
+import { flushSync } from 'react-dom';
 import type {
   MutableRefObject,
   PointerEvent as ReactPointerEvent,
@@ -13,9 +13,6 @@ import {
   CAPTION_BOX_BORDER_RADIUS_PX,
   CAPTION_BOX_PADDING_X_PX,
   CAPTION_BOX_PADDING_Y_PX,
-  CAPTION_FONT_FAMILY,
-  CAPTION_FONT_WEIGHT,
-  CAPTION_INPUT_MIN_WIDTH_PX,
   CAPTION_LINE_BREAK,
   CAPTION_LINE_HEIGHT_PX,
   CAPTION_MAX_WIDTH_PX,
@@ -28,7 +25,6 @@ import {
   CAPTION_SHADOW_BLUR_PX,
   CAPTION_SHADOW_COLOR,
   CAPTION_SHADOW_OFFSET_Y_PX,
-  CAPTION_TEXT_COLOR,
   CAPTION_WHITE_SPACE,
   CAPTION_WORD_BREAK,
 } from '../constants';
@@ -59,7 +55,7 @@ type Props = {
   onTextChange: (value: string) => void;
   onCaptionPointerDown: (
     event: ReactPointerEvent<HTMLDivElement>,
-    caption: CaptionItem
+    caption: CaptionItem,
   ) => void;
   onCaptionPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onCaptionPointerEnd: (event: ReactPointerEvent<HTMLDivElement>) => void;
@@ -71,63 +67,33 @@ type Props = {
 type CaptionTextEditorProps = {
   value: string;
   inputRef: MutableRefObject<HTMLTextAreaElement | null>;
-  maxWidthPx: number;
   onTextChange: (value: string) => void;
   onEdit: (captionId: string | null) => void;
-};
-
-const resizeTextareaToContent = (textarea: HTMLTextAreaElement) => {
-  textarea.style.height = 'auto';
-  if (textarea.scrollHeight > 0) {
-    textarea.style.height = `${textarea.scrollHeight}px`;
-  }
 };
 
 function CaptionTextEditor({
   value,
   inputRef,
-  maxWidthPx,
   onTextChange,
   onEdit,
 }: CaptionTextEditorProps) {
   const t = useUiText();
-  const localRef = useRef<HTMLTextAreaElement | null>(null);
-  const rowCount = Math.max(2, value.split('\n').length);
-
-  const handleRef = useCallback(
-    (node: HTMLTextAreaElement | null) => {
-      localRef.current = node;
-      inputRef.current = node;
-      if (node) resizeTextareaToContent(node);
-    },
-    [inputRef]
-  );
-
-  useLayoutEffect(() => {
-    if (localRef.current) resizeTextareaToContent(localRef.current);
-  }, [value]);
-
-  useEffect(
-    () => () => {
-      if (inputRef.current === localRef.current) {
-        inputRef.current = null;
-      }
-    },
-    [inputRef]
-  );
-
   return (
     <textarea
-      ref={handleRef}
+      ref={inputRef}
       value={value}
-      rows={rowCount}
+      rows={1}
       wrap="soft"
       onChange={(event) => {
         onTextChange(event.target.value);
-        resizeTextareaToContent(event.target);
       }}
       onBlur={(event) => {
-        if ((event.relatedTarget as HTMLElement | null)?.closest('[data-caption-toolbar]')) return;
+        if (
+          (event.relatedTarget as HTMLElement | null)?.closest(
+            '[data-caption-toolbar]',
+          )
+        )
+          return;
         onEdit(null);
       }}
       onKeyDown={(event) => {
@@ -139,11 +105,14 @@ function CaptionTextEditor({
       }}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
-      placeholder={t("자막을 입력하세요")}
-      className="box-border block w-full resize-none overflow-hidden border-0 bg-transparent p-0 placeholder:text-white/60 focus:outline-none"
+      placeholder={t('자막을 입력하세요')}
+      className="absolute inset-0 box-border block h-full w-full resize-none overflow-hidden border-0 bg-transparent p-0 placeholder:text-white/60 focus:outline-none"
       style={{
-        minWidth: `${CAPTION_INPUT_MIN_WIDTH_PX}px`,
-        maxWidth: `${maxWidthPx}px`,
+        // Keep the measured box unchanged while allowing descenders below the last line.
+        height: 'calc(100% + 0.15em)',
+        minWidth: 0,
+        borderRadius: 0,
+        margin: 0,
         fontFamily: 'inherit',
         fontWeight: 'inherit',
         color: 'inherit',
@@ -176,12 +145,16 @@ export default function CaptionOverlayStage({
 }: Props) {
   const t = useUiText();
   const pointerIntentRef = useRef<CaptionPointerIntent | null>(null);
-  const suppressedClickCaptionIdRef = useRef<string | null>(null);
+  const suppressClickRef = useRef(false);
+  const activePointers = useRef(new Set<number>());
 
-  const shouldSuppressClick = (captionId: string) => {
-    if (suppressedClickCaptionIdRef.current !== captionId) return false;
-    suppressedClickCaptionIdRef.current = null;
-    return true;
+  const openEditor = (captionId: string) => {
+    // Mount and focus within the tap gesture so iOS opens its software keyboard.
+    flushSync(() => {
+      onSelect(captionId);
+      onEdit(captionId);
+    });
+    inputRef.current?.focus({ preventScroll: true });
   };
 
   return (
@@ -209,20 +182,26 @@ export default function CaptionOverlayStage({
         return (
           <div
             key={caption.id}
+            data-caption-id={caption.id}
             ref={isSelected ? overlayRef : undefined}
             onClick={(event) => {
               event.stopPropagation();
               if (readOnly) return;
-              if (shouldSuppressClick(caption.id)) return;
-              if (isSelected) onEdit(caption.id);
-              else {
-                onSelect(caption.id);
-                onEdit(null);
-              }
+              if (suppressClickRef.current) return;
+              event.preventDefault();
+              openEditor(caption.id);
             }}
             onPointerDown={(event) => {
               if (readOnly) return;
-              suppressedClickCaptionIdRef.current = null;
+              activePointers.current.add(event.pointerId);
+              if (activePointers.current.size > 1) {
+                if (pointerIntentRef.current)
+                  pointerIntentRef.current.moved = true;
+                suppressClickRef.current = true;
+                onCaptionPointerDown(event, caption);
+                return;
+              }
+              suppressClickRef.current = false;
               pointerIntentRef.current = {
                 captionId: caption.id,
                 startX: event.clientX,
@@ -237,8 +216,13 @@ export default function CaptionOverlayStage({
               if (pointerIntent) {
                 const distance = Math.hypot(
                   event.clientX - pointerIntent.startX,
-                  event.clientY - pointerIntent.startY
+                  event.clientY - pointerIntent.startY,
                 );
+                if (
+                  !pointerIntent.moved &&
+                  distance <= CAPTION_TAP_MOVE_TOLERANCE_PX
+                )
+                  return;
                 if (distance > CAPTION_TAP_MOVE_TOLERANCE_PX) {
                   pointerIntent.moved = true;
                 }
@@ -247,10 +231,11 @@ export default function CaptionOverlayStage({
             }}
             onPointerUp={(event) => {
               if (readOnly) return;
+              activePointers.current.delete(event.pointerId);
               const pointerIntent = pointerIntentRef.current;
               if (pointerIntent) {
                 if (pointerIntent.moved) {
-                  suppressedClickCaptionIdRef.current = pointerIntent.captionId;
+                  suppressClickRef.current = true;
                 }
                 pointerIntentRef.current = null;
               }
@@ -258,6 +243,8 @@ export default function CaptionOverlayStage({
             }}
             onPointerCancel={(event) => {
               if (readOnly) return;
+              activePointers.current.delete(event.pointerId);
+              suppressClickRef.current = true;
               const pointerIntent = pointerIntentRef.current;
               if (pointerIntent) {
                 pointerIntentRef.current = null;
@@ -271,14 +258,10 @@ export default function CaptionOverlayStage({
               transform: anchorTransform,
               zIndex: caption.zIndex,
               boxSizing: 'border-box',
-              width: isEditing ? `${maxWidthPx}px` : undefined,
               maxWidth: `${maxWidthPx}px`,
               touchAction: 'none',
               cursor: readOnly ? 'default' : isEditing ? 'text' : 'move',
-              color: CAPTION_TEXT_COLOR,
-              fontFamily: CAPTION_FONT_FAMILY,
               fontSize: `${CAPTION_BASE_FONT_SIZE_PX * style.scale}px`,
-              fontWeight: CAPTION_FONT_WEIGHT,
               lineHeight: `${CAPTION_LINE_HEIGHT_PX * style.scale}px`,
               whiteSpace: CAPTION_WHITE_SPACE,
               overflowWrap: CAPTION_OVERFLOW_WRAP,
@@ -303,31 +286,39 @@ export default function CaptionOverlayStage({
                   ? `${Math.max(2, 3 / previewScale)}px solid rgba(255,77,109,0.9)`
                   : 'none',
               ...captionTextStyle(style),
-              ...(style.styleVersion === 'CAPTION_RENDER_V2' ? { backgroundColor: captionBackground(style) } : {}),
+              ...(style.styleVersion === 'CAPTION_RENDER_V2'
+                ? { backgroundColor: captionBackground(style) }
+                : {}),
               outlineOffset: `${Math.max(2, 4 / previewScale)}px`,
             }}
           >
-            {isEditing ? (
-              <CaptionTextEditor
-                value={caption.text}
-                inputRef={inputRef}
-                maxWidthPx={maxWidthPx}
-                onTextChange={onTextChange}
-                onEdit={onEdit}
-              />
-            ) : (
+            <div className="relative">
               <span
+                aria-hidden={isEditing || undefined}
                 className={`block whitespace-pre-wrap ${hasText ? '' : 'opacity-55'}`}
-                style={{ textAlign: style.styleVersion === 'CAPTION_RENDER_V2' ? style.textAlign || 'center' : 'center' }}
+                style={{ visibility: isEditing ? 'hidden' : undefined }}
               >
                 {hasText ? caption.text : t('자막을 입력하세요')}
+                {caption.text.endsWith('\n') ? '\u200b' : null}
               </span>
-            )}
+              {isEditing && (
+                <CaptionTextEditor
+                  value={caption.text}
+                  inputRef={inputRef}
+                  onTextChange={onTextChange}
+                  onEdit={onEdit}
+                />
+              )}
+            </div>
             {isSelected && !isEditing && !readOnly && (
               <button
                 type="button"
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => { event.stopPropagation(); onEdit(caption.id); }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  event.preventDefault();
+                  openEditor(caption.id);
+                }}
                 className="absolute flex items-center justify-center rounded-full border border-white/40 bg-[#FF4D6D] font-bold text-white shadow-lg"
                 style={{
                   right: `-${CAPTION_RESIZE_HANDLE_OFFSET_PX}px`,
@@ -336,7 +327,7 @@ export default function CaptionOverlayStage({
                   height: `${CAPTION_RESIZE_HANDLE_SIZE_PX}px`,
                   fontSize: `${CAPTION_RESIZE_HANDLE_FONT_SIZE_PX}px`,
                 }}
-                aria-label={t("텍스트 편집")}
+                aria-label={t('텍스트 편집')}
               >
                 <Pencil className="h-full w-full p-1" />
               </button>

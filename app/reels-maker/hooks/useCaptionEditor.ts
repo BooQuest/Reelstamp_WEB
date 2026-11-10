@@ -19,6 +19,7 @@ import {
   MAX_CAPTIONS_PER_CLIP,
   MIN_CAPTION_SCALE,
 } from '../constants';
+import { withGalleryStyle } from '../gallery/captionStyle';
 import type {
   CaptionGestureState,
   CaptionItem,
@@ -290,7 +291,10 @@ export default function useCaptionEditor({
         role: 'OVERLAY',
         placement: { type: 'CLIP', clipId: activeClipId },
         zIndex: nextZIndex,
-        style: { ...DEFAULT_CAPTION_STYLE, yRatio: verticalOffset },
+        style: withGalleryStyle(
+          { ...DEFAULT_CAPTION_STYLE, yRatio: verticalOffset },
+          { textPreset: 'basic' },
+        ),
       },
     ]);
     setSelectedCaptionId(captionId);

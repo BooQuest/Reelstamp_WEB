@@ -304,5 +304,10 @@
   "mf0f857d7c537": "Could not create a thumbnail.",
   "m75a285383b51": "Could not prepare the thumbnail canvas.",
   "m1ff1ab5e4893": "Could not create poster",
-  "ma013b99c5310": "Video codec not supported."
+  "ma013b99c5310": "Video codec not supported.",
+  "captionAdd": "Add",
+  "captionAddLabel": "Add text",
+  "captionStyleTab": "Style",
+  "captionAlignTab": "Alignment",
+  "captionBackgroundTab": "Background"
 }
