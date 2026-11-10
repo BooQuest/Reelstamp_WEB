@@ -6,6 +6,7 @@ import GalleryMaker from '../../app/reels-maker/gallery/GalleryMaker';
 import useCaptionEditor from '../../app/reels-maker/hooks/useCaptionEditor';
 import useEditorHistory from '../../app/reels-maker/gallery/useEditorHistory';
 import { DEFAULT_CAPTION_STYLE } from '../../app/reels-maker/constants';
+import { normalizeSessionCaptions } from '../../app/reels-maker/utils/captions';
 const noop = () => {};
 const clip = {
   url:
@@ -39,17 +40,17 @@ function Fixture() {
     fontFamily: query.get('font') || 'ReelstampCaptionPretendard',
     boxed: query.get('boxed') !== 'false',
   };
-  const [captions, setCaptions] = useState([
+  const [captions, setCaptions] = useState(() => normalizeSessionCaptions([
     {
       id: 'original',
       text: query.get('text') || '가운데 정렬\n두 번째 줄',
-      source: 'USER',
+      source: query.get('source') || 'USER',
       role: 'OVERLAY',
       placement: { type: 'CLIP', clipId: 1 },
       zIndex: 1,
       style,
     },
-  ]);
+  ]));
   const captionsRef = useRef(captions);
   useLayoutEffect(() => {
     captionsRef.current = captions;

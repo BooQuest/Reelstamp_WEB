@@ -40,6 +40,21 @@ try {
     { width: 1280, height: 900 },
   ]) {
     await page.setViewportSize(viewport);
+    for (const version of ['CAPTION_RENDER_V1', 'CAPTION_RENDER_V2']) {
+      await page.goto(base + '?' + new URLSearchParams({ source: 'TEMPLATE', version }));
+      const node = page.locator('[data-caption-id="original"]');
+      await expect(node).toHaveCSS('font-weight', '400');
+      await page.evaluate(() => document.fonts.ready);
+      const before = await node.boundingBox();
+      await node.click();
+      await expect(page.locator('textarea')).toHaveCSS('font-weight', '400');
+      await page.getByRole('button', { name: '스타일', exact: true }).click();
+      await expect(page.getByRole('button', { name: '기본', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      expect(await node.boundingBox()).toEqual(before);
+      await page.locator('textarea').press('Escape');
+      await expect(node).toHaveCSS('font-weight', '400');
+      await expect(page.getByRole('button', { name: '실행 취소', exact: true })).toBeDisabled();
+    }
     for (const version of ['CAPTION_RENDER_V1', 'CAPTION_RENDER_V2'])
       for (const align of ['left', 'center', 'right'])
         for (const font of [
@@ -157,7 +172,7 @@ try {
   }
   expect(errors).toEqual([]);
   console.log(
-    `PASS: ${cases} WEB geometry/style cases and mobile/desktop basic-bold preview stability`,
+    `PASS: 4 prefilled template cases, ${cases} WEB geometry/style cases and mobile/desktop basic-bold preview stability`,
   );
 } finally {
   await browser.close();
