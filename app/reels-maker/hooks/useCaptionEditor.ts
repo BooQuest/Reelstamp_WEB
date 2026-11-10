@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   useCallback,
@@ -10,7 +10,7 @@ import {
   type MutableRefObject,
   type PointerEvent,
   type SetStateAction,
-} from 'react';
+} from "react";
 import {
   CAPTION_RENDER_HEIGHT,
   CAPTION_RENDER_WIDTH,
@@ -18,24 +18,33 @@ import {
   MAX_CAPTION_SCALE,
   MAX_CAPTIONS_PER_CLIP,
   MIN_CAPTION_SCALE,
-} from '../constants';
-import { withGalleryStyle } from '../gallery/captionStyle';
+} from "../constants";
+import { withGalleryStyle } from "../gallery/captionStyle";
 import type {
   CaptionGestureState,
   CaptionItem,
   CaptionStyle,
   Stage,
-} from '../types';
+} from "../types";
 import {
   clampValue,
   createCaptionId,
   normalizeCaptionText,
   normalizeCaptionStyle,
-} from '../utils/captions';
+} from "../utils/captions";
 import {
   isAutoSpeechCaption,
   promoteAutoSpeechCaptionForEdit,
-} from '../utils/autoCaptionChunks';
+} from "../utils/autoCaptionChunks";
+
+import {
+  duplicateCaption,
+  reorderCaption,
+  resetCaptionStyle,
+  snapCaptionCenter,
+  type CaptionOrderAction,
+  type CaptionGuides,
+} from "../gallery/captionActions";
 
 type Props = {
   activeClipId: number | null;
@@ -62,7 +71,7 @@ const getVisibleElementRect = (element: Element | null) => {
 
 const setPointerCaptureSafely = (
   target: PointerCaptureElement,
-  pointerId: number
+  pointerId: number,
 ) => {
   try {
     target.setPointerCapture?.(pointerId);
@@ -73,7 +82,7 @@ const setPointerCaptureSafely = (
 
 const releasePointerCaptureSafely = (
   target: PointerCaptureElement,
-  pointerId: number
+  pointerId: number,
 ) => {
   try {
     if (target.hasPointerCapture?.(pointerId)) {
@@ -96,9 +105,34 @@ export default function useCaptionEditor({
   const captionStageRef = useRef<HTMLDivElement | null>(null);
   const captionOverlayRef = useRef<HTMLDivElement | null>(null);
   const captionInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const composing = useRef(false);
+  const pendingCompositionAction = useRef<(() => void) | null>(null);
+  const runAfterComposition = (action: () => void) => {
+    if (composing.current) pendingCompositionAction.current = action;
+    else action();
+  };
+  const handleComposition = (active: boolean) => {
+    composing.current = active;
+    if (!active) {
+      const pending = pendingCompositionAction.current;
+      pendingCompositionAction.current = null;
+      // React's final input event must update captionsRef before the queued action reads it.
+      if (pending) requestAnimationFrame(pending);
+    }
+  };
+  const guidesRef = useRef<CaptionGuides>({ x: false, y: false });
+  const [guideState, setGuideState] = useState<{
+    id: string | null;
+    guides: CaptionGuides;
+  }>({ id: null, guides: { x: false, y: false } });
+  const dragGeometry = useRef<{
+    width: number;
+    height: number;
+    boxHeight: number;
+  } | null>(null);
   const resizeOrigin = useRef<{ x: number; y: number } | null>(null);
   const captionGestureRef = useRef<CaptionGestureState>({
-    mode: 'none',
+    mode: "none",
     captionId: null,
     pointerMap: new Map(),
     dragPointerId: null,
@@ -111,7 +145,7 @@ export default function useCaptionEditor({
     useState<HTMLDivElement | null>(null);
   const [captionPreviewScale, setCaptionPreviewScale] = useState(1);
   const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(
-    null
+    null,
   );
   const [editingCaptionId, setEditingCaptionId] = useState<string | null>(null);
 
@@ -122,28 +156,31 @@ export default function useCaptionEditor({
         : captions
             .filter(
               (caption) =>
-                caption.placement.type === 'CLIP' &&
-                caption.placement.clipId === activeClipId
+                caption.placement.type === "CLIP" &&
+                caption.placement.clipId === activeClipId,
             )
             .sort((a, b) => a.zIndex - b.zIndex),
-    [activeClipId, captions]
+    [activeClipId, captions],
   );
   const resolvedSelectedCaptionId = activeCaptions.some(
-    (caption) => caption.id === selectedCaptionId
+    (caption) => caption.id === selectedCaptionId,
   )
     ? selectedCaptionId
-    : activeCaptions[0]?.id ?? null;
+    : (activeCaptions[0]?.id ?? null);
   const activeCaptionItem =
     activeCaptions.find(
-      (caption) => caption.id === resolvedSelectedCaptionId
+      (caption) => caption.id === resolvedSelectedCaptionId,
     ) ?? null;
-  const activeCaptionText = activeCaptionItem?.text ?? '';
+  const activeCaptionText = activeCaptionItem?.text ?? "";
   const activeCaptionStyle = activeCaptionItem?.style ?? DEFAULT_CAPTION_STYLE;
   const showCaptionOverlay = showCaptionStage && activeCaptions.length > 0;
 
   const resetCaptionGesture = useCallback(() => {
+    guidesRef.current = { x: false, y: false };
+    setGuideState({ id: null, guides: guidesRef.current });
+    dragGeometry.current = null;
     const gesture = captionGestureRef.current;
-    gesture.mode = 'none';
+    gesture.mode = "none";
     gesture.captionId = null;
     gesture.pointerMap.clear();
     gesture.dragPointerId = null;
@@ -153,30 +190,78 @@ export default function useCaptionEditor({
     gesture.startScale = 1;
   }, []);
 
+  useEffect(() => {
+    pendingCompositionAction.current = null;
+    composing.current = false;
+    const id = requestAnimationFrame(resetCaptionGesture);
+    return () => {
+      cancelAnimationFrame(id);
+      pendingCompositionAction.current = null;
+    };
+  }, [activeClipId, showCaptionStage, resetCaptionGesture]);
+
+  const duplicateSelectedCaption = () => {
+    if (!resolvedSelectedCaptionId) return;
+    const copy = duplicateCaption(
+      captionsRef.current,
+      resolvedSelectedCaptionId,
+    );
+    if (!copy) return;
+    setCaptions((prev) => [...prev, copy]);
+    setSelectedCaptionId(copy.id);
+    setEditingCaptionId(copy.id);
+    resetCaptionGesture();
+  };
+  const reorderSelectedCaption = (direction: CaptionOrderAction) => {
+    if (!resolvedSelectedCaptionId) return;
+    setCaptions((prev) =>
+      reorderCaption(prev, resolvedSelectedCaptionId, direction),
+    );
+  };
+  const resetSelectedCaptionStyle = () => {
+    if (!resolvedSelectedCaptionId) return;
+    setCaptions((prev) =>
+      prev.map((item) =>
+        item.id === resolvedSelectedCaptionId && item.source !== "AUTO"
+          ? { ...item, style: resetCaptionStyle(item.style) }
+          : item,
+      ),
+    );
+  };
+  const manualCaptions = activeCaptions.filter(
+    (item) => item.source !== "AUTO",
+  );
+  const canDuplicate = Boolean(
+    activeCaptionItem &&
+      activeCaptionItem.source !== "AUTO" &&
+      activeCaptionText.trim() &&
+      manualCaptions.length < MAX_CAPTIONS_PER_CLIP,
+  );
+
   const handleCameraFrameRef = useCallback(
     (element: HTMLDivElement | null) => {
       cameraFrameRef.current = element;
       setCameraFrameElement(element);
     },
-    [cameraFrameRef]
+    [cameraFrameRef],
   );
 
   const getCaptionInteractionRect = useCallback(
     () =>
       getVisibleElementRect(captionStageRef.current) ??
       getVisibleElementRect(cameraFrameRef.current),
-    [cameraFrameRef]
+    [cameraFrameRef],
   );
 
   const updateCaptionById = useCallback(
     (captionId: string, updater: (current: CaptionItem) => CaptionItem) => {
       setCaptions((prev) =>
         prev.map((caption) =>
-          caption.id === captionId ? updater(caption) : caption
-        )
+          caption.id === captionId ? updater(caption) : caption,
+        ),
       );
     },
-    [setCaptions]
+    [setCaptions],
   );
 
   const clampCaptionPosition = useCallback(
@@ -209,7 +294,7 @@ export default function useCaptionEditor({
         yRatio: minY > maxY ? 0.5 : clampValue(normalizedY, minY, maxY),
       };
     },
-    [getCaptionInteractionRect]
+    [getCaptionInteractionRect],
   );
 
   const applyClampedCaptionStyle = useCallback(
@@ -217,12 +302,12 @@ export default function useCaptionEditor({
       const normalized = normalizeCaptionStyle(style);
       return {
         ...normalized,
-        ...(activeCaptionItem?.source === 'AUTO'
+        ...(activeCaptionItem?.source === "AUTO"
           ? clampCaptionPosition(normalized.xRatio, normalized.yRatio)
           : { xRatio: normalized.xRatio, yRatio: normalized.yRatio }),
       };
     },
-    [clampCaptionPosition, activeCaptionItem?.source]
+    [clampCaptionPosition, activeCaptionItem?.source],
   );
 
   const updateActiveCaptionText = useCallback(
@@ -243,14 +328,14 @@ export default function useCaptionEditor({
         activeCaptions.some(
           (caption) =>
             caption.id === resolvedSelectedCaptionId &&
-            isAutoSpeechCaption(caption)
+            isAutoSpeechCaption(caption),
         )
       ) {
         setSelectedCaptionId(nextCaptionId);
         setEditingCaptionId(nextCaptionId);
       }
     },
-    [activeCaptions, resolvedSelectedCaptionId, updateCaptionById]
+    [activeCaptions, resolvedSelectedCaptionId, updateCaptionById],
   );
 
   const updateActiveCaptionStyle = useCallback(
@@ -261,17 +346,13 @@ export default function useCaptionEditor({
         style: applyClampedCaptionStyle(updater(current.style)),
       }));
     },
-    [
-      applyClampedCaptionStyle,
-      resolvedSelectedCaptionId,
-      updateCaptionById,
-    ]
+    [applyClampedCaptionStyle, resolvedSelectedCaptionId, updateCaptionById],
   );
 
   const addCaptionToActiveClip = useCallback(() => {
     if (!showCaptionStage || activeClipId == null) return;
     const overlayCaptionCount = activeCaptions.filter(
-      (caption) => caption.source !== 'AUTO'
+      (caption) => caption.source !== "AUTO",
     ).length;
     if (overlayCaptionCount >= MAX_CAPTIONS_PER_CLIP) return;
 
@@ -279,24 +360,24 @@ export default function useCaptionEditor({
     const nextZIndex =
       activeCaptions.reduce(
         (max, caption) => Math.max(max, caption.zIndex),
-        0
+        0,
       ) + 1;
     const verticalOffset = Math.min(
       0.68,
-      DEFAULT_CAPTION_STYLE.yRatio + overlayCaptionCount * 0.1
+      DEFAULT_CAPTION_STYLE.yRatio + overlayCaptionCount * 0.1,
     );
     setCaptions((prev) => [
       ...prev,
       {
         id: captionId,
-        text: '',
-        source: 'USER',
-        role: 'OVERLAY',
-        placement: { type: 'CLIP', clipId: activeClipId },
+        text: "",
+        source: "USER",
+        role: "OVERLAY",
+        placement: { type: "CLIP", clipId: activeClipId },
         zIndex: nextZIndex,
         style: withGalleryStyle(
           { ...DEFAULT_CAPTION_STYLE, yRatio: verticalOffset },
-          { textPreset: 'basic' },
+          { textPreset: "basic" },
         ),
       },
     ]);
@@ -314,10 +395,10 @@ export default function useCaptionEditor({
   const deleteSelectedCaption = useCallback(() => {
     if (!resolvedSelectedCaptionId) return;
     const remainingActiveCaptions = activeCaptions.filter(
-      (caption) => caption.id !== resolvedSelectedCaptionId
+      (caption) => caption.id !== resolvedSelectedCaptionId,
     );
     setCaptions((prev) =>
-      prev.filter((caption) => caption.id !== resolvedSelectedCaptionId)
+      prev.filter((caption) => caption.id !== resolvedSelectedCaptionId),
     );
     setSelectedCaptionId(remainingActiveCaptions.at(-1)?.id ?? null);
     setEditingCaptionId(null);
@@ -332,7 +413,7 @@ export default function useCaptionEditor({
   const distanceBetweenPoints = useCallback(
     (a: { x: number; y: number }, b: { x: number; y: number }) =>
       Math.hypot(a.x - b.x, a.y - b.y),
-    []
+    [],
   );
 
   const updateGestureCaptionStyle = useCallback(
@@ -344,7 +425,7 @@ export default function useCaptionEditor({
         style: applyClampedCaptionStyle(updater(current.style)),
       }));
     },
-    [applyClampedCaptionStyle, updateCaptionById]
+    [applyClampedCaptionStyle, updateCaptionById],
   );
 
   const handleCaptionPointerMove = useCallback(
@@ -356,7 +437,7 @@ export default function useCaptionEditor({
         y: event.clientY,
       });
 
-      if (gesture.mode === 'pinch') {
+      if (gesture.mode === "pinch") {
         if (
           !gesture.startStyle ||
           gesture.pointerMap.size < 2 ||
@@ -370,7 +451,7 @@ export default function useCaptionEditor({
         const nextScale = clampValue(
           gesture.startScale * (nextDistance / gesture.startDistance),
           MIN_CAPTION_SCALE,
-          MAX_CAPTION_SCALE
+          MAX_CAPTION_SCALE,
         );
         const startStyle = gesture.startStyle;
         updateGestureCaptionStyle(() => ({
@@ -381,7 +462,7 @@ export default function useCaptionEditor({
       }
 
       if (
-        gesture.mode === 'drag' &&
+        gesture.mode === "drag" &&
         gesture.dragPointerId === event.pointerId &&
         gesture.startPointer &&
         gesture.startStyle
@@ -397,18 +478,47 @@ export default function useCaptionEditor({
         const deltaX = event.clientX - gesture.startPointer.x;
         const deltaY = event.clientY - gesture.startPointer.y;
         const startStyle = gesture.startStyle;
+        const geometry = dragGeometry.current ?? {
+          ...interactionRect,
+          boxHeight: 0,
+        };
+        const raw = {
+          xRatio: startStyle.xRatio + deltaX / geometry.width,
+          yRatio: startStyle.yRatio + deltaY / geometry.height,
+        };
+        const item = captionsRef.current.find(
+          (item) => item.id === gesture.captionId,
+        );
+        const next =
+          item?.source === "AUTO"
+            ? { ...raw, guides: { x: false, y: false } }
+            : snapCaptionCenter(
+                raw,
+                geometry,
+                geometry.boxHeight,
+                startStyle.anchorY === "BOTTOM",
+                guidesRef.current,
+              );
+        if (
+          next.guides.x !== guidesRef.current.x ||
+          next.guides.y !== guidesRef.current.y
+        ) {
+          guidesRef.current = next.guides;
+          setGuideState({ id: gesture.captionId, guides: next.guides });
+        }
         updateGestureCaptionStyle(() => ({
           ...startStyle,
-          xRatio: startStyle.xRatio + deltaX / interactionRect.width,
-          yRatio: startStyle.yRatio + deltaY / interactionRect.height,
+          xRatio: next.xRatio,
+          yRatio: next.yRatio,
         }));
       }
     },
     [
       distanceBetweenPoints,
       getCaptionInteractionRect,
+      captionsRef,
       updateGestureCaptionStyle,
-    ]
+    ],
   );
 
   const handleCaptionPointerEnd = useCallback(
@@ -420,12 +530,12 @@ export default function useCaptionEditor({
         resetCaptionGesture();
         return;
       }
-      if (gesture.mode === 'pinch') {
+      if (gesture.mode === "pinch") {
         if (gesture.pointerMap.size >= 2 && gesture.startStyle) {
           const points = Array.from(gesture.pointerMap.values());
           gesture.startDistance = distanceBetweenPoints(points[0], points[1]);
           const currentCaption = captionsRef.current.find(
-            (caption) => caption.id === gesture.captionId
+            (caption) => caption.id === gesture.captionId,
           );
           if (!currentCaption) {
             resetCaptionGesture();
@@ -439,21 +549,26 @@ export default function useCaptionEditor({
         return;
       }
       if (
-        gesture.mode === 'drag' &&
+        gesture.mode === "drag" &&
         gesture.dragPointerId === event.pointerId
       ) {
         resetCaptionGesture();
       }
     },
-    [captionsRef, distanceBetweenPoints, resetCaptionGesture]
+    [captionsRef, distanceBetweenPoints, resetCaptionGesture],
   );
 
   const handleCaptionPointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>, caption: CaptionItem) => {
       if (!showCaptionOverlay) return;
-      const selectionControl = event.currentTarget.hasAttribute('data-caption-move');
+      if (composing.current && caption.id !== editingCaptionId) {
+        event.preventDefault();
+        return;
+      }
+      const selectionControl =
+        event.currentTarget.hasAttribute("data-caption-move");
       if (editingCaptionId === caption.id && !selectionControl) return;
-      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
       event.stopPropagation();
       setSelectedCaptionId(caption.id);
       if (!selectionControl) setEditingCaptionId(null);
@@ -472,13 +587,28 @@ export default function useCaptionEditor({
         if (!gesture.startStyle) {
           gesture.startStyle = { ...caption.style };
         }
-        gesture.mode = 'pinch';
+        guidesRef.current = { x: false, y: false };
+        setGuideState({ id: null, guides: guidesRef.current });
+        gesture.mode = "pinch";
         const points = Array.from(gesture.pointerMap.values());
         gesture.startDistance = distanceBetweenPoints(points[0], points[1]);
         gesture.startScale = caption.style.scale;
         return;
       }
-      gesture.mode = 'drag';
+      const rect = getCaptionInteractionRect();
+      const box = (
+        event.currentTarget.hasAttribute("data-caption-id")
+          ? event.currentTarget
+          : captionOverlayRef.current
+      )?.getBoundingClientRect();
+      dragGeometry.current = rect
+        ? {
+            width: rect.width,
+            height: rect.height,
+            boxHeight: box?.height ?? 0,
+          }
+        : null;
+      gesture.mode = "drag";
       gesture.dragPointerId = event.pointerId;
       gesture.startPointer = { x: event.clientX, y: event.clientY };
       gesture.startStyle = { ...caption.style };
@@ -486,16 +616,17 @@ export default function useCaptionEditor({
     [
       distanceBetweenPoints,
       editingCaptionId,
+      getCaptionInteractionRect,
       resetCaptionGesture,
       showCaptionOverlay,
-    ]
+    ],
   );
 
   const handleResizeHandlePointerMove = useCallback(
     (event: PointerEvent<HTMLButtonElement>) => {
       const gesture = captionGestureRef.current;
       if (
-        gesture.mode !== 'resize' ||
+        gesture.mode !== "resize" ||
         gesture.dragPointerId !== event.pointerId ||
         !gesture.startStyle ||
         !gesture.startPointer ||
@@ -521,7 +652,7 @@ export default function useCaptionEditor({
       const nextScale = clampValue(
         gesture.startScale * (currentDistance / gesture.startDistance),
         MIN_CAPTION_SCALE,
-        MAX_CAPTION_SCALE
+        MAX_CAPTION_SCALE,
       );
       const startStyle = gesture.startStyle;
       updateGestureCaptionStyle(() => ({
@@ -533,7 +664,7 @@ export default function useCaptionEditor({
       distanceBetweenPoints,
       getCaptionInteractionRect,
       updateGestureCaptionStyle,
-    ]
+    ],
   );
 
   const handleResizeHandlePointerEnd = useCallback(
@@ -543,13 +674,13 @@ export default function useCaptionEditor({
       releasePointerCaptureSafely(event.currentTarget, event.pointerId);
       resetCaptionGesture();
     },
-    [resetCaptionGesture]
+    [resetCaptionGesture],
   );
 
   const handleResizeHandlePointerDown = useCallback(
     (event: PointerEvent<HTMLButtonElement>) => {
       if (!showCaptionOverlay || !activeCaptionItem) return;
-      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      if (event.pointerType === "mouse" && event.button !== 0) return;
       event.stopPropagation();
       const interactionRect = getCaptionInteractionRect();
       if (
@@ -570,7 +701,7 @@ export default function useCaptionEditor({
       resizeOrigin.current = center;
       const startPoint = { x: event.clientX, y: event.clientY };
       const gesture = captionGestureRef.current;
-      gesture.mode = 'resize';
+      gesture.mode = "resize";
       gesture.captionId = activeCaptionItem.id;
       gesture.pointerMap.clear();
       gesture.pointerMap.set(event.pointerId, startPoint);
@@ -580,7 +711,7 @@ export default function useCaptionEditor({
       gesture.startScale = activeCaptionStyle.scale;
       gesture.startDistance = Math.max(
         1,
-        distanceBetweenPoints(center, startPoint)
+        distanceBetweenPoints(center, startPoint),
       );
       setPointerCaptureSafely(event.currentTarget, event.pointerId);
     },
@@ -590,12 +721,12 @@ export default function useCaptionEditor({
       distanceBetweenPoints,
       getCaptionInteractionRect,
       showCaptionOverlay,
-    ]
+    ],
   );
 
   const handleCaptionTextChange = useCallback(
     (value: string) => updateActiveCaptionText(value),
-    [updateActiveCaptionText]
+    [updateActiveCaptionText],
   );
 
   const handleCaptionToggleBox = useCallback(() => {
@@ -612,7 +743,7 @@ export default function useCaptionEditor({
         scale,
       }));
     },
-    [updateActiveCaptionStyle]
+    [updateActiveCaptionStyle],
   );
 
   const ensureActiveCaptionInFrame = useCallback(() => {
@@ -639,7 +770,7 @@ export default function useCaptionEditor({
       const rect = frameElement.getBoundingClientRect();
       const nextScale = Math.min(
         rect.width / CAPTION_RENDER_WIDTH,
-        rect.height / CAPTION_RENDER_HEIGHT
+        rect.height / CAPTION_RENDER_HEIGHT,
       );
       if (Number.isFinite(nextScale) && nextScale > 0) {
         setCaptionPreviewScale(nextScale);
@@ -647,15 +778,15 @@ export default function useCaptionEditor({
     };
     const rafId = window.requestAnimationFrame(updateCaptionPreviewScale);
     const resizeObserver =
-      typeof ResizeObserver !== 'undefined'
+      typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(updateCaptionPreviewScale)
         : null;
     resizeObserver?.observe(frameElement);
-    window.addEventListener('resize', updateCaptionPreviewScale);
+    window.addEventListener("resize", updateCaptionPreviewScale);
     return () => {
       window.cancelAnimationFrame(rafId);
       resizeObserver?.disconnect();
-      window.removeEventListener('resize', updateCaptionPreviewScale);
+      window.removeEventListener("resize", updateCaptionPreviewScale);
     };
   }, [cameraFrameElement, stage]);
 
@@ -679,15 +810,12 @@ export default function useCaptionEditor({
       if (!showCaptionOverlay) return;
       ensureActiveCaptionInFrame();
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, [ensureActiveCaptionInFrame, showCaptionOverlay]);
 
   useEffect(() => {
-    if (
-      !editingCaptionId ||
-      editingCaptionId !== resolvedSelectedCaptionId
-    ) {
+    if (!editingCaptionId || editingCaptionId !== resolvedSelectedCaptionId) {
       return;
     }
     const input = captionInputRef.current;
@@ -706,6 +834,17 @@ export default function useCaptionEditor({
   }, [editingCaptionId, resolvedSelectedCaptionId]);
 
   return {
+    runAfterComposition,
+    handleComposition,
+    duplicateSelectedCaption,
+    reorderSelectedCaption,
+    resetSelectedCaptionStyle,
+    canDuplicate,
+    manualCaptions,
+    guides:
+      guideState.id === resolvedSelectedCaptionId
+        ? guideState.guides
+        : { x: false, y: false },
     captionStageRef,
     captionOverlayRef,
     captionInputRef,

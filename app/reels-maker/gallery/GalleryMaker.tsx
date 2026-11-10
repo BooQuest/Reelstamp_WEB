@@ -1,6 +1,6 @@
-'use client';
-import { useUiText } from '@/app/i18n/LocaleProvider';
-import { trackReelsEvent } from '@/app/lib/analytics';
+"use client";
+import { useUiText } from "@/app/i18n/LocaleProvider";
+import { trackReelsEvent } from "@/app/lib/analytics";
 
 import {
   useEffect,
@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
   type Ref,
-} from 'react';
+} from "react";
 import {
   Plus,
   Play,
@@ -19,18 +19,20 @@ import {
   Repeat,
   Scissors,
   Undo2,
-} from 'lucide-react';
-import type { ClipInfo, MakerCut, ReelsMakerSessionResponse } from '../types';
-import type useCaptionEditor from '../hooks/useCaptionEditor';
-import CaptionOverlayStage from '../components/CaptionOverlayStage';
-import type useGalleryWorkspace from './useGalleryWorkspace';
-import ClipPlayer, { type ClipPlayerHandle } from '../components/ClipPlayer';
-import useSingleMediaPicker from './useSingleMediaPicker';
-import CutStrip from './CutStrip';
-import { createPortal } from 'react-dom';
-import MediaEditModal from './MediaEditModal';
-import CaptionToolbar from './CaptionToolbar';
-import { MAX_CAPTIONS_PER_CLIP } from '../constants';
+} from "lucide-react";
+import type { ClipInfo, MakerCut, ReelsMakerSessionResponse } from "../types";
+import type useCaptionEditor from "../hooks/useCaptionEditor";
+import CaptionOverlayStage from "../components/CaptionOverlayStage";
+import type useGalleryWorkspace from "./useGalleryWorkspace";
+import ClipPlayer, { type ClipPlayerHandle } from "../components/ClipPlayer";
+import useSingleMediaPicker from "./useSingleMediaPicker";
+import CutStrip from "./CutStrip";
+import { createPortal } from "react-dom";
+import MediaEditModal from "./MediaEditModal";
+import { flushSync } from "react-dom";
+import type { CaptionOrderAction } from "./captionActions";
+import CaptionToolbar from "./CaptionToolbar";
+import { MAX_CAPTIONS_PER_CLIP } from "../constants";
 
 export type GalleryMakerHandle = { openPicker: (cutIndex: number) => void };
 
@@ -58,7 +60,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
   useEffect(() => {
     if (trackedEntry.current === props.session.sessionId) return;
     trackedEntry.current = props.session.sessionId;
-    trackReelsEvent('edit_start', { template_id: props.session.templateId });
+    trackReelsEvent("edit_start", { template_id: props.session.templateId });
   }, [props.session.sessionId, props.session.templateId]);
   const {
     cuts,
@@ -87,8 +89,8 @@ export default function GalleryMaker({ ref, ...props }: Props) {
   const video = useRef<ClipPlayerHandle>(null);
   const frame = useRef<HTMLDivElement | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [playback, setPlayback] = useState({ revision: '', ms: 0 });
-  const mediaKey = `${clip?.url}:${clip?.revisionId ?? ''}`;
+  const [playback, setPlayback] = useState({ revision: "", ms: 0 });
+  const mediaKey = `${clip?.url}:${clip?.revisionId ?? ""}`;
   const playbackMs = playback.revision === mediaKey ? playback.ms : 0;
   const captionPointers = useRef(new Set<number>());
   const wheelTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -102,8 +104,38 @@ export default function GalleryMaker({ ref, ...props }: Props) {
     historyRef.current.begin();
   };
   const endCaptionControl = () => {
-    historyRef.current.commitAfterRender(() => true, () => {
-      if (actionsRef.current.caption.editingCaptionId) historyRef.current.begin();
+    historyRef.current.commitAfterRender(
+      () => true,
+      () => {
+        if (actionsRef.current.caption.editingCaptionId)
+          historyRef.current.begin();
+      },
+    );
+  };
+  const captionAction = (action: (current: typeof caption) => void) => {
+    caption.runAfterComposition(() => {
+      if (actionsRef.current.disabled) return;
+      beginCaptionControl();
+      flushSync(() => action(actionsRef.current.caption));
+      actionsRef.current.caption.captionInputRef.current?.focus({
+        preventScroll: true,
+      });
+      endCaptionControl();
+    });
+  };
+  const selectCaptionFromList = (id: string) => {
+    caption.runAfterComposition(() => {
+      if (actionsRef.current.disabled) return;
+      historyRef.current.commit();
+      flushSync(() => {
+        actionsRef.current.caption.resetCaptionGesture();
+        actionsRef.current.caption.setSelectedCaptionId(id);
+        actionsRef.current.caption.setEditingCaptionId(id);
+      });
+      actionsRef.current.caption.captionInputRef.current?.focus({
+        preventScroll: true,
+      });
+      historyRef.current.begin();
     });
   };
   const pause = () => {
@@ -141,23 +173,23 @@ export default function GalleryMaker({ ref, ...props }: Props) {
         current.activeCaptionStyle.scale * Math.exp(-event.deltaY * 0.002),
       );
       if (wheelTimer.current) clearTimeout(wheelTimer.current);
-      wheelTimer.current = setTimeout(
-        () => { wheelTimer.current = null; endCaptionControl(); },
-        250,
-      );
+      wheelTimer.current = setTimeout(() => {
+        wheelTimer.current = null;
+        endCaptionControl();
+      }, 250);
     };
-    element.addEventListener('wheel', wheel, { passive: false });
+    element.addEventListener("wheel", wheel, { passive: false });
     return () => {
-      element.removeEventListener('wheel', wheel);
+      element.removeEventListener("wheel", wheel);
       if (wheelTimer.current) clearTimeout(wheelTimer.current);
     };
   }, []);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
       const target = event.target as HTMLElement;
       if (
-        target?.closest('input,textarea,select,[contenteditable=true]') ||
+        target?.closest("input,textarea,select,[contenteditable=true]") ||
         disabled ||
         !caption.resolvedSelectedCaptionId
       )
@@ -167,11 +199,14 @@ export default function GalleryMaker({ ref, ...props }: Props) {
       caption.deleteSelectedCaption();
       historyRef.current.commitAfterRender();
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [caption, disabled]);
   const editText = (id: string | null) => {
-    if (id && id !== caption.editingCaptionId) { history.commit(); history.begin(); }
+    if (id && id !== caption.editingCaptionId) {
+      history.commit();
+      history.begin();
+    }
     caption.setEditingCaptionId(id);
     if (!id) history.commitAfterRender();
   };
@@ -204,7 +239,8 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           disabled={disabled}
           className="rounded-full bg-white/10 px-3 py-2 text-xs"
         >
-          {t("가이드")}</button>
+          {t("가이드")}
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -215,7 +251,8 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           disabled={!props.allDone || disabled}
           className="rounded-full bg-rose-500 px-4 py-2 text-sm disabled:opacity-40"
         >
-          {t("완료")}</button>
+          {t("완료")}
+        </button>
       </div>
       <input
         ref={inputRef}
@@ -232,23 +269,25 @@ export default function GalleryMaker({ ref, ...props }: Props) {
             caption.handleCameraFrameRef(element);
           }}
           className="relative aspect-[9/16] max-h-full overflow-visible bg-black"
-          style={{ height: '100%', maxWidth: '100%' }}
+          style={{ height: "100%", maxWidth: "100%" }}
         >
           {empty ? (
             <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
               <p className="text-sm text-white/65">
-                {t("이 컷에 사용할 사진 또는 영상을 선택해 주세요.")}</p>
+                {t("이 컷에 사용할 사진 또는 영상을 선택해 주세요.")}
+              </p>
               <button
                 type="button"
                 disabled={disabled}
                 onClick={() => openPicker(activeCutIndex)}
                 className="rounded-xl bg-rose-500 px-5 py-3 text-sm font-semibold disabled:opacity-40"
               >
-                {t("사진·영상 불러오기")}</button>
+                {t("사진·영상 불러오기")}
+              </button>
             </div>
           ) : clip ? (
             <ClipPlayer
-              key={`${clip.url}:${clip.revisionId ?? ''}`}
+              key={`${clip.url}:${clip.revisionId ?? ""}`}
               ref={video}
               clip={clip}
               onTimeUpdate={(event) =>
@@ -263,23 +302,29 @@ export default function GalleryMaker({ ref, ...props }: Props) {
             />
           ) : (
             <div className="p-6 text-center text-sm">
-              {t(props.fixedErrors[activeCutIndex] ||
-                (cut?.isFixed
-                  ? '고정 영상을 불러오는 중입니다…'
-                  : '영상을 불러오는 중입니다…'))}
+              {t(
+                props.fixedErrors[activeCutIndex] ||
+                  (cut?.isFixed
+                    ? "고정 영상을 불러오는 중입니다…"
+                    : "영상을 불러오는 중입니다…"),
+              )}
               {props.fixedErrors[activeCutIndex] && (
                 <button
                   type="button"
                   onClick={() => props.onRetryFixed(activeCutIndex)}
                   className="mt-3 block w-full rounded bg-white/10 p-2"
                 >
-                  {t("다시 불러오기")}</button>
+                  {t("다시 불러오기")}
+                </button>
               )}
             </div>
           )}
           {!empty && clip && captionsEnabled && (
-            <div className={disabled ? 'pointer-events-none' : ''}>
+            <div className={disabled ? "pointer-events-none" : ""}>
               <CaptionOverlayStage
+                guides={caption.guides}
+                onComposition={caption.handleComposition}
+                runAfterComposition={caption.runAfterComposition}
                 captions={caption.activeCaptions.filter(
                   (item) =>
                     item.id === caption.editingCaptionId ||
@@ -300,7 +345,8 @@ export default function GalleryMaker({ ref, ...props }: Props) {
                 onCaptionPointerDown={(event, item) => {
                   pause();
                   captionPointers.current.add(event.pointerId);
-                  if (event.currentTarget.hasAttribute("data-caption-move")) beginCaptionControl();
+                  if (event.currentTarget.hasAttribute("data-caption-move"))
+                    beginCaptionControl();
                   else history.begin();
                   caption.handleCaptionPointerDown(event, item);
                 }}
@@ -316,22 +362,47 @@ export default function GalleryMaker({ ref, ...props }: Props) {
                     !caption.editingCaptionId &&
                     captionPointers.current.size === 0
                   )
-                    history.commitAfterRender(() => !actionsRef.current.caption.editingCaptionId);
+                    history.commitAfterRender(
+                      () => !actionsRef.current.caption.editingCaptionId,
+                    );
                 }}
-                onResizePointerDown={(event) => { pause(); beginCaptionControl(); caption.handleResizeHandlePointerDown(event); }}
+                onResizePointerDown={(event) => {
+                  pause();
+                  beginCaptionControl();
+                  caption.handleResizeHandlePointerDown(event);
+                }}
                 onResizePointerMove={caption.handleResizeHandlePointerMove}
-                onResizePointerEnd={(event) => { caption.handleResizeHandlePointerEnd(event); endCaptionControl(); }}
+                onResizePointerEnd={(event) => {
+                  caption.handleResizeHandlePointerEnd(event);
+                  endCaptionControl();
+                }}
               />
             </div>
           )}
           {cut?.isFixed && (
             <p className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/60 p-2 text-center text-xs">
-              {t("템플릿에 포함된 고정 컷입니다.")}</p>
+              {t("템플릿에 포함된 고정 컷입니다.")}
+            </p>
           )}
         </div>
       </div>
       {caption.editingCaptionId && !empty && !disabled && (
         <CaptionToolbar
+          captions={caption.manualCaptions}
+          selectedCaptionId={caption.resolvedSelectedCaptionId}
+          canDuplicate={caption.canDuplicate}
+          onDuplicate={() =>
+            captionAction((current) => current.duplicateSelectedCaption())
+          }
+          onReorder={(direction: CaptionOrderAction) =>
+            captionAction((current) =>
+              current.reorderSelectedCaption(direction),
+            )
+          }
+          onResetStyle={() =>
+            captionAction((current) => current.resetSelectedCaptionStyle())
+          }
+          onSelectCaption={selectCaptionFromList}
           style={caption.activeCaptionStyle}
           allowResize={caption.activeCaptionItem?.source !== "AUTO"}
           onInteractionStart={beginCaptionControl}
@@ -348,7 +419,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
       <div className="flex shrink-0 items-center justify-center gap-8 py-2">
         <button
           type="button"
-          aria-label={t(playing ? '미리보기 일시정지' : '미리보기 재생')}
+          aria-label={t(playing ? "미리보기 일시정지" : "미리보기 재생")}
           disabled={empty || !clip || disabled}
           onClick={async () => {
             if (playing) {
@@ -412,17 +483,20 @@ export default function GalleryMaker({ ref, ...props }: Props) {
                 void workspace.retry().catch(() => {});
               }}
             >
-              {t("저장 다시 시도")}</button>
+              {t("저장 다시 시도")}
+            </button>
           )}
         </p>
       )}
-      {workspace.saveState !== 'saved' && (
+      {workspace.saveState !== "saved" && (
         <p role="status" className="shrink-0 text-center text-xs">
-          {t(workspace.saveState === 'uploading'
-            ? '원본 업로드 중… 편집을 계속할 수 있습니다.'
-            : workspace.saveState === 'saving'
-              ? '편집 내용 저장 중…'
-              : '서버에 저장되지 않은 변경사항이 있습니다.')}
+          {t(
+            workspace.saveState === "uploading"
+              ? "원본 업로드 중… 편집을 계속할 수 있습니다."
+              : workspace.saveState === "saving"
+                ? "편집 내용 저장 중…"
+                : "서버에 저장되지 않은 변경사항이 있습니다.",
+          )}
         </p>
       )}
       <CutStrip
@@ -451,7 +525,8 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           className="flex flex-col items-center gap-1 p-2 disabled:opacity-30"
         >
           <Repeat />
-          {t("교체")}</button>
+          {t("교체")}
+        </button>
         <button
           type="button"
           disabled={disabled || !clip || cut?.isFixed}
@@ -463,7 +538,8 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           className="flex flex-col items-center gap-1 p-2 disabled:opacity-30"
         >
           <Scissors />
-          {t("길이 다듬기")}</button>
+          {t("길이 다듬기")}
+        </button>
         <button
           type="button"
           disabled={
@@ -471,7 +547,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
             !clip ||
             empty ||
             !captionsEnabled ||
-            caption.activeCaptions.filter((c) => c.source !== 'AUTO').length >=
+            caption.activeCaptions.filter((c) => c.source !== "AUTO").length >=
               MAX_CAPTIONS_PER_CLIP
           }
           onClick={() => {
@@ -483,7 +559,8 @@ export default function GalleryMaker({ ref, ...props }: Props) {
           className="flex flex-col items-center gap-1 p-2 disabled:opacity-30"
         >
           <Plus />
-          {t("텍스트 추가")}</button>
+          {t("텍스트 추가")}
+        </button>
       </div>
 
       {workspace.editing &&

@@ -1056,5 +1056,16 @@
   "텍스트 왼쪽 위 크기 조절": "editor.textTools5",
   "텍스트 오른쪽 위 크기 조절": "editor.textTools6",
   "텍스트 왼쪽 아래 크기 조절": "editor.textTools7",
-  "텍스트 오른쪽 아래 크기 조절": "editor.textTools8"
+  "텍스트 오른쪽 아래 크기 조절": "editor.textTools8",
+  "텍스트 복제": "editor.captionActions0",
+  "텍스트는 컷당 최대 5개까지 추가할 수 있어요.": "editor.captionActions1",
+  "복제할 텍스트를 입력하세요.": "editor.captionActions2",
+  "순서": "editor.captionActions3",
+  "앞으로": "editor.captionActions4",
+  "뒤로": "editor.captionActions5",
+  "맨 앞으로": "editor.captionActions6",
+  "맨 뒤로": "editor.captionActions7",
+  "텍스트 겹침 순서": "editor.captionActions8",
+  "빈 텍스트": "editor.captionActions9",
+  "스타일 초기화": "editor.captionActions10"
 }

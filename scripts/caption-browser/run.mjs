@@ -212,6 +212,30 @@ try {
     await expect(slider).toHaveAttribute('aria-valuenow', String(percent + 1));
     await expect(textInput).toBeFocused();
     await expect(page.locator('[data-caption-size-panel] output')).toHaveText(/글자 크기 .* px/);
+    await page.getByRole('button', { name: '텍스트 복제', exact: true }).click();
+    await expect(textInput).toBeFocused();
+    await expect(page.locator('[data-caption-id]')).toHaveCount(2);
+    const copyId = await page.evaluate(() => window.captionFixture.captions.find(c => c.id !== 'original').id);
+    await page.getByRole('button', { name: '스타일', exact: true }).click();
+    await page.getByRole('button', { name: '굵게', exact: true }).click();
+    await page.getByRole('button', { name: '스타일 초기화', exact: true }).click();
+    await expect(textInput).toHaveCSS('font-weight', '400');
+    await page.getByRole('button', { name: '순서', exact: true }).click();
+    await page.getByRole('button', { name: '맨 뒤로', exact: true }).click();
+    await expect(page.locator('[data-caption-layer]').last()).toHaveAttribute('data-caption-layer', copyId);
+    await page.locator('[data-caption-layer="original"]').click();
+    await expect(textInput).toBeFocused();
+    const clip = await page.locator('[data-caption-content-clip]').boundingBox();
+    const original = await captionNode.boundingBox();
+    const moveEdge = await page.locator('[data-caption-move="left"]').boundingBox();
+    const sx = moveEdge.x + moveEdge.width / 2, sy = moveEdge.y + moveEdge.height / 2;
+    await page.mouse.move(sx, sy); await page.mouse.down();
+    await page.mouse.move(sx + 4, sy + clip.y + clip.height / 2 - original.y - original.height / 2 + 4, { steps: 5 });
+    await expect(page.locator('[data-caption-guide]')).toHaveCount(2);
+    await page.mouse.up();
+    await expect(page.locator('[data-caption-guide]')).toHaveCount(0);
+    await expect(textInput).toBeFocused();
+    await page.screenshot({ path: root + `artifacts/caption-browser/caption-actions-${viewport.width}.png` });
     await page.screenshot({ path: root + `artifacts/caption-browser/text-tools-${viewport.width}.png` });
     await page.screenshot({
       path: root + `artifacts/caption-browser/web-${viewport.width}.png`,

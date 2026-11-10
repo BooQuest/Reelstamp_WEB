@@ -318,5 +318,16 @@
   "textTools5": "Resize text from top left",
   "textTools6": "Resize text from top right",
   "textTools7": "Resize text from bottom left",
-  "textTools8": "Resize text from bottom right"
+  "textTools8": "Resize text from bottom right",
+  "captionActions0": "Duplicate text",
+  "captionActions1": "You can add up to 5 texts per shot.",
+  "captionActions2": "Enter text to duplicate.",
+  "captionActions3": "Layers",
+  "captionActions4": "Bring forward",
+  "captionActions5": "Send backward",
+  "captionActions6": "Bring to front",
+  "captionActions7": "Send to back",
+  "captionActions8": "Text layer order",
+  "captionActions9": "Empty text",
+  "captionActions10": "Reset style"
 }
