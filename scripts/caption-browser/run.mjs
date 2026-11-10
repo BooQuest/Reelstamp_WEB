@@ -142,6 +142,29 @@ try {
                 )
                 .toBe(stored);
             }
+            // Absolute-positioned captions must not shrink to the space left
+            // between their anchor and the right edge while being dragged.
+            const initialBox = await node.boundingBox();
+            const originalStyle = await page.evaluate(() => window.captionFixture.captions[0].style);
+            for (const dx of [40, -80, 40]) {
+              const box = await node.boundingBox();
+              const x = box.x + box.width / 2;
+              const y = box.y + box.height / 2;
+              await page.mouse.move(x, y);
+              await page.mouse.down();
+              await page.mouse.move(x + dx, y + 10, { steps: 5 });
+              const during = await node.boundingBox();
+              expect(during.width).toBeCloseTo(initialBox.width, 1);
+              expect(during.height).toBeCloseTo(initialBox.height, 1);
+              expect(during.y).not.toBeCloseTo(box.y, 1);
+              await page.mouse.up();
+              await expect(input).toHaveCount(0);
+              const afterDrag = await node.boundingBox();
+              expect(afterDrag.width).toBeCloseTo(initialBox.width, 1);
+              expect(afterDrag.height).toBeCloseTo(initialBox.height, 1);
+              const movedStyle = await page.evaluate(() => window.captionFixture.captions[0].style);
+              expect({ ...movedStyle, xRatio: originalStyle.xRatio, yRatio: originalStyle.yRatio }).toEqual(originalStyle);
+            }
             cases++;
           }
     await page.goto(base + '?version=CAPTION_RENDER_V2');
@@ -172,7 +195,7 @@ try {
   }
   expect(errors).toEqual([]);
   console.log(
-    `PASS: 4 prefilled template cases, ${cases} WEB geometry/style cases and mobile/desktop basic-bold preview stability`,
+    `PASS: 4 prefilled template cases, ${cases} WEB geometry/style/drag cases and mobile/desktop basic-bold preview stability`,
   );
 } finally {
   await browser.close();

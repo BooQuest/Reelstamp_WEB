@@ -258,6 +258,8 @@ export default function CaptionOverlayStage({
               transform: anchorTransform,
               zIndex: caption.zIndex,
               boxSizing: 'border-box',
+              // Avoid absolute-position shrink-to-fit changing wraps as left moves.
+              width: 'max-content',
               maxWidth: `${maxWidthPx}px`,
               touchAction: 'none',
               cursor: readOnly ? 'default' : isEditing ? 'text' : 'move',
