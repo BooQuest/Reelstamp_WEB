@@ -58,11 +58,11 @@ export default function useEditorHistory(
       before.current = null;
     },
     commit,
-    commitAfterRender: (shouldCommit: () => boolean = () => true) => {
+    commitAfterRender: (shouldCommit: () => boolean = () => true, onCommitted?: () => void) => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
       frame.current = requestAnimationFrame(() => {
         frame.current = null;
-        if (shouldCommit()) commit();
+        if (shouldCommit()) { commit(); onCommitted?.(); }
       });
     },
     async move(direction: -1 | 1) {

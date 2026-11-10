@@ -309,5 +309,14 @@
   "captionAddLabel": "Add text",
   "captionStyleTab": "Style",
   "captionAlignTab": "Alignment",
-  "captionBackgroundTab": "Background"
+  "captionBackgroundTab": "Background",
+  "textTools0": "Size",
+  "textTools1": "Font size",
+  "textTools2": "Text size",
+  "textTools3": "Decrease text size",
+  "textTools4": "Increase text size",
+  "textTools5": "Resize text from top left",
+  "textTools6": "Resize text from top right",
+  "textTools7": "Resize text from bottom left",
+  "textTools8": "Resize text from bottom right"
 }

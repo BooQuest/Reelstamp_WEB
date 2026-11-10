@@ -97,6 +97,15 @@ export default function GalleryMaker({ ref, ...props }: Props) {
   useLayoutEffect(() => {
     actionsRef.current = { caption, disabled };
   }, [caption, disabled]);
+  const beginCaptionControl = () => {
+    historyRef.current.commit();
+    historyRef.current.begin();
+  };
+  const endCaptionControl = () => {
+    historyRef.current.commitAfterRender(() => true, () => {
+      if (actionsRef.current.caption.editingCaptionId) historyRef.current.begin();
+    });
+  };
   const pause = () => {
     video.current?.pause();
     setPlaying(false);
@@ -127,13 +136,13 @@ export default function GalleryMaker({ ref, ...props }: Props) {
       const target = event.target as Node;
       if (!current.captionOverlayRef.current?.contains(target)) return;
       event.preventDefault();
-      historyRef.current.begin();
+      if (!wheelTimer.current) beginCaptionControl();
       current.handleCaptionScaleChange(
         current.activeCaptionStyle.scale * Math.exp(-event.deltaY * 0.002),
       );
       if (wheelTimer.current) clearTimeout(wheelTimer.current);
       wheelTimer.current = setTimeout(
-        () => historyRef.current.commitAfterRender(),
+        () => { wheelTimer.current = null; endCaptionControl(); },
         250,
       );
     };
@@ -162,7 +171,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
     return () => window.removeEventListener('keydown', handler);
   }, [caption, disabled]);
   const editText = (id: string | null) => {
-    if (id) history.begin();
+    if (id && id !== caption.editingCaptionId) { history.commit(); history.begin(); }
     caption.setEditingCaptionId(id);
     if (!id) history.commitAfterRender();
   };
@@ -222,7 +231,7 @@ export default function GalleryMaker({ ref, ...props }: Props) {
             frame.current = element;
             caption.handleCameraFrameRef(element);
           }}
-          className="relative aspect-[9/16] max-h-full overflow-hidden bg-black"
+          className="relative aspect-[9/16] max-h-full overflow-visible bg-black"
           style={{ height: '100%', maxWidth: '100%' }}
         >
           {empty ? (
@@ -291,22 +300,27 @@ export default function GalleryMaker({ ref, ...props }: Props) {
                 onCaptionPointerDown={(event, item) => {
                   pause();
                   captionPointers.current.add(event.pointerId);
-                  history.begin();
+                  if (event.currentTarget.hasAttribute("data-caption-move")) beginCaptionControl();
+                  else history.begin();
                   caption.handleCaptionPointerDown(event, item);
                 }}
                 onCaptionPointerMove={caption.handleCaptionPointerMove}
                 onCaptionPointerEnd={(event) => {
                   caption.handleCaptionPointerEnd(event);
                   captionPointers.current.delete(event.pointerId);
+                  if (event.currentTarget.hasAttribute("data-caption-move")) {
+                    if (captionPointers.current.size === 0) endCaptionControl();
+                    return;
+                  }
                   if (
                     !caption.editingCaptionId &&
                     captionPointers.current.size === 0
                   )
                     history.commitAfterRender(() => !actionsRef.current.caption.editingCaptionId);
                 }}
-                onResizePointerDown={caption.handleResizeHandlePointerDown}
+                onResizePointerDown={(event) => { pause(); beginCaptionControl(); caption.handleResizeHandlePointerDown(event); }}
                 onResizePointerMove={caption.handleResizeHandlePointerMove}
-                onResizePointerEnd={caption.handleResizeHandlePointerEnd}
+                onResizePointerEnd={(event) => { caption.handleResizeHandlePointerEnd(event); endCaptionControl(); }}
               />
             </div>
           )}
@@ -319,6 +333,9 @@ export default function GalleryMaker({ ref, ...props }: Props) {
       {caption.editingCaptionId && !empty && !disabled && (
         <CaptionToolbar
           style={caption.activeCaptionStyle}
+          allowResize={caption.activeCaptionItem?.source !== "AUTO"}
+          onInteractionStart={beginCaptionControl}
+          onInteractionEnd={endCaptionControl}
           onChange={(style) => caption.updateActiveCaptionStyle(() => style)}
           onDone={() => editText(null)}
           onDelete={() => {

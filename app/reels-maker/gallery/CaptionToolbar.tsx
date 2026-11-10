@@ -1,44 +1,43 @@
-'use client';
-import { useUiText } from '@/app/i18n/LocaleProvider';
+"use client";
+import { useUiText } from "@/app/i18n/LocaleProvider";
 
-import { useEffect, useState } from 'react';
-import type { CaptionStyle } from '../types';
-import { TEXT_COLORS, withGalleryStyle } from './captionStyle';
+import { useEffect, useRef, useState } from "react";
+import { CAPTION_BASE_FONT_SIZE_PX } from "../constants";
+import type { CaptionStyle } from "../types";
+import { TEXT_COLORS, withGalleryStyle } from "./captionStyle";
 
 type Props = {
   style: CaptionStyle;
   onChange: (style: CaptionStyle) => void;
   onDone: () => void;
   onDelete: () => void;
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
+  allowResize?: boolean;
 };
 type Choice = { label: string; changes: Partial<CaptionStyle> };
 const TOOLS: Record<string, Choice[]> = {
   글꼴: [
     {
-      label: 'Pretendard',
-      changes: { fontFamily: 'ReelstampCaptionPretendard' },
+      label: "Pretendard",
+      changes: { fontFamily: "ReelstampCaptionPretendard" },
     },
     {
-      label: 'Noto Serif KR',
-      changes: { fontFamily: 'ReelstampCaptionNotoSerif' },
+      label: "Noto Serif KR",
+      changes: { fontFamily: "ReelstampCaptionNotoSerif" },
     },
   ],
-  스타일: [
-    { label: '기본', changes: { textPreset: 'basic' } },
-    { label: '굵게', changes: { textPreset: 'bold' } },
-    { label: '그림자', changes: { textPreset: 'shadow' } },
-  ],
   정렬: [
-    { label: '왼쪽', changes: { textAlign: 'left' } },
-    { label: '가운데', changes: { textAlign: 'center' } },
-    { label: '오른쪽', changes: { textAlign: 'right' } },
+    { label: "왼쪽", changes: { textAlign: "left" } },
+    { label: "가운데", changes: { textAlign: "center" } },
+    { label: "오른쪽", changes: { textAlign: "right" } },
   ],
   배경: [
-    { label: '없음', changes: { boxed: false } },
-    { label: '검정', changes: { boxed: true, boxBackgroundColor: '#000000' } },
-    { label: '흰색', changes: { boxed: true, boxBackgroundColor: '#FFFFFF' } },
-    { label: '불투명', changes: { boxBackgroundOpacity: 1 } },
-    { label: '반투명', changes: { boxBackgroundOpacity: 0.5 } },
+    { label: "없음", changes: { boxed: false } },
+    { label: "검정", changes: { boxed: true, boxBackgroundColor: "#000000" } },
+    { label: "흰색", changes: { boxed: true, boxBackgroundColor: "#FFFFFF" } },
+    { label: "불투명", changes: { boxBackgroundOpacity: 1 } },
+    { label: "반투명", changes: { boxBackgroundOpacity: 0.5 } },
   ],
 };
 export default function CaptionToolbar({
@@ -46,10 +45,12 @@ export default function CaptionToolbar({
   onChange,
   onDone,
   onDelete,
+  onInteractionStart,
+  onInteractionEnd,
+  allowResize = true,
 }: Props) {
   const t = useUiText();
   const [bottom, setBottom] = useState(0);
-  const [tool, setTool] = useState<string>('글꼴');
   useEffect(() => {
     const viewport = window.visualViewport;
     const update = () =>
@@ -69,48 +70,106 @@ export default function CaptionToolbar({
       viewport?.removeEventListener('scroll', update);
     };
   }, []);
+  const sizing = useRef(false);
+  const [tool, setTool] = useState<string>("글꼴");
   const normalized = withGalleryStyle(style, {});
-  const change = (changes: Partial<CaptionStyle>) =>
+  const change = (changes: Partial<CaptionStyle>) => {
+    onInteractionStart?.();
     onChange(withGalleryStyle(style, changes));
+    onInteractionEnd?.();
+  };
+  const scale = Math.round(style.scale * 100);
+  const setScale = (value: number) => onChange({ ...style, scale: Math.min(220, Math.max(60, Math.round(value))) / 100 });
+  const pointerScale = (event: React.PointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setScale(60 + Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * 160);
+  };
+  const endScale = () => {
+    if (!sizing.current) return;
+    sizing.current = false;
+    onInteractionEnd?.();
+  };
   return (
     <div
       role="toolbar"
       aria-label={t("텍스트 도구")}
       data-caption-toolbar
-      className="fixed inset-x-0 z-[85] mx-auto w-full max-w-2xl shrink-0 space-y-2 border-t border-white/20 bg-[#182335] p-3 text-xs text-white shadow-xl"
       style={{ bottom }}
+      className="fixed inset-x-0 z-[85] mx-auto w-full max-w-2xl shrink-0 space-y-2 border-t border-white/20 bg-[#182335] p-3 text-xs text-white shadow-xl"
       onPointerDown={(e) => {
-        if ((e.target as HTMLElement).closest('button')) e.preventDefault();
+        if ((e.target as HTMLElement).closest("button")) e.preventDefault();
       }}
     >
       <div className="flex items-center justify-between gap-1">
-        {[...Object.keys(TOOLS), '색상'].map((name) => (
+        <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+        {["글꼴", ...(allowResize ? ["크기"] : []), "스타일", "정렬", "색상", "배경"].map((name) => (
           <button
             type="button"
             key={name}
             aria-pressed={tool === name}
             onClick={() => setTool(name)}
-            className="rounded px-2 py-2 aria-pressed:bg-white/15"
+            className="shrink-0 whitespace-nowrap rounded px-2 py-2 aria-pressed:bg-white/15"
           >
             {t(name)}
           </button>
         ))}
-        <button type="button" onClick={onDelete} className="p-2 text-rose-300">
-          {t("삭제")}</button>
+        </div>
+        <button type="button" onClick={onDelete} className="shrink-0 p-2 text-rose-300">
+          {t("삭제")}
+        </button>
         <button
           type="button"
           onClick={onDone}
-          className="rounded bg-rose-500 p-2"
+          className="shrink-0 rounded bg-rose-500 p-2"
         >
-          {t("완료")}</button>
+          {t("완료")}
+        </button>
       </div>
       <div className="flex min-h-9 flex-wrap items-center justify-center gap-2">
-        {tool === '색상'
+        {tool === "크기" ? (
+          <div className="w-full px-2" data-caption-size-panel>
+            <output className="mb-1 block text-center tabular-nums" aria-live="polite">
+              {t("글자 크기")} {(CAPTION_BASE_FONT_SIZE_PX * style.scale).toFixed(1)} px · {scale}%
+            </output>
+            <div className="flex items-center gap-3">
+              <button type="button" className="h-11 w-11 shrink-0 rounded bg-white/10 disabled:opacity-40" aria-label={t("텍스트 축소")} disabled={scale <= 60}
+                onClick={() => { onInteractionStart?.(); setScale(scale - 1); onInteractionEnd?.(); }}>−</button>
+              <div role="slider" tabIndex={0} aria-label={t("텍스트 크기")} aria-valuemin={60} aria-valuemax={220} aria-valuenow={scale} aria-valuetext={`${scale}%`}
+                className="relative flex h-11 min-w-0 flex-1 touch-none items-center outline-offset-2"
+                onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); sizing.current = true; onInteractionStart?.(); event.currentTarget.setPointerCapture(event.pointerId); pointerScale(event); }}
+                onPointerMove={(event) => { if (sizing.current) pointerScale(event); }}
+                onPointerUp={endScale} onPointerCancel={endScale} onLostPointerCapture={endScale}
+                onKeyDown={(event) => {
+                  const values: Record<string, number> = { ArrowLeft: scale - 1, ArrowDown: scale - 1, ArrowRight: scale + 1, ArrowUp: scale + 1, Home: 60, End: 220 };
+                  if (!(event.key in values)) return;
+                  event.preventDefault(); event.stopPropagation();
+                  if (!sizing.current) { sizing.current = true; onInteractionStart?.(); }
+                  setScale(values[event.key]);
+                }} onKeyUp={endScale} onBlur={endScale}>
+                <div className="h-1 w-full rounded bg-white/25" />
+                <span className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 rounded-full bg-rose-500" style={{ left: `${(scale - 60) / 160 * 100}%` }} />
+              </div>
+              <button type="button" className="h-11 w-11 shrink-0 rounded bg-white/10 disabled:opacity-40" aria-label={t("텍스트 확대")} disabled={scale >= 220}
+                onClick={() => { onInteractionStart?.(); setScale(scale + 1); onInteractionEnd?.(); }}>+</button>
+            </div>
+          </div>
+        ) : tool === "스타일" ? (
+          <>
+            {[{ label: "기본", weight: 400 }, { label: "굵게", weight: 700 }].map(({ label, weight }) => (
+              <button key={label} type="button" aria-pressed={normalized.fontWeight === weight}
+                className="rounded bg-white/5 px-3 py-2 aria-pressed:ring-1 aria-pressed:ring-rose-500"
+                onClick={() => change({ fontWeight: weight, textPreset: normalized.textPreset === "shadow" ? "shadow" : weight === 700 ? "bold" : "basic" })}>{t(label)}</button>
+            ))}
+            <button type="button" aria-pressed={normalized.textPreset === "shadow"}
+              className="rounded bg-white/5 px-3 py-2 aria-pressed:ring-1 aria-pressed:ring-rose-500"
+              onClick={() => change({ textPreset: normalized.textPreset === "shadow" ? (normalized.fontWeight === 700 ? "bold" : "basic") : "shadow", fontWeight: normalized.fontWeight })}>{t("그림자")}</button>
+          </>
+        ) : tool === "색상"
           ? TEXT_COLORS.map((color) => (
               <button
                 type="button"
                 key={color}
-                aria-label={t.format("텍스트 색상 {v0}", {v0: color})}
+                aria-label={t.format("텍스트 색상 {v0}", { v0: color })}
                 aria-pressed={normalized.textColor === color}
                 onClick={() => change({ textColor: color })}
                 className="h-7 w-7 rounded-full border-2 border-white/50 aria-pressed:ring-2 aria-pressed:ring-rose-500"

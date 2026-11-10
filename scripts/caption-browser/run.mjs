@@ -26,6 +26,7 @@ const server = await createServer({
 await server.listen();
 const browser = await chromium.launch({ channel: 'chrome' });
 const page = await browser.newPage();
+page.setDefaultTimeout(15000);
 const errors = [];
 page.on('pageerror', (e) => {
   errors.push(e.message);
@@ -189,6 +190,29 @@ try {
           await page.evaluate(() => window.captionFixture.previewScale),
         ).toBe(scale);
       }
+    await page.goto(base + '?version=CAPTION_RENDER_V2&text=' + encodeURIComponent('크기 조절\n두 번째 줄'));
+    const captionNode = page.locator('[data-caption-id="original"]');
+    await captionNode.click();
+    const textInput = page.locator('textarea');
+    const originalBox = await captionNode.boundingBox();
+    for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right']) {
+      const handle = await page.locator(`[data-caption-resize="${corner}"]`).boundingBox();
+      const x = handle.x + handle.width / 2, y = handle.y + handle.height / 2;
+      await page.mouse.move(x, y); await page.mouse.down();
+      await page.mouse.move(x + (corner.endsWith('left') ? -8 : 8), y + (corner.startsWith('top') ? -8 : 8), { steps: 4 });
+      await page.mouse.up();
+      await expect(textInput).toBeFocused();
+      const resized = await captionNode.boundingBox();
+      expect(resized.width / resized.height).toBeCloseTo(originalBox.width / originalBox.height, 1);
+    }
+    await page.getByRole('button', { name: '크기', exact: true }).click();
+    const slider = page.getByRole('slider');
+    const percent = Number(await slider.getAttribute('aria-valuenow'));
+    await page.getByRole('button', { name: '텍스트 확대', exact: true }).click();
+    await expect(slider).toHaveAttribute('aria-valuenow', String(percent + 1));
+    await expect(textInput).toBeFocused();
+    await expect(page.locator('[data-caption-size-panel] output')).toHaveText(/글자 크기 .* px/);
+    await page.screenshot({ path: root + `artifacts/caption-browser/text-tools-${viewport.width}.png` });
     await page.screenshot({
       path: root + `artifacts/caption-browser/web-${viewport.width}.png`,
     });

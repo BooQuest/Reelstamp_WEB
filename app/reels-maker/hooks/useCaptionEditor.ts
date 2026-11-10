@@ -96,6 +96,7 @@ export default function useCaptionEditor({
   const captionStageRef = useRef<HTMLDivElement | null>(null);
   const captionOverlayRef = useRef<HTMLDivElement | null>(null);
   const captionInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const resizeOrigin = useRef<{ x: number; y: number } | null>(null);
   const captionGestureRef = useRef<CaptionGestureState>({
     mode: 'none',
     captionId: null,
@@ -216,10 +217,12 @@ export default function useCaptionEditor({
       const normalized = normalizeCaptionStyle(style);
       return {
         ...normalized,
-        ...clampCaptionPosition(normalized.xRatio, normalized.yRatio),
+        ...(activeCaptionItem?.source === 'AUTO'
+          ? clampCaptionPosition(normalized.xRatio, normalized.yRatio)
+          : { xRatio: normalized.xRatio, yRatio: normalized.yRatio }),
       };
     },
-    [clampCaptionPosition]
+    [clampCaptionPosition, activeCaptionItem?.source]
   );
 
   const updateActiveCaptionText = useCallback(
@@ -448,11 +451,12 @@ export default function useCaptionEditor({
   const handleCaptionPointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>, caption: CaptionItem) => {
       if (!showCaptionOverlay) return;
-      if (editingCaptionId === caption.id) return;
+      const selectionControl = event.currentTarget.hasAttribute('data-caption-move');
+      if (editingCaptionId === caption.id && !selectionControl) return;
       if (event.pointerType === 'mouse' && event.button !== 0) return;
       event.stopPropagation();
       setSelectedCaptionId(caption.id);
-      setEditingCaptionId(null);
+      if (!selectionControl) setEditingCaptionId(null);
 
       const gesture = captionGestureRef.current;
       if (gesture.captionId && gesture.captionId !== caption.id) {
@@ -507,14 +511,8 @@ export default function useCaptionEditor({
       ) {
         return;
       }
-      const center = {
-        x:
-          interactionRect.left +
-          gesture.startStyle.xRatio * interactionRect.width,
-        y:
-          interactionRect.top +
-          gesture.startStyle.yRatio * interactionRect.height,
-      };
+      const center = resizeOrigin.current;
+      if (!center) return;
       const currentDistance = distanceBetweenPoints(center, {
         x: event.clientX,
         y: event.clientY,
@@ -553,7 +551,6 @@ export default function useCaptionEditor({
       if (!showCaptionOverlay || !activeCaptionItem) return;
       if (event.pointerType === 'mouse' && event.button !== 0) return;
       event.stopPropagation();
-      setEditingCaptionId(null);
       const interactionRect = getCaptionInteractionRect();
       if (
         !interactionRect ||
@@ -570,6 +567,7 @@ export default function useCaptionEditor({
           interactionRect.top +
           activeCaptionStyle.yRatio * interactionRect.height,
       };
+      resizeOrigin.current = center;
       const startPoint = { x: event.clientX, y: event.clientY };
       const gesture = captionGestureRef.current;
       gesture.mode = 'resize';

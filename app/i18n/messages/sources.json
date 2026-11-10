@@ -1047,5 +1047,14 @@
   "텍스트 추가": "editor.captionAddLabel",
   "스타일": "editor.captionStyleTab",
   "정렬": "editor.captionAlignTab",
-  "배경": "editor.captionBackgroundTab"
+  "배경": "editor.captionBackgroundTab",
+  "크기": "editor.textTools0",
+  "글자 크기": "editor.textTools1",
+  "텍스트 크기": "editor.textTools2",
+  "텍스트 축소": "editor.textTools3",
+  "텍스트 확대": "editor.textTools4",
+  "텍스트 왼쪽 위 크기 조절": "editor.textTools5",
+  "텍스트 오른쪽 위 크기 조절": "editor.textTools6",
+  "텍스트 왼쪽 아래 크기 조절": "editor.textTools7",
+  "텍스트 오른쪽 아래 크기 조절": "editor.textTools8"
 }

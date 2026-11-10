@@ -309,5 +309,14 @@
   "captionAddLabel": "텍스트 추가",
   "captionStyleTab": "스타일",
   "captionAlignTab": "정렬",
-  "captionBackgroundTab": "배경"
+  "captionBackgroundTab": "배경",
+  "textTools0": "크기",
+  "textTools1": "글자 크기",
+  "textTools2": "텍스트 크기",
+  "textTools3": "텍스트 축소",
+  "textTools4": "텍스트 확대",
+  "textTools5": "텍스트 왼쪽 위 크기 조절",
+  "textTools6": "텍스트 오른쪽 위 크기 조절",
+  "textTools7": "텍스트 왼쪽 아래 크기 조절",
+  "textTools8": "텍스트 오른쪽 아래 크기 조절"
 }
