@@ -15,8 +15,8 @@ vi.mock('@/app/components/providers/AuthProvider', () => ({ useAuth: () => state
 vi.mock('@/app/components/onboarding/useOnboarding', () => ({ default: () => ({ status: { entranceCompleted: state.entranceCompleted } }) }));
 vi.mock('@/app/lib/constants/beta', () => ({ isReelstampBetaEnabled: () => false }));
 vi.mock('@/app/components/ui/TemplateMediaPreview', () => ({
-  default: ({ title, embedUrl, preferEmbed }: { title: string; embedUrl?: string; preferEmbed?: boolean }) =>
-    <div data-testid="media" data-embed={preferEmbed && embedUrl ? embedUrl : undefined}>{title} 미디어</div>,
+  default: ({ title, embedUrl, playable }: { title: string; embedUrl?: string; playable?: boolean }) =>
+    <div data-testid="media" data-embed={playable && embedUrl ? embedUrl : undefined}>{title} 미디어</div>,
 }));
 
 const template = (id: string, overrides: Partial<TemplateSummary> = {}): TemplateSummary => ({
