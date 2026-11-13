@@ -99,8 +99,10 @@ export default function AccountDeletionClient() {
   const date = (value: string) => new Intl.DateTimeFormat(t.locale === 'en' ? 'en-GB' : 'ko-KR',
     { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value));
   const passes = [...(preview?.active ?? []), ...(preview?.scheduled ?? [])];
-  const button = user?.provider === 'NAVER' ? '네이버로 본인 확인 후 탈퇴'
-    : user?.provider === 'GOOGLE' ? '구글로 본인 확인 후 탈퇴' : '회원 탈퇴';
+  const button = user?.provider === 'KAKAO' ? '카카오 연결 해제 후 탈퇴'
+    : user?.provider === 'NAVER' ? '네이버 연결 해제 후 탈퇴'
+    : user?.provider === 'GOOGLE' ? '구글 연결 해제 후 탈퇴'
+    : user?.provider === 'APPLE' ? 'Apple 연결 해제 후 탈퇴' : '탈퇴하기';
 
   return <div className="min-h-[calc(100vh-80px)] bg-gradient-to-b from-pink-50 to-white px-4 py-10 sm:py-16">
     <section className="mx-auto max-w-xl space-y-6 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8" aria-labelledby="deletion-title" aria-busy={busy}>

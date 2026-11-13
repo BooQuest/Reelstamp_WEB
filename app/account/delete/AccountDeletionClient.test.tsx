@@ -32,7 +32,7 @@ function mount() {
   const rendered = render(<StrictMode><QueryClientProvider client={client}><AccountDeletionClient /></QueryClientProvider></StrictMode>);
   return { ...rendered, client };
 }
-async function confirm(button = '회원 탈퇴') {
+async function confirm(button = '카카오 연결 해제 후 탈퇴') {
   await screen.findByText('1개월');
   fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(screen.getByRole('button', { name: button }));
@@ -54,11 +54,11 @@ it('shows exact scope before the pass warning, with active and scheduled values 
   expect(text).toContain('2027'); expect(text).toContain('₩19,000');
   expect(screen.getByText('시작 예정 이용권')).toBeInTheDocument();
   expect(text).not.toContain('환불 불가');
-  expect(screen.getByRole('button', { name: '회원 탈퇴' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '카카오 연결 해제 후 탈퇴' })).toBeDisabled();
 });
-it.each(['KAKAO', 'GUEST', 'APPLE'] as const)('%s deletes directly after confirmation and clears local state/cache', async provider => {
+it.each([['KAKAO', '카카오 연결 해제 후 탈퇴'], ['GUEST', '탈퇴하기'], ['APPLE', 'Apple 연결 해제 후 탈퇴']] as const)('%s deletes directly after confirmation and clears local state/cache', async (provider, label) => {
   auth.user!.provider = provider;
-  const { client } = mount(); await confirm();
+  const { client } = mount(); await confirm(label);
   await waitFor(() => expect(done).toHaveBeenCalledOnce());
   expect(remove).toHaveBeenCalledExactlyOnceWith(7); expect(start).not.toHaveBeenCalled();
   expect(auth.completeAccountDeletion).toHaveBeenCalledOnce();
@@ -66,7 +66,7 @@ it.each(['KAKAO', 'GUEST', 'APPLE'] as const)('%s deletes directly after confirm
   expect(sessionStorage.length).toBe(0);
 });
 it.each([['NAVER', '네이버'], ['GOOGLE', '구글']] as const)('%s starts reauthentication only after the final confirmation', async (provider, label) => {
-  auth.user!.provider = provider; mount(); await confirm(`${label}로 본인 확인 후 탈퇴`);
+  auth.user!.provider = provider; mount(); await confirm(`${label} 연결 해제 후 탈퇴`);
   await waitFor(() => expect(navigate).toHaveBeenCalledWith(started.authorizationUrl));
   expect(start).toHaveBeenCalledExactlyOnceWith(7); expect(remove).not.toHaveBeenCalled();
 });
@@ -86,7 +86,7 @@ it.each(['RS-ACC-001', 'RS-ACC-002', 'RS-ACC-003'])('shows %s, preserves session
 });
 it('blocks deletion when preview cannot be loaded', async () => {
   preview.mockResolvedValue({ success: false, errorCode: 'RS-ACC-003' }); mount();
-  await screen.findByRole('alert'); expect(screen.getByRole('button', { name: '회원 탈퇴' })).toBeDisabled();
+  await screen.findByRole('alert'); expect(screen.getByRole('button', { name: '카카오 연결 해제 후 탈퇴' })).toBeDisabled();
   expect(remove).not.toHaveBeenCalled();
 });
 it('does not delete after OAuth cancellation or an account switch', async () => {
