@@ -40,7 +40,7 @@ export default function GuestNoticeToast() {
   const { user } = useAuth();
 
   const isGuestUser = Boolean(user?.guest || user?.provider === 'GUEST');
-  const shouldHideOnPage = pathname.startsWith('/login');
+  const shouldHideOnPage = pathname.startsWith('/login') || pathname === '/account/delete';
   const guestIdentity = user ? user.id || user.userId || user.nickname || 'unknown' : 'anonymous';
   const dismissKey = useMemo(() => {
     return `${DISMISS_KEY_PREFIX}:${guestIdentity}`;

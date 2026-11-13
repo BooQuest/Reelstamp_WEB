@@ -35,6 +35,14 @@ afterEach(() => {
 });
 
 describe('browser-based onboarding', () => {
+  it.each(['/account/delete', '/login'])('does not cover the deletion or login flow on %s for first-time visitors', async path => {
+    mock.path = path;
+    const view = render(<OnboardingPopups />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(localStorage.getItem(ENTRANCE_KEY)).toBeNull();
+    mock.path = '/templates'; view.rerender(<OnboardingPopups />);
+    await expectSlide('오늘의 릴스 트렌드');
+  });
   it('shows two entrance images followed by three maker images and persists each completed guide', async () => {
     mock.path = '/reels-maker';
     const view = render(<OnboardingPopups />);

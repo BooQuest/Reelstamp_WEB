@@ -55,3 +55,17 @@ it('forwards edit capabilities only to maker session APIs', async () => {
   expect(adapter.mock.calls[0][0].headers['X-Reelstamp-Edit-Token']).toBe('edit-token');
   expect(adapter.mock.calls[1][0].headers['X-Reelstamp-Edit-Token']).toBeUndefined();
 });
+
+it('does not replay deletion on a retryable authentication response and pins the expected account', async () => {
+  store.get.mockImplementation(name => ({ value: name === 'accessToken' ? jwt(3600) : 'r' }));
+  incomingHeaders.values = { 'x-reelstamp-user': 'other' };
+  const api = await getMutableServerApiClient({ retryAuthentication: false, expectedUserId: 7 });
+  const adapter = vi.fn(async config => {
+    throw new AxiosError('expired', 'ERR_BAD_REQUEST', config, undefined,
+      { status: 401, data: { errorCode: 'TOKEN_EXPIRED' }, statusText: '', headers: {}, config });
+  });
+  api.defaults.adapter = adapter;
+  await expect(api.delete('/api/user/me')).rejects.toMatchObject({ response: { status: 401 } });
+  expect(adapter).toHaveBeenCalledTimes(1); expect(refresh).not.toHaveBeenCalled();
+  expect(adapter.mock.calls[0][0].headers['X-Reelstamp-User']).toBe('7');
+});

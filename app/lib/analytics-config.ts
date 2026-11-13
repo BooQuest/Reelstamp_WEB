@@ -7,5 +7,8 @@ export const GOOGLE_TAG_INIT = `
 window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
-gtag('config', '${GA_MEASUREMENT_ID}');
+// OAuth query strings contain one-use credentials. Do not send this page view.
+var oauthCallback = window.location.pathname === '/login' &&
+  /[?&](code|state|error)=/.test(window.location.search);
+if (!oauthCallback) gtag('config', '${GA_MEASUREMENT_ID}');
 `;
