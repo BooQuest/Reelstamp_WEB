@@ -3,7 +3,7 @@ import { useUiText } from '@/app/i18n/LocaleProvider';
 
 
 import { useState } from 'react';
-import { Bookmark } from 'lucide-react';
+import { Bookmark, Play } from 'lucide-react';
 import { useSavedTemplates, type TemplateSummary } from '@/app/hooks/useSavedTemplates';
 import TemplateMediaPreview from '@/app/components/ui/TemplateMediaPreview';
 import TemplateAccessBadge from '@/app/components/ui/TemplateAccessBadge';
@@ -74,7 +74,14 @@ export default function SavedReelsClient() {
                   {isComingSoon ? (
                     <div className="absolute inset-0 bg-black/25" />
                   ) : (
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/70 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <>
+                      <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/70 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                          <Play className="w-5 h-5 text-white" />
+                        </div>
+                      </div>
+                    </>
                   )}
                 </button>
                 <button

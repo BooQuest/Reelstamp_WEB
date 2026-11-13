@@ -51,7 +51,7 @@ export default function TemplatePreviewCard({
         thumbnailUrl={template.thumbnailUrl}
         embedUrl={template.embedUrl}
         instagramOnly={template.instagramOnly}
-        playable
+        preferEmbed
         disableEmbedInteraction={!isActive}
         onPlaybackFallbackVisibilityChange={onPlaybackFallbackVisibilityChange}
       />

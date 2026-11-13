@@ -472,7 +472,7 @@ export default function TemplatesClient() {
                   embedUrl={card.embedUrl}
                   instagramOnly={card.instagramOnly}
                   disableEmbedInteraction={!isActive}
-                  playable
+                  preferEmbed
                   onPlaybackFallbackVisibilityChange={(isVisible) =>
                     handlePlaybackFallbackVisibilityChange(card.id, isVisible)
                   }
