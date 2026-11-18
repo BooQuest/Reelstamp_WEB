@@ -2,7 +2,7 @@
 import { useUiText } from '@/app/i18n/LocaleProvider';
 
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
@@ -10,6 +10,7 @@ import { loginAsGuestAction, loginWithSocialAction } from '@/app/actions/auth';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import LoadingOverlay from '@/app/components/ui/LoadingOverlay';
 import type { SocialAuthProvider } from '@/app/lib/api/auth';
+import DeletionCallback from '@/app/account/delete/DeletionCallback';
 import {
   buildLoginOauthState,
   clearStoredLoginReturnUrl,
@@ -60,7 +61,7 @@ const getErrorMessage = (error: unknown, fallbackMessage: string) => {
     : fallbackMessage;
 };
 
-export default function LoginClient() {
+export default function LoginClient({ accountDeletionCallback = false }: { accountDeletionCallback?: boolean }) {
   const t = useUiText();
   const router = useRouter();
   const { user, setUser, isAuthenticated } = useAuth();
@@ -69,6 +70,8 @@ export default function LoginClient() {
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
   const [isLoadingGuest, setIsLoadingGuest] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletionCompleted, setDeletionCompleted] = useState(false);
+  const handledLoginCallback = useRef(false);
   const [loadingText, setLoadingText] = useState('로그인 중...');
   const [isProcessing, setIsProcessing] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -95,7 +98,12 @@ export default function LoginClient() {
   };
 
   useEffect(() => {
+    if (accountDeletionCallback || handledLoginCallback.current) return;
     const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('accountDeleted') === '1') {
+      setDeletionCompleted(true);
+      window.history.replaceState({}, '', '/login');
+    }
     const code = urlParams.get('code');
     const state = urlParams.get('state');
     const returnUrlParam = getLoginReturnUrlFromSearchParams(urlParams);
@@ -107,6 +115,9 @@ export default function LoginClient() {
     }
 
     if (code && !isProcessing && !isSocialAuthenticated) {
+      // Cleaning the URL triggers rerenders while the exchange is pending. Do not
+      // clear the saved return URL or exchange the same code again on that render.
+      handledLoginCallback.current = true;
       setIsProcessing(true);
       
       const cleanUrl = window.location.pathname + (returnUrlParam ? `?returnUrl=${encodeURIComponent(returnUrlParam)}` : '');
@@ -155,7 +166,7 @@ export default function LoginClient() {
         handleKakaoCode(code, state);
       }
     }
-  }, [isProcessing, isSocialAuthenticated]);
+  }, [isProcessing, isSocialAuthenticated, accountDeletionCallback]);
 
   // [카카오] 인가 코드를 액세스 토큰으로 교환
   const handleKakaoCode = async (code: string, state: string) => {
@@ -388,6 +399,8 @@ export default function LoginClient() {
     } catch { setError('로그인을 시작하지 못했습니다. 다시 시도해 주세요.'); setIsLoadingGoogle(false); }
   };
 
+  if (accountDeletionCallback) return <DeletionCallback />;
+
   // 아직 마운트 전이면 아무것도 렌더링하지 않음
   if (!mounted) {
     return null;
@@ -443,6 +456,7 @@ export default function LoginClient() {
       </div>
 
       <div className="w-full max-w-md space-y-8 relative z-10">
+        {deletionCompleted && <p role="status" className="rounded-xl bg-green-50 p-4 text-center text-sm text-green-800">{t('탈퇴가 완료되었습니다')}</p>}
         {/* 로그인 처리 중이 아닐 때만 실제 콘텐츠 노출 (깜빡임 방지) */}
         {!showOverlay ? (
           <>

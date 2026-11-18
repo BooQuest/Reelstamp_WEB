@@ -16,8 +16,11 @@ function OnboardingSession() {
 }
 
 export default function OnboardingPopups() {
+  const pathname = usePathname();
   // Wait for the legacy notice to resolve hydration, dates and dismissed records first.
   const [legacyVisible, setLegacyVisible] = useState(true);
+  // Keep the public deletion instructions, OAuth return and completion notice visible.
+  if (pathname === '/account/delete' || pathname === '/login') return null;
   return <>
     <SequentialServiceNoticePopups onVisibilityChange={setLegacyVisible} />
     {!legacyVisible && <OnboardingSession />}

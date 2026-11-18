@@ -94,7 +94,7 @@ export default function AccountSettingsClient({ initialUser, initialEntitlements
             </span>
           </button>
 
-          <button className="w-full text-center py-2">
+          <button onClick={() => router.push('/account/delete')} className="w-full text-center py-2">
             <span className="text-xs text-gray-400 hover:text-gray-600 transition-all">{t("회원 탈퇴")}</span>
           </button>
         </div>

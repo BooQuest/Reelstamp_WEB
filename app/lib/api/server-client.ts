@@ -14,15 +14,15 @@ export async function getServerApiClient(): Promise<AxiosInstance> {
 }
 
 /** Only call from Route Handlers or Server Actions. */
-export async function getMutableServerApiClient(): Promise<AxiosInstance> {
-  return createClient(true);
+export async function getMutableServerApiClient(options: { retryAuthentication?: boolean; expectedUserId?: number } = {}): Promise<AxiosInstance> {
+  return createClient(true, options);
 }
 
-async function createClient(mutable: boolean): Promise<AxiosInstance> {
+async function createClient(mutable: boolean, options: { retryAuthentication?: boolean; expectedUserId?: number } = {}): Promise<AxiosInstance> {
   const store = await cookies();
   const uiLocale = resolveLocale(store.get(LOCALE_COOKIE)?.value, englishEnabled());
   const requestHeaders = mutable ? await headers() : null;
-  const expectedUser = requestHeaders?.get('x-reelstamp-user');
+  const expectedUser = options.expectedUserId?.toString() ?? requestHeaders?.get('x-reelstamp-user');
   const editToken = requestHeaders?.get('x-reelstamp-edit-token');
   let accessToken = store.get('accessToken')?.value;
   let refreshToken = store.get('refreshToken')?.value;
@@ -64,7 +64,7 @@ async function createClient(mutable: boolean): Promise<AxiosInstance> {
   }, async error => {
     const request = error.config;
     const code = error.response?.data?.errorCode;
-    if (mutable && refreshToken && request && !request._authRetry && error.response?.status === 401 &&
+    if (options.retryAuthentication !== false && mutable && refreshToken && request && !request._authRetry && error.response?.status === 401 &&
         ['INVALID_TOKEN', 'TOKEN_EXPIRED', 'MISSING_AUTH_TOKEN'].includes(code)) {
       request._authRetry = true;
       await refresh();

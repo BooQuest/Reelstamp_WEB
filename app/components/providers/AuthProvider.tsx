@@ -1,7 +1,7 @@
 // 인증 상태 전역 관리 Provider: React Context를 사용한 로그인 상태 관리
 'use client';
 
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
 import { UserInfo, SubscriptionStatusResponse } from '@/app/lib/api/auth';
 import { logoutAction, getSubscriptionStatusAction } from '@/app/actions/auth';
 import SessionRecovery from './SessionRecovery';
@@ -14,6 +14,7 @@ interface AuthContextType {
   isLoadingSubscription: boolean;
   setUser: (user: UserInfo | null) => void;
   logout: () => Promise<void>;
+  completeAccountDeletion: () => void;
   refreshSubscription: () => Promise<void>;
 }
 
@@ -31,6 +32,9 @@ interface AuthProviderProps {
  */
 export function AuthProvider({ children, initialUser }: AuthProviderProps) {
   const [user, setUser] = useState<UserInfo | null>(initialUser);
+  const deleted = useRef(false);
+  const userId = useRef(user?.id);
+  userId.current = user?.id;
   bindAuthenticatedUser(user?.id ?? null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionStatusResponse | null>(null);
@@ -38,6 +42,7 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
 
   // 구독 정보 조회 함수
   const refreshSubscription = async () => {
+    const requestedUser = user?.id;
     if (!user) {
       setSubscription(null);
       return;
@@ -46,11 +51,11 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     try {
       setIsLoadingSubscription(true);
       const result = await getSubscriptionStatusAction();
-      if (result.success && result.data) {
+      if (!deleted.current && userId.current === requestedUser && result.success && result.data) {
         // action의 리턴 타입이 현재 SubscriptionStatusResponse와 약간 다를 수 있으므로 매핑 확인 필요
         // getSubscriptionStatusAction의 data 타입이 SubscriptionData만 포함하고 있을 수 있음
         // 만약 전체 SubscriptionStatusResponse를 반환하도록 action을 수정해야 한다면 아래에서 조정
-        setSubscription(result.data as any);
+        setSubscription(result.data);
       }
     } catch (error) {
       console.error('Failed to fetch subscription status:', error);
@@ -78,6 +83,17 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     setSubscription(null);
   };
 
+  const completeAccountDeletion = () => {
+    deleted.current = true;
+    bindAuthenticatedUser(null);
+    blockAuthenticatedRequests(true);
+    setUser(null);
+    setSessionExpired(false);
+    setSubscription(null);
+    setIsLoadingSubscription(false);
+    notifyAuthChanged();
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -86,19 +102,22 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
         subscription,
         isLoadingSubscription,
         setUser: (next) => {
+          deleted.current = false;
           setUser(next);
           if (next) { setSessionExpired(false); blockAuthenticatedRequests(false); }
           notifyAuthChanged();
         },
         logout,
+        completeAccountDeletion,
         refreshSubscription,
       }}
     >
       {children}
-      <SessionRecovery user={user} onExpired={() => setSessionExpired(true)} onVerified={(verified) => {
+      {!deleted.current && <SessionRecovery user={user} onExpired={() => setSessionExpired(true)} onVerified={(verified) => {
+        if (deleted.current) return;
         setUser(verified);
         setSessionExpired(false);
-      }} />
+      }} />}
     </AuthContext.Provider>
   );
 }

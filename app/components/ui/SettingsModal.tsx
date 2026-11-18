@@ -10,9 +10,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { X, User, Sparkles, RefreshCw, Trash2 } from 'lucide-react';
-import Image from 'next/image';
 import { useAuth } from '@/app/components/providers/AuthProvider';
-import { getSubscriptionStatusAction, deleteAccountAction } from '@/app/actions/auth';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -22,11 +20,8 @@ interface SettingsModalProps {
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const t = useUiText();
   const router = useRouter();
-  const { user, logout, subscription, isLoadingSubscription, refreshSubscription } = useAuth();
+  const { subscription, isLoadingSubscription, refreshSubscription } = useAuth();
   const [mounted, setMounted] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showSubscriptionWarning, setShowSubscriptionWarning] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   
   // 추가된 상태
   const [isManageOpen, setIsManageOpen] = useState(false);
@@ -50,9 +45,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   useEffect(() => {
     if (isOpen) {
-      setShowDeleteConfirm(false);
-      setShowSubscriptionWarning(false);
-      setIsDeleting(false);
       setIsManageOpen(false);
       setShowCancelConfirm(false);
       setIsCancelling(false);
@@ -120,38 +112,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       alert(t('서버와 통신 중 오류가 발생했습니다.'));
     } finally {
       setIsCancelling(false);
-    }
-  };
-
-  const handleDeleteAccount = async () => {
-    // 구독 중인 경우 삭제 방지 (구독 해지 예약이 되어있지 않은 경우)
-    if (!isFreePlan && !isCanceled) {
-      setShowDeleteConfirm(false);
-      return;
-    }
-
-    setIsDeleting(true);
-    try {
-      const result = await deleteAccountAction();
-      
-      if (result.success) {
-        // 계정 삭제 성공 시 팝업 닫기
-        setShowDeleteConfirm(false);
-        onClose();
-        // 로그아웃 처리 및 홈으로 리다이렉트
-        await logout();
-        router.push('/');
-      } else {
-        // 에러 메시지 표시
-        alert(t(result.message || '계정 삭제 중 오류가 발생했습니다.'));
-        setIsDeleting(false);
-        setShowDeleteConfirm(false);
-      }
-    } catch (error) {
-      console.error('계정 삭제 실패:', error);
-      alert(t('계정 삭제 중 오류가 발생했습니다.'));
-      setIsDeleting(false);
-      setShowDeleteConfirm(false);
     }
   };
 
@@ -338,65 +298,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex-1">
                           <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-1">
-                            Delete account
+                            {t('회원 탈퇴')}
                           </h2>
-                          {showSubscriptionWarning && !isFreePlan && !isCanceled && (
-                            <p className="text-sm text-[#8B2635] font-medium mb-3">
-                              {t("* 현재 활성화된 구독이 있습니다. [Manage] 메뉴에서 먼저 구독을 해지한 후에 계정 삭제가 가능합니다.")}</p>
-                          )}
                         </div>
-                        {!showDeleteConfirm ? (
-                          <button
-                            onClick={() => {
-                              if (!isFreePlan && !isCanceled) {
-                                setShowSubscriptionWarning(true);
-                                return;
-                              }
-                              setShowDeleteConfirm(true);
-                            }}
-                            className="px-3 sm:px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors flex items-center justify-center gap-1.5 sm:gap-2 flex-shrink-0"
-                            style={{ backgroundColor: '#8B2635' }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor = '#6B1A25';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor = '#8B2635';
-                            }}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            <span>Delete</span>
-                          </button>
-                        ) : (
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <button
-                              onClick={handleDeleteAccount}
-                              disabled={isDeleting}
-                              className="px-3 sm:px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              style={{ backgroundColor: '#8B2635' }}
-                              onMouseEnter={(e) => {
-                                if (!isDeleting) {
-                                  e.currentTarget.style.backgroundColor = '#6B1A25';
-                                }
-                              }}
-                              onMouseLeave={(e) => {
-                                if (!isDeleting) {
-                                  e.currentTarget.style.backgroundColor = '#8B2635';
-                                }
-                              }}
-                            >
-                              {t(isDeleting ? '처리 중...' : '확인')}
-                            </button>
-                            <button
-                              onClick={() => {
-                                setShowDeleteConfirm(false);
-                                setIsDeleting(false);
-                              }}
-                              disabled={isDeleting}
-                              className="px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              {t("취소")}</button>
-                          </div>
-                        )}
+                        <button
+                          onClick={() => { onClose(); router.push('/account/delete'); }}
+                          className="flex shrink-0 items-center gap-2 rounded-lg bg-[#8B2635] px-4 py-2 text-sm font-medium text-white hover:bg-[#6B1A25]"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {t('회원 탈퇴')}
+                        </button>
                       </div>
                     </div>
                   </div>
