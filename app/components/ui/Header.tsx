@@ -137,7 +137,7 @@ const SIMPLE_HEADER_CONFIG: Record<string, { title: string; backHref: string }> 
   '/profile': { title: '내 정보', backHref: '/' },
   '/plan': { title: '내 이용권', backHref: '/profile' },
   '/plan/payments': { title: '결제 내역', backHref: '/plan' },
-  '/account-settings': { title: '계정 설정', backHref: '/profile' },
+  '/account-settings': { title: '설정', backHref: '/profile' },
 };
 
 // 헤더 컴포넌트
