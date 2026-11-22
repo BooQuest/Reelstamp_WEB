@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import LoginClient from './LoginClient';
 import { clearDeletionFlow, rememberDeletionConfirmation, resumeDeletion } from '@/app/lib/account-deletion/browser';
 const { auth, login, guest, replace } = vi.hoisted(() => ({
@@ -17,6 +17,21 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ access_token: 'provider-token' }))));
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+it('shows Apple only when enabled and handles start failure without changing an existing session', async () => {
+  const { rerender } = render(<LoginClient />);
+  expect(screen.queryByRole('button', { name: 'Apple로 로그인' })).not.toBeInTheDocument();
+  rerender(<LoginClient appleEnabled />);
+  vi.mocked(fetch).mockResolvedValueOnce(new Response('{}', { status: 503 }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apple로 로그인' }));
+  await screen.findByText('Apple 로그인을 완료하지 못했습니다. 다시 시도해 주세요.');
+  expect(fetch).toHaveBeenCalledWith('/api/auth/apple/start', expect.objectContaining({ method: 'POST' }));
+  expect(auth.setUser).not.toHaveBeenCalled();expect(login).not.toHaveBeenCalled();
+});
+it('cleans the Apple error flag without consuming another provider callback', async () => {
+  window.history.replaceState({}, '', '/login?appleError=1');render(<LoginClient appleEnabled />);
+  await screen.findByText('Apple 로그인을 완료하지 못했습니다. 다시 시도해 주세요.');
+  expect(window.location.search).toBe('');expect(fetch).not.toHaveBeenCalled();
+});
 it.each(['naver', 'google', 'kakao'])('keeps the ordinary %s login exchange and return URL', async provider => {
   const state = `${provider}_nonce.%2Faccount%2Fdelete`;
   sessionStorage.setItem('oauth_state', state); sessionStorage.setItem('oauth_provider', provider.toUpperCase());
