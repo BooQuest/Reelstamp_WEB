@@ -26,14 +26,14 @@ export function sameOrigin(request: Request) {
     origin === new URL(process.env.NEXT_PUBLIC_BASE_URL || request.url).origin
   );
 }
-export async function internalPassRequest(path: string, body: unknown) {
+export async function internalPassRequest(path: string, body: unknown, proof: Record<string, string> = {}) {
   const secret = process.env.X_INTERNAL_SECRET;
   if (!secret) throw new Error('Internal secret missing');
   return axios.post(
     `${API_CONFIG.WEB_BASE_URL}/api/billing/passes/${path}`,
     body,
     {
-      headers: { 'X-Internal-Secret': secret },
+      headers: { 'X-Internal-Secret': secret, ...proof },
       timeout: 15000,
     },
   );

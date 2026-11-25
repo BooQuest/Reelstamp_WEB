@@ -1,5 +1,6 @@
 'use server';
 
+import { deletionReceiptForUser } from './deletion-status';
 import { cookies, headers } from 'next/headers';
 import { createHash, randomBytes } from 'node:crypto';
 import { getMutableServerApiClient } from '@/app/lib/api/server-client';
@@ -59,13 +60,17 @@ export async function deleteAccountAction(userId: number, proof?: DeletionProof)
     // Refresh before dispatch is allowed; never replay a DELETE after any response
     // or ambiguous timeout. Backend proof consumption is also single-use.
     const api = await getMutableServerApiClient({ expectedUserId: userId, retryAuthentication: false });
+    const deletionRequestId = await deletionReceiptForUser(userId);
+    if (deletionRequestId) data = { ...data, deletionRequestId };
     const response = await api.delete('/api/user/me', { data, timeout: 60_000 });
+    if (response.data?.data?.localStatus === 'ACCEPTED_PENDING')
+      return { success: false, errorCode: 'RS-ACC-003', pending: true, tracked: true };
     if (!response.data.success || response.data.data?.userDeleted !== true)
       return { success: false, errorCode: 'RS-ACC-003' };
     const store = await cookies();
     clearTokenCookies(store);
     store.delete(DELETION_COOKIE);
     store.delete(OAUTH_STATE_COOKIE);
-    return { success: true, data: undefined };
+    return { success: true, data: undefined, ...(deletionRequestId ? { tracked: true } : {}) };
   } catch (error) { return { success: false, errorCode: deletionErrorCode(error) }; }
 }

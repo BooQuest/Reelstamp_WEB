@@ -1,3 +1,4 @@
+import { paymentProof } from '@/app/lib/passes/payment-proof';
 import { equalSecret } from '@/app/lib/passes/payment-server';
 import { NextRequest, NextResponse } from 'next/server';
 import { API_CONFIG } from '@/app/lib/constants/api';
@@ -98,15 +99,6 @@ export async function POST(request: NextRequest) {
         // orderId: var2에서 받은 우리 시스템 주문번호 (REEL-xxx) 사용
         // paymentNo: PayApp이 생성한 결제 고유번호 (mul_no) 사용
         // rebill_no: 정기결제 등록번호 (billingKey로 저장됨)
-        console.log('[PayApp Webhook] 결제 정보:', {
-          userId,
-          internalOrderId, // var2에서 받은 값
-          mul_no, // PayApp 결제 고유번호
-          rebill_no, // 정기결제 등록번호
-          price,
-          state,
-        });
-
         const requestBody = {
           userId: Number(userId),
           orderId: String(internalOrderId || mul_no), // var2가 있으면 사용, 없으면 mul_no 사용
@@ -127,11 +119,14 @@ export async function POST(request: NextRequest) {
             headers: {
               'Content-Type': 'application/json',
               'X-Internal-Secret': internalSecret,
+              ...paymentProof({ kind: 'LEGACY', orderId: requestBody.orderId, paymentNo: requestBody.paymentNo, amount: requestBody.price, payState: requestBody.pgStatusCode, eventDate: payload.canceldate || payload.pay_date || '' }),
             },
             timeout: API_CONFIG.TIMEOUT,
           }
         );
 
+        // Detached trades never recreate subscriptions or require a member lookup.
+        if (response.data?.data?.retained) return new NextResponse('OK', { status: 200 });
         // 구독 상태 업데이트 API 호출
         try {
           const subscriptionStatus = status === BILLING_STATUS.PAID ? SUBSCRIPTION_STATUS.ACTIVE : SUBSCRIPTION_STATUS.CANCELED;
@@ -174,9 +169,8 @@ export async function POST(request: NextRequest) {
           console.error('[PayApp Webhook] 구독 상태 업데이트 실패:', {
             message: subscriptionError.message,
             status: subscriptionError.response?.status,
-            data: subscriptionError.response?.data,
           });
-          // 구독 상태 업데이트 실패해도 웹훅은 성공으로 응답 (나중에 수동 처리 가능)
+          throw new Error('Subscription callback processing failed');
         }
 
         // 새로운 결제가 성공적으로 저장된 후, 기존 활성 구독이 있으면 자동 해지
@@ -200,7 +194,7 @@ export async function POST(request: NextRequest) {
                 });
 
                 if (cancelResponse.state === '1') {
-                  console.log('[PayApp Webhook] 기존 구독 자동 해지 성공:', previousBillingKey);
+                  console.log('[PayApp Webhook] 기존 구독 자동 해지 성공');
                   
                   // PayApp 해지 성공 후 내부 API에 canceled 상태로 업데이트
                   if (previousOrderId) {
@@ -285,13 +279,9 @@ export async function POST(request: NextRequest) {
             response: undefined, request: undefined, config: undefined,
           };
         console.error('[PayApp Webhook] 빌링 상태 저장 API 호출 실패:', {
-          message: updateError.message,
-          url: updateError.config?.url,
           status: updateError.response?.status,
-          data: updateError.response?.data,
         });
-        // 웹훅은 실패해도 'OK'를 반환해야 PayApp이 재시도하지 않음
-        // 하지만 로그는 남겨서 나중에 수동으로 처리할 수 있도록 함
+        return new NextResponse('RETRY', { status: 503 });
       }
     } else {
       // 알 수 없는 상태 코드는 로그로 기록

@@ -1,7 +1,7 @@
 export type DeletionErrorCode = 'RS-ACC-001' | 'RS-ACC-002' | 'RS-ACC-003';
 export type DeletionResult<T = undefined> =
-  | { success: true; data: T }
-  | { success: false; errorCode: DeletionErrorCode };
+  | { success: true; data: T; tracked?: boolean }
+  | { success: false; errorCode: DeletionErrorCode; tracked?: boolean; pending?: boolean };
 
 export interface DeletionPass {
   type: 'PURCHASE' | 'LEGACY' | 'COUPON';
@@ -24,3 +24,9 @@ export const deletionErrorMessage = (code: DeletionErrorCode) => ({
   'RS-ACC-002': '진행 중인 결제가 있습니다. 결제가 완료되거나 취소된 뒤 다시 시도해 주세요.',
   'RS-ACC-003': '일시적인 오류로 탈퇴를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.',
 })[code];
+
+export interface DeletionProgress {
+  localStatus: 'PREPARED' | 'ACCEPTED_PENDING' | 'REAUTH_REQUIRED' | 'LOCAL_DELETED';
+  appleStatus: string; contentStatus: string; reasonCode: string | null;
+  localDeletedAt: string | null; completedAt: string | null; complete: boolean;
+}
