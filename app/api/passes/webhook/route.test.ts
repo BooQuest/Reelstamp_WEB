@@ -45,7 +45,7 @@ describe('PayApp notification', () => {
         paymentNo: '123',
         amount: 4900,
         payState: 4,
-      }),
+      }), {},
     );
   });
   it('matches partial refunds to the original transaction and preserves the refund amount', async () => {
@@ -67,7 +67,7 @@ describe('PayApp notification', () => {
         sourcePaymentNo: '456',
         amount: 4900,
         cancelAmount: '1000',
-      }),
+      }), {},
     );
   });
   it('asks PayApp to retry when persistence fails', async () => {

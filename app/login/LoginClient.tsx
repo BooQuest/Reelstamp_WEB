@@ -61,13 +61,14 @@ const getErrorMessage = (error: unknown, fallbackMessage: string) => {
     : fallbackMessage;
 };
 
-export default function LoginClient({ accountDeletionCallback = false }: { accountDeletionCallback?: boolean }) {
+export default function LoginClient({ accountDeletionCallback = false, appleEnabled = false }: { accountDeletionCallback?: boolean; appleEnabled?: boolean }) {
   const t = useUiText();
   const router = useRouter();
   const { user, setUser, isAuthenticated } = useAuth();
   const [isLoadingKakao, setIsLoadingKakao] = useState(false);
   const [isLoadingNaver, setIsLoadingNaver] = useState(false);
   const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
+  const [isLoadingApple, setIsLoadingApple] = useState(false);
   const [isLoadingGuest, setIsLoadingGuest] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletionCompleted, setDeletionCompleted] = useState(false);
@@ -100,6 +101,10 @@ export default function LoginClient({ accountDeletionCallback = false }: { accou
   useEffect(() => {
     if (accountDeletionCallback || handledLoginCallback.current) return;
     const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('appleError') === '1') {
+      setError('Apple 로그인을 완료하지 못했습니다. 다시 시도해 주세요.');
+      window.history.replaceState({}, '', '/login');
+    }
     if (urlParams.get('accountDeleted') === '1') {
       setDeletionCompleted(true);
       window.history.replaceState({}, '', '/login');
@@ -407,7 +412,26 @@ export default function LoginClient({ accountDeletionCallback = false }: { accou
   }
 
   // 로딩 오버레이 표시 여부 결정
-  const showOverlay = isLoadingKakao || isLoadingNaver || isLoadingGoogle || isLoadingGuest || isProcessing;
+  const handleAppleLogin = async () => {
+    setIsLoadingApple(true);
+    setError(null);
+    setLoadingText('로그인 중...');
+    try {
+      const response = await fetch('/api/auth/apple/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnUrl: getStoredLoginReturnUrl() }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.authorizationUrl) throw new Error();
+      const url = new URL(result.authorizationUrl);
+      if (url.origin !== 'https://appleid.apple.com' || url.pathname !== '/auth/authorize') throw new Error();
+      window.location.assign(url.toString());
+    } catch {
+      setError('Apple 로그인을 완료하지 못했습니다. 다시 시도해 주세요.');
+      setIsLoadingApple(false);
+    }
+  };
+  const showOverlay = isLoadingKakao || isLoadingNaver || isLoadingGoogle || isLoadingApple || isLoadingGuest || isProcessing;
 
   return (
     <div className="bg-white flex flex-col items-center justify-start px-4 py-20 sm:py-20 md:py-28 lg:py-40 xl:py-48 min-h-[calc(100vh-80px)] relative overflow-x-hidden">
@@ -566,6 +590,12 @@ export default function LoginClient({ accountDeletionCallback = false }: { accou
                     </span>
                   </button>
 
+                  {appleEnabled && <button type="button" onClick={handleAppleLogin}
+                    className="mx-auto flex h-14 w-full max-w-[330px] items-center justify-center gap-3 rounded-xl bg-black px-4 font-semibold text-white hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2"
+                    aria-label={t('Apple로 로그인')}>
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor" aria-hidden="true"><path d="M17.05 12.54c.03 3.23 2.83 4.3 2.86 4.31-.02.08-.45 1.54-1.48 3.05-.89 1.3-1.82 2.59-3.27 2.62-1.42.03-1.88-.84-3.5-.84-1.62 0-2.13.81-3.47.87-1.4.05-2.45-1.41-3.35-2.7-1.83-2.65-3.23-7.5-1.35-10.77a5.2 5.2 0 0 1 4.41-2.67c1.38-.03 2.68.93 3.52.93.84 0 2.42-1.15 4.08-.98.69.03 2.63.28 3.87 2.1-.1.06-2.32 1.35-2.32 4.08ZM14.38 4.57c.74-.9 1.24-2.15 1.1-3.4-1.07.04-2.37.71-3.14 1.61-.69.8-1.3 2.08-1.13 3.3 1.2.09 2.42-.61 3.17-1.51Z"/></svg>
+                    {t('Apple로 로그인')}
+                  </button>}
                   <button
                     type="button"
                     className="flex h-14 w-full justify-center rounded-xl transition-all active:scale-[0.98] hover:opacity-90"

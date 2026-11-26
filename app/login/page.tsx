@@ -4,6 +4,7 @@ import LoginClient from './LoginClient';
 import { getCurrentUser } from '@/app/lib/api/auth';
 import { getSafeLoginReturnUrl, LOGIN_HOME_PATH } from '@/app/lib/auth/loginRedirect';
 import { isDeletionCallback } from '@/app/lib/account-deletion/server';
+import { appleWebAvailable } from '@/app/lib/auth/apple';
 
 // 캐시 방지 및 실시간 인증 상태 확인을 위해 강제 동적 렌더링 설정
 export const dynamic = 'force-dynamic';
@@ -34,5 +35,5 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     redirect(returnUrl ?? LOGIN_HOME_PATH);
   }
 
-  return <LoginClient />;
+  return <LoginClient appleEnabled={await appleWebAvailable()} />;
 }

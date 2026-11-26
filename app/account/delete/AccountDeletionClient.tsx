@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { prepareDeletionAction } from '@/app/actions/deletion-status';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/app/components/providers/AuthProvider';
@@ -25,13 +26,15 @@ export default function AccountDeletionClient() {
   currentUserId.current = user?.id;
 
   async function finish(result: DeletionResult) {
+    if (!result.success && result.pending) { window.location.assign('/account/delete/status'); return; }
     if (result.success) {
       completeAccountDeletion();
       await queryClient.cancelQueries();
       queryClient.clear();
       clearDeletedAccountBrowserState();
       // A full navigation discards the Router cache and all editor memory.
-      navigateAfterAccountDeletion();
+      if (result.tracked) window.location.replace('/account/delete/status');
+      else navigateAfterAccountDeletion();
     } else {
       setError(result.errorCode);
       setBusy(false);
@@ -85,6 +88,7 @@ export default function AccountDeletionClient() {
     setError(null);
     try {
       clearDeletionFlow();
+      await prepareDeletionAction(user.id);
       if (user.provider === 'NAVER' || user.provider === 'GOOGLE') {
         const result = await startDeletionReauthenticationAction(user.id);
         if (!result.success) { await finish(result); return; }
@@ -106,6 +110,7 @@ export default function AccountDeletionClient() {
 
   return <div className="min-h-[calc(100vh-80px)] bg-gradient-to-b from-pink-50 to-white px-4 py-10 sm:py-16">
     <section className="mx-auto max-w-xl space-y-6 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8" aria-labelledby="deletion-title" aria-busy={busy}>
+      <Link href="/account/delete/status" className="underline">{t('이전 탈퇴 요청 상태 확인')}</Link>
       <h1 id="deletion-title" className="text-2xl font-bold text-gray-900">{t('회원 탈퇴')}</h1>
       <p className="text-sm text-gray-600">{t('탈퇴 전에 삭제되는 정보와 보존되는 기록을 확인해 주세요.')}</p>
       <div className="space-y-2 text-sm leading-6 text-gray-700">

@@ -104,14 +104,6 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
           )}
 
           <button
-            onClick={() => router.push('/account-settings')}
-            className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:bg-gray-50 transition-all flex items-center gap-3"
-          >
-            <Settings className="w-5 h-5 text-gray-500" />
-            <span className="font-semibold text-gray-900">{t("계정 설정")}</span>
-          </button>
-
-          <button
             onClick={() => router.push('/plan')}
             className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:bg-gray-50 transition-all flex items-center gap-3"
           >
@@ -125,6 +117,14 @@ export default function ProfileClient({ initialUser, initialStats }: ProfileClie
           >
             <CreditCard className="w-5 h-5 text-gray-500" />
             <span className="font-semibold text-gray-900">{t("요금제")}</span>
+          </button>
+
+          <button
+            onClick={() => router.push('/account-settings')}
+            className="w-full bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-left hover:bg-gray-50 transition-all flex items-center gap-3"
+          >
+            <Settings className="w-5 h-5 text-gray-500" />
+            <span className="font-semibold text-gray-900">{t("설정")}</span>
           </button>
 
           <button

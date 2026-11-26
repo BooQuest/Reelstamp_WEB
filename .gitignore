@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+*.p8
 
 # debug
 npm-debug.log*
@@ -42,3 +43,36 @@ next-env.d.ts
 
 # Local caption browser verification
 /artifacts/caption-browser/
+
+# 릴스탬프 개발 하네스 · 비밀 설정과 서명 자료
+.env
+.env.*
+*.env
+*.env.*
+env.properties
+*.p8
+*.p12
+*.pfx
+*.pem
+*.key
+*.jks
+*.keystore
+*.mobileprovision
+id_rsa
+id_ed25519
+credentials.json
+service-account*.json
+service_account*.json
+*-firebase-adminsdk-*.json
+client_secret*.json
+secrets.json
+key.properties
+keystore.properties
+oci_api_key*
+environment.generated.xcconfig
+!.env.example
+!.env.sample
+!.env.template
+!*.env.example
+!*.env.sample
+!*.env.template

@@ -1,3 +1,4 @@
+import { paymentProof } from '@/app/lib/passes/payment-proof';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   equalSecret,
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
         amount > Number(text('orig_price')))
     )
       return new NextResponse('INVALID_ORIGINAL_PAYMENT', { status: 400 });
-    const result = await internalPassRequest('events', {
+    const event = {
       orderId: text('var2'),
       paymentNo: partial ? text('orig_mul_no') : text('mul_no'),
       sourcePaymentNo: text('mul_no'),
@@ -43,7 +44,8 @@ export async function POST(request: NextRequest) {
       amount: partial ? Number(text('orig_price')) : amount,
       eventDate: text('canceldate') || text('pay_date'),
       cancelAmount: partial ? text('price') : text('cancelprice'),
-    });
+    };
+    const result = await internalPassRequest('events', event, paymentProof({ kind: 'PASS', ...event }));
     return new NextResponse(result.data === 'SUCCESS' ? 'SUCCESS' : 'RETRY', {
       status: result.data === 'SUCCESS' ? 200 : 503,
     });

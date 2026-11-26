@@ -6,6 +6,7 @@ import { requireSameOrigin, authRouteError } from '@/app/lib/auth/route-helpers'
 import { errorStatus } from '@/app/lib/auth/server-errors';
 
 export async function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname === '/account/delete/status') return NextResponse.next();
   if (request.nextUrl.pathname.startsWith('/api/')) {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) &&
         (request.cookies.has('accessToken') || request.cookies.has('refreshToken'))) {

@@ -9,6 +9,7 @@ const { auth, preview, start, remove, navigate, done } = vi.hoisted(() => ({
   auth: { user: { id: 7, provider: 'KAKAO' } as UserInfo | null, isAuthenticated: true, completeAccountDeletion: vi.fn() },
   preview: vi.fn(), start: vi.fn(), remove: vi.fn(), navigate: vi.fn(), done: vi.fn(),
 }));
+vi.mock('@/app/actions/deletion-status', () => ({ prepareDeletionAction: vi.fn(async () => undefined) }));
 vi.mock('@/app/components/providers/AuthProvider', () => ({ useAuth: () => auth }));
 vi.mock('@/app/actions/account-deletion', () => ({ getDeletionPreviewAction: preview, startDeletionReauthenticationAction: start, deleteAccountAction: remove }));
 vi.mock('@/app/lib/account-deletion/browser', async importOriginal => ({
