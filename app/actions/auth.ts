@@ -6,7 +6,7 @@ import { saveTokenCookies, clearTokenCookies } from '@/app/lib/auth/token-cookie
 import { requireTokenInfo } from '@/app/lib/auth/refresh';
 import { errorStatus } from '@/app/lib/auth/server-errors';
 import { getGuestCredential } from '@/app/lib/auth/guest-credential';
-import { webApiClient } from '@/app/lib/api/client';
+import { getWebApiClient } from '@/app/lib/api/client';
 import {
   WebApiResponse,
   LoginResponseData,
@@ -114,7 +114,7 @@ export async function loginWithSocialAction(
     const cookieStore = await cookies();
     const guestAccessToken = await getGuestCredential();
 
-    const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
+    const response = await getWebApiClient().post<WebApiResponse<LoginResponseData>>(
       '/api/auth/login',
       {
         accessToken: accessToken,
@@ -153,7 +153,7 @@ export async function loginAsGuestAction(
   nickname: string
 ): Promise<AuthActionResult> {
   try {
-    const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
+    const response = await getWebApiClient().post<WebApiResponse<LoginResponseData>>(
       '/api/auth/guest',
       { nickname },
       { headers: { 'User-Agent': (await headers()).get('user-agent') || 'Unknown' } }
@@ -206,7 +206,7 @@ export async function logoutAction(): Promise<{ success: boolean; message: strin
     // Spring API에 로그아웃 요청
     if (refreshToken) {
       try {
-        await webApiClient.post('/api/auth/logout', null, {
+        await getWebApiClient().post('/api/auth/logout', null, {
           headers: {
             'X-Refresh-Token': refreshToken,
           },

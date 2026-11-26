@@ -101,6 +101,7 @@ docker run -p 3000:3000 --env-file .env.local reelstamp:latest
 - `NEXT_PUBLIC_NAVER_CLIENT_ID`: 네이버 클라이언트 ID (선택)
 
 **런타임 시 필요:**
+- `WEB_API_BASE_URL`: 인증 등 서버 요청에 쓰는 Backend의 HTTPS 기본 URL. 컨테이너 실행 시 환경 변수로 전달합니다.
 - `PAYAPP_USERID`: PayApp 사용자 ID
 - `PAYAPP_LINKKEY`: PayApp 링크 키
 - 기타 서버 사이드 환경 변수들
