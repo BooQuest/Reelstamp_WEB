@@ -6,6 +6,7 @@ WORKDIR /app
 
 # 패키지 매니저 파일 복사
 COPY package.json package-lock.json* ./
+COPY vendor/reelstamp-editor-core-0.1.0.tgz ./vendor/
 
 # 의존성 설치
 RUN npm ci
