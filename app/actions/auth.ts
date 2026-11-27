@@ -6,7 +6,7 @@ import { saveTokenCookies, clearTokenCookies } from '@/app/lib/auth/token-cookie
 import { requireTokenInfo } from '@/app/lib/auth/refresh';
 import { errorStatus } from '@/app/lib/auth/server-errors';
 import { getGuestCredential } from '@/app/lib/auth/guest-credential';
-import { webApiClient } from '@/app/lib/api/client';
+import { getWebApiClient } from '@/app/lib/api/client';
 import {
   WebApiResponse,
   LoginResponseData,
@@ -103,18 +103,21 @@ const getActionErrorMessage = (error: unknown, fallbackMessage: string) => {
 
 /**
  * 소셜 액세스 토큰으로 로그인하고 httpOnly 쿠키에 토큰을 저장합니다.
- * @param accessToken 소셜 서비스(카카오/네이버/구글)에서 발급받은 액세스 토큰
- * @param provider 소셜 서비스 제공자 ('KAKAO' | 'NAVER' | 'GOOGLE')
+ * @param accessToken 카카오 또는 네이버가 발급한 액세스 토큰
+ * @param provider 소셜 서비스 제공자
  */
 export async function loginWithSocialAction(
   accessToken: string,
   provider: SocialAuthProvider
 ): Promise<AuthActionResult> {
+  if (typeof provider !== 'string' || provider.trim().toUpperCase() === 'GOOGLE') {
+    return { success: false, message: 'Google 로그인을 다시 시작해 주세요.' };
+  }
   try {
     const cookieStore = await cookies();
     const guestAccessToken = await getGuestCredential();
 
-    const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
+    const response = await getWebApiClient().post<WebApiResponse<LoginResponseData>>(
       '/api/auth/login',
       {
         accessToken: accessToken,
@@ -153,7 +156,7 @@ export async function loginAsGuestAction(
   nickname: string
 ): Promise<AuthActionResult> {
   try {
-    const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
+    const response = await getWebApiClient().post<WebApiResponse<LoginResponseData>>(
       '/api/auth/guest',
       { nickname },
       { headers: { 'User-Agent': (await headers()).get('user-agent') || 'Unknown' } }
@@ -206,7 +209,7 @@ export async function logoutAction(): Promise<{ success: boolean; message: strin
     // Spring API에 로그아웃 요청
     if (refreshToken) {
       try {
-        await webApiClient.post('/api/auth/logout', null, {
+        await getWebApiClient().post('/api/auth/logout', null, {
           headers: {
             'X-Refresh-Token': refreshToken,
           },

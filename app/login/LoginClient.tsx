@@ -9,7 +9,7 @@ import { ArrowLeft } from 'lucide-react';
 import { loginAsGuestAction, loginWithSocialAction } from '@/app/actions/auth';
 import { useAuth } from '@/app/components/providers/AuthProvider';
 import LoadingOverlay from '@/app/components/ui/LoadingOverlay';
-import type { SocialAuthProvider } from '@/app/lib/api/auth';
+import type { SocialAuthProvider, UserInfo } from '@/app/lib/api/auth';
 import DeletionCallback from '@/app/account/delete/DeletionCallback';
 import {
   buildLoginOauthState,
@@ -95,7 +95,8 @@ export default function LoginClient({ accountDeletionCallback = false, appleEnab
     const response = await fetch('/api/auth/oauth-state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: prefix.toUpperCase(), state }) });
     if (!response.ok) throw new Error('로그인을 시작하지 못했습니다. 다시 시도해 주세요.');
     sessionStorage.setItem('oauth_state', state);
-    return state;
+    const { authorizationUrl } = (prefix === 'google' ? await response.json() : {}) as { authorizationUrl?: string };
+    return { state, authorizationUrl };
   };
 
   useEffect(() => {
@@ -226,7 +227,7 @@ export default function LoginClient({ accountDeletionCallback = false, appleEnab
     }
   };
 
-  // [구글] 인가 코드를 액세스 토큰으로 교환
+  // [구글] BFF가 인가 코드 교환부터 세션 발급까지 처리
   const handleGoogleCode = async (code: string, state: string) => {
     setIsLoadingGoogle(true);
     setLoadingText('구글 로그인 처리 중...');
@@ -239,18 +240,26 @@ export default function LoginClient({ accountDeletionCallback = false, appleEnab
         body: JSON.stringify({ code, state, redirectUri }),
       });
 
-      const data = (await response.json()) as OAuthTokenResponse;
-      if (!response.ok || !data.access_token) {
-        throw new Error(data.message || '구글 토큰 교환 실패');
+      const data = await response.json() as { success: boolean; message?: string; userInfo?: UserInfo };
+      if (!response.ok || !data.success || !data.userInfo) {
+        throw new Error(data.message || '구글 로그인을 완료하지 못했습니다.');
       }
 
-      await processLogin(data.access_token, 'GOOGLE', setIsLoadingGoogle);
+      finishSocialLogin(data.userInfo, setIsLoadingGoogle);
     } catch (err: unknown) {
       setError(getErrorMessage(err, '구글 토큰 교환 실패'));
       setIsLoadingGoogle(false);
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const finishSocialLogin = (userInfo: UserInfo | undefined, setLoading: (loading: boolean) => void) => {
+    if (userInfo) setUser(userInfo);
+    sessionStorage.removeItem('oauth_provider');
+    sessionStorage.removeItem('oauth_state');
+    setLoading(false);
+    router.replace(consumeStoredLoginReturnUrl() ?? LOGIN_HOME_PATH);
   };
 
   // 공통 로그인 처리 로직: Server Action 사용 (httpOnly 쿠키에 토큰 저장)
@@ -269,21 +278,7 @@ export default function LoginClient({ accountDeletionCallback = false, appleEnab
         return;
       }
 
-      if (result.userInfo) {
-        setUser(result.userInfo);
-      }
-      
-      sessionStorage.removeItem('oauth_provider');
-      sessionStorage.removeItem('oauth_state');
-      
-      // 리다이렉트 전에 로딩을 명시적으로 해제 (UX 개선)
-      setLoading(false);
-      
-      try {
-        router.replace(consumeStoredLoginReturnUrl() ?? LOGIN_HOME_PATH);
-      } catch (pushError) {
-        console.error('[processLogin] 리다이렉트 실패:', pushError);
-      }
+      finishSocialLogin(result.userInfo, setLoading);
     } catch (err: unknown) {
       setError(getErrorMessage(err, '로그인 처리 중 오류가 발생했습니다.'));
       setLoading(false);
@@ -343,7 +338,7 @@ export default function LoginClient({ accountDeletionCallback = false, appleEnab
     setLoadingText('카카오 로그인 중...');
     setError(null);
     sessionStorage.setItem('oauth_provider', 'KAKAO');
-    const state = await prepareOauthState('kakao');
+    const { state } = await prepareOauthState('kakao');
     const redirectUri = `${window.location.origin}/login`;
     const kakaoAuthUrl = new URL('/api/auth/kakao-authorize', window.location.origin);
 
@@ -363,7 +358,7 @@ export default function LoginClient({ accountDeletionCallback = false, appleEnab
     }
 
     const redirectUri = encodeURIComponent(`${window.location.origin}/login`);
-    const state = await prepareOauthState('naver');
+    const { state } = await prepareOauthState('naver');
     
     setIsLoadingNaver(true);
     setLoadingText('네이버 로그인 중...');
@@ -377,31 +372,22 @@ export default function LoginClient({ accountDeletionCallback = false, appleEnab
 
   // 구글 로그인 핸들러
   const handleGoogleLogin = async () => {
-    try {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    if (!clientId) {
-      setError('구글 클라이언트 ID가 설정되지 않았습니다.');
-      return;
-    }
-
-    const redirectUri = `${window.location.origin}/login`;
-    const state = await prepareOauthState('google');
-    const scope = encodeURIComponent('openid email profile');
-
     setIsLoadingGoogle(true);
     setLoadingText('구글 로그인 중...');
     setError(null);
-    sessionStorage.setItem('oauth_provider', 'GOOGLE');
-
-    const googleAuthUrl =
-      `https://accounts.google.com/o/oauth2/v2/auth?response_type=code` +
-      `&client_id=${encodeURIComponent(clientId)}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&scope=${scope}` +
-      `&state=${encodeURIComponent(state)}`;
-
-    window.location.href = googleAuthUrl;
-    } catch { setError('로그인을 시작하지 못했습니다. 다시 시도해 주세요.'); setIsLoadingGoogle(false); }
+    try {
+      const { authorizationUrl } = await prepareOauthState('google');
+      if (!authorizationUrl) throw new Error('Missing Google authorization URL');
+      const authorization = new URL(authorizationUrl);
+      if (authorization.origin !== 'https://accounts.google.com' || authorization.pathname !== '/o/oauth2/v2/auth') {
+        throw new Error('Invalid Google authorization URL');
+      }
+      sessionStorage.setItem('oauth_provider', 'GOOGLE');
+      window.location.assign(authorization.toString());
+    } catch {
+      setError('로그인을 시작하지 못했습니다. 다시 시도해 주세요.');
+      setIsLoadingGoogle(false);
+    }
   };
 
   if (accountDeletionCallback) return <DeletionCallback />;

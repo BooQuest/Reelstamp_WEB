@@ -5,7 +5,7 @@ import { saveTokenCookies } from '@/app/lib/auth/token-cookies';
 import { requireTokenInfo } from '@/app/lib/auth/refresh';
 import { requireSameOrigin } from '@/app/lib/auth/route-helpers';
 import { getGuestCredential } from '@/app/lib/auth/guest-credential';
-import { webApiClient } from '@/app/lib/api/client';
+import { getWebApiClient } from '@/app/lib/api/client';
 import { WebApiResponse, LoginResponseData, normalizeUserInfo } from '@/app/lib/api/auth';
 
 type RouteError = {
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const cookieStore = await cookies();
     const guestAccessToken = await getGuestCredential();
 
-    const response = await webApiClient.post<WebApiResponse<LoginResponseData>>(
+    const response = await getWebApiClient().post<WebApiResponse<LoginResponseData>>(
       '/api/auth/login',
       {
         accessToken: kakaoAccessToken,
