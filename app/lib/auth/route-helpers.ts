@@ -2,6 +2,14 @@ import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthRequestError, errorStatus } from './server-errors';
 
+export async function readAuthRequestBody(request: NextRequest): Promise<Record<string, unknown>> {
+  const body: unknown = await request.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new AuthRequestError(400, 'INVALID_REQUEST', '올바르지 않은 요청입니다.');
+  }
+  return body as Record<string, unknown>;
+}
+
 export function requireSameOrigin(request: NextRequest) {
   const origin = request.headers.get('origin');
   const allowed = new Set([request.nextUrl.origin]);

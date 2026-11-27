@@ -103,13 +103,16 @@ const getActionErrorMessage = (error: unknown, fallbackMessage: string) => {
 
 /**
  * 소셜 액세스 토큰으로 로그인하고 httpOnly 쿠키에 토큰을 저장합니다.
- * @param accessToken 소셜 서비스(카카오/네이버/구글)에서 발급받은 액세스 토큰
- * @param provider 소셜 서비스 제공자 ('KAKAO' | 'NAVER' | 'GOOGLE')
+ * @param accessToken 카카오 또는 네이버가 발급한 액세스 토큰
+ * @param provider 소셜 서비스 제공자
  */
 export async function loginWithSocialAction(
   accessToken: string,
   provider: SocialAuthProvider
 ): Promise<AuthActionResult> {
+  if (typeof provider !== 'string' || provider.trim().toUpperCase() === 'GOOGLE') {
+    return { success: false, message: 'Google 로그인을 다시 시작해 주세요.' };
+  }
   try {
     const cookieStore = await cookies();
     const guestAccessToken = await getGuestCredential();

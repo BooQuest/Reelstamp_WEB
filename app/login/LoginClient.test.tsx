@@ -32,7 +32,7 @@ it('cleans the Apple error flag without consuming another provider callback', as
   await screen.findByText('Apple 로그인을 완료하지 못했습니다. 다시 시도해 주세요.');
   expect(window.location.search).toBe('');expect(fetch).not.toHaveBeenCalled();
 });
-it.each(['naver', 'google', 'kakao'])('keeps the ordinary %s login exchange and return URL', async provider => {
+it.each(['naver', 'kakao'])('keeps the ordinary %s login exchange and return URL', async provider => {
   const state = `${provider}_nonce.%2Faccount%2Fdelete`;
   sessionStorage.setItem('oauth_state', state); sessionStorage.setItem('oauth_provider', provider.toUpperCase());
   window.history.replaceState({}, '', `/login?code=code&state=${encodeURIComponent(state)}`);
@@ -40,6 +40,50 @@ it.each(['naver', 'google', 'kakao'])('keeps the ordinary %s login exchange and 
   await waitFor(() => expect(login).toHaveBeenCalledWith('provider-token', provider.toUpperCase()));
   expect(fetch).toHaveBeenCalledExactlyOnceWith(`/api/auth/${provider}-token`, expect.objectContaining({ method: 'POST' }));
   expect(replace).toHaveBeenCalledWith('/account/delete'); expect(login).toHaveBeenCalledOnce();
+});
+it('uses the Google BFF result once and keeps the return URL without a provider token', async () => {
+  const state = 'google_nonce.%2Fmy-projects';
+  sessionStorage.setItem('oauth_state', state);
+  sessionStorage.setItem('oauth_provider', 'GOOGLE');
+  window.history.replaceState({}, '', `/login?code=fixture-code&state=${encodeURIComponent(state)}`);
+  const userInfo = { id: 19, provider: 'GOOGLE' };
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({ success: true, userInfo }));
+
+  render(<StrictMode><LoginClient /></StrictMode>);
+  await waitFor(() => expect(auth.setUser).toHaveBeenCalledExactlyOnceWith(userInfo));
+  expect(fetch).toHaveBeenCalledExactlyOnceWith('/api/auth/google-token', expect.objectContaining({
+    body: JSON.stringify({ code: 'fixture-code', state, redirectUri: `${window.location.origin}/login` }),
+  }));
+  expect(login).not.toHaveBeenCalled();
+  expect(replace).toHaveBeenCalledExactlyOnceWith('/my-projects');
+  expect(window.location.search).toBe('');
+});
+
+it('leaves the current user and return path available when Google login fails', async () => {
+  const state = 'google_nonce.%2Fmy-projects';
+  sessionStorage.setItem('oauth_state', state);
+  sessionStorage.setItem('oauth_provider', 'GOOGLE');
+  window.history.replaceState({}, '', `/login?code=fixture-code&state=${encodeURIComponent(state)}`);
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({ success: false }, { status: 401 }));
+
+  render(<LoginClient />);
+  await screen.findByText('구글 로그인을 완료하지 못했습니다.');
+  expect(auth.setUser).not.toHaveBeenCalled();
+  expect(login).not.toHaveBeenCalled();
+  expect(replace).not.toHaveBeenCalled();
+  expect(sessionStorage.getItem('reelstamp:login-return-url')).toBe('/my-projects');
+});
+
+it('rejects unexpected authorization destinations from the start route', async () => {
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({ success: true, authorizationUrl: 'https://other.test/' }));
+  render(<LoginClient />);
+  fireEvent.click(screen.getByRole('button', { name: '구글로 로그인' }));
+  await screen.findByText('로그인을 시작하지 못했습니다. 다시 시도해 주세요.');
+  expect(fetch).toHaveBeenCalledExactlyOnceWith('/api/auth/oauth-state', expect.objectContaining({
+    method: 'POST',
+    body: expect.stringMatching(/"provider":"GOOGLE".*"state":"google_/),
+  }));
+  expect(window.location.pathname).toBe('/login');
 });
 it('rejects ordinary OAuth state mismatch without exchanging a token', async () => {
   sessionStorage.setItem('oauth_state', 'other');
